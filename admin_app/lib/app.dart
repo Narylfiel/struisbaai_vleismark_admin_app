@@ -17,7 +17,7 @@ class AdminApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         scaffoldBackgroundColor: AppColors.scaffoldBg,
-        cardTheme: const CardTheme(
+        cardTheme: const CardThemeData(
           color: AppColors.cardBg,
           elevation: 2,
           shape: RoundedRectangleBorder(

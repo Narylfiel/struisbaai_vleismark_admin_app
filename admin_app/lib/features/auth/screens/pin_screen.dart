@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
+import 'package:admin_app/features/dashboard/screens/main_shell.dart';
 
 class PinScreen extends StatefulWidget {
   const PinScreen({super.key});
@@ -270,57 +271,6 @@ class _PinScreenState extends State<PinScreen> {
               color: isAction ? AppColors.textSecondary : AppColors.primary,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class MainShell extends StatelessWidget {
-  final String staffId;
-  final String staffName;
-  final String role;
-
-  const MainShell({
-    super.key,
-    required this.staffId,
-    required this.staffName,
-    required this.role,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldBg,
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.success, size: 64),
-            const SizedBox(height: 16),
-            Text(
-              'Welcome, $staffName',
-              style: const TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              role.toUpperCase(),
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppColors.textSecondary,
-                letterSpacing: 2,
-              ),
-            ),
-            const SizedBox(height: 32),
-            const Text(
-              'Dashboard coming next...',
-              style: TextStyle(color: AppColors.textSecondary),
-            ),
-          ],
         ),
       ),
     );

@@ -1,0 +1,1330 @@
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/constants/app_colors.dart';
+
+class ProductListScreen extends StatefulWidget {
+  const ProductListScreen({super.key});
+
+  @override
+  State<ProductListScreen> createState() => _ProductListScreenState();
+}
+
+class _ProductListScreenState extends State<ProductListScreen> {
+  final _supabase = Supabase.instance.client;
+  final _searchController = TextEditingController();
+
+  List<Map<String, dynamic>> _products = [];
+  List<Map<String, dynamic>> _filtered = [];
+  List<Map<String, dynamic>> _categories = [];
+  bool _isLoading = true;
+  String _selectedCategory = 'All';
+  bool _showInactive = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+    _searchController.addListener(_filterProducts);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadData() async {
+    setState(() => _isLoading = true);
+    try {
+      final cats = await _supabase
+          .from('categories')
+          .select('name')
+          .eq('active', true)
+          .order('sort_order');
+      _categories = [{'name': 'All'}, ...List<Map<String, dynamic>>.from(cats)];
+
+      final products = await _supabase
+          .from('inventory_items')
+          .select('*')
+          .order('plu_code');
+      _products = List<Map<String, dynamic>>.from(products);
+      _filterProducts();
+    } catch (e) {
+      debugPrint('Product list error: $e');
+    }
+    setState(() => _isLoading = false);
+  }
+
+  void _filterProducts() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filtered = _products.where((p) {
+        final matchSearch = query.isEmpty ||
+            (p['name'] ?? '').toLowerCase().contains(query) ||
+            (p['plu_code']?.toString() ?? '').contains(query) ||
+            (p['barcode'] ?? '').toLowerCase().contains(query) ||
+            (p['text_lookup_code'] ?? '').toLowerCase().contains(query);
+        final matchCat = _selectedCategory == 'All' ||
+            p['category'] == _selectedCategory;
+        final matchActive = _showInactive || (p['is_active'] == true);
+        return matchSearch && matchCat && matchActive;
+      }).toList();
+    });
+  }
+
+  Color _categoryColor(String? category) {
+    switch (category) {
+      case 'Beef': return AppColors.catBeef;
+      case 'Pork': return AppColors.catPork;
+      case 'Lamb': return AppColors.catLamb;
+      case 'Chicken': return AppColors.catChicken;
+      case 'Processed': return AppColors.catProcessed;
+      case 'Drinks': return AppColors.catDrinks;
+      case 'Spices & Condiments': return AppColors.catSpices;
+      case 'Game & Venison': return AppColors.catGame;
+      default: return AppColors.catOther;
+    }
+  }
+
+  void _openProduct(Map<String, dynamic>? product) {
+    showDialog(
+      context: context,
+      builder: (_) => _ProductFormDialog(
+        product: product,
+        categories: _categories.where((c) => c['name'] != 'All').toList(),
+        onSaved: _loadData,
+      ),
+    );
+  }
+
+  Future<void> _toggleActive(Map<String, dynamic> product) async {
+    final newVal = !(product['is_active'] as bool? ?? true);
+    await _supabase
+        .from('inventory_items')
+        .update({'is_active': newVal})
+        .eq('id', product['id']);
+    _loadData();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.scaffoldBg,
+      body: Column(
+        children: [
+          // Toolbar
+          Container(
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
+            color: AppColors.cardBg,
+            child: Row(
+              children: [
+                // Search
+                SizedBox(
+                  width: 280,
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search by name, PLU, barcode...',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.border),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+
+                // Category filter
+                DropdownButton<String>(
+                  value: _selectedCategory,
+                  underline: const SizedBox(),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(
+                            value: c['name'] as String,
+                            child: Text(c['name'] as String),
+                          ))
+                      .toList(),
+                  onChanged: (v) {
+                    setState(() => _selectedCategory = v!);
+                    _filterProducts();
+                  },
+                ),
+                const SizedBox(width: 12),
+
+                // Show inactive toggle
+                Row(
+                  children: [
+                    Switch(
+                      value: _showInactive,
+                      onChanged: (v) {
+                        setState(() => _showInactive = v);
+                        _filterProducts();
+                      },
+                      activeColor: AppColors.primary,
+                    ),
+                    const Text('Show inactive',
+                        style: TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary)),
+                  ],
+                ),
+
+                const Spacer(),
+
+                // Count
+                Text(
+                  '${_filtered.length} products',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
+                ),
+                const SizedBox(width: 16),
+
+                // Add button
+                ElevatedButton.icon(
+                  onPressed: () => _openProduct(null),
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add Product'),
+                ),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.border),
+
+          // Table header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            color: AppColors.surfaceBg,
+            child: const Row(
+              children: [
+                SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
+                SizedBox(width: 12),
+                Expanded(flex: 3, child: Text('NAME', style: _headerStyle)),
+                SizedBox(width: 12),
+                Expanded(flex: 2, child: Text('CATEGORY', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 90, child: Text('SELL PRICE', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 80, child: Text('COST', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 60, child: Text('GP %', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 80, child: Text('ON HAND', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 60, child: Text('STATUS', style: _headerStyle)),
+                SizedBox(width: 12),
+                SizedBox(width: 80, child: Text('ACTIONS', style: _headerStyle)),
+              ],
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.border),
+
+          // Product list
+          Expanded(
+            child: _isLoading
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary))
+                : _filtered.isEmpty
+                    ? const Center(
+                        child: Text('No products found',
+                            style: TextStyle(color: AppColors.textSecondary)))
+                    : ListView.separated(
+                        padding: const EdgeInsets.symmetric(horizontal: 24),
+                        itemCount: _filtered.length,
+                        separatorBuilder: (_, __) =>
+                            const Divider(height: 1, color: AppColors.border),
+                        itemBuilder: (context, i) {
+                          final p = _filtered[i];
+                          final sell =
+                              (p['sell_price'] as num?)?.toDouble() ?? 0;
+                          final cost =
+                              (p['cost_price'] as num?)?.toDouble() ?? 0;
+                          final gp = sell > 0
+                              ? ((sell - cost) / sell * 100)
+                              : 0.0;
+                          final onHand =
+                              ((p['stock_on_hand_fresh'] as num?)?.toDouble() ??
+                                      0) +
+                                  ((p['stock_on_hand_frozen'] as num?)
+                                          ?.toDouble() ??
+                                      0);
+                          final isActive = p['is_active'] as bool? ?? true;
+                          final reorder =
+                              (p['reorder_level'] as num?)?.toDouble() ?? 0;
+
+                          return InkWell(
+                            onTap: () => _openProduct(p),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 0, vertical: 10),
+                              color: isActive
+                                  ? null
+                                  : AppColors.border.withOpacity(0.3),
+                              child: Row(
+                                children: [
+                                  // PLU
+                                  SizedBox(
+                                    width: 60,
+                                    child: Text(
+                                      '${p['plu_code'] ?? '—'}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Name
+                                  Expanded(
+                                    flex: 3,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          p['name'] ?? '',
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: AppColors.textPrimary,
+                                          ),
+                                        ),
+                                        if (p['pos_display_name'] != null &&
+                                            p['pos_display_name'] != p['name'])
+                                          Text(
+                                            p['pos_display_name'],
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Category
+                                  Expanded(
+                                    flex: 2,
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 10,
+                                          height: 10,
+                                          decoration: BoxDecoration(
+                                            color: _categoryColor(
+                                                p['category']),
+                                            shape: BoxShape.circle,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 6),
+                                        Expanded(
+                                          child: Text(
+                                            p['category'] ?? '—',
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                color: AppColors.textPrimary),
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Sell price
+                                  SizedBox(
+                                    width: 90,
+                                    child: Text(
+                                      'R ${sell.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Cost
+                                  SizedBox(
+                                    width: 80,
+                                    child: Text(
+                                      'R ${cost.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // GP %
+                                  SizedBox(
+                                    width: 60,
+                                    child: Text(
+                                      '${gp.toStringAsFixed(1)}%',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: gp >= 30
+                                            ? AppColors.success
+                                            : gp >= 20
+                                                ? AppColors.warning
+                                                : AppColors.error,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // On hand
+                                  SizedBox(
+                                    width: 80,
+                                    child: Text(
+                                      '${onHand.toStringAsFixed(2)} ${p['unit_type'] ?? 'kg'}',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        color: onHand <= reorder
+                                            ? AppColors.warning
+                                            : AppColors.textPrimary,
+                                        fontWeight: onHand <= reorder
+                                            ? FontWeight.bold
+                                            : FontWeight.normal,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Status
+                                  SizedBox(
+                                    width: 60,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: isActive
+                                            ? AppColors.success.withOpacity(0.1)
+                                            : AppColors.error.withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(4),
+                                      ),
+                                      child: Text(
+                                        isActive ? 'Active' : 'Inactive',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          color: isActive
+                                              ? AppColors.success
+                                              : AppColors.error,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        textAlign: TextAlign.center,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Actions
+                                  SizedBox(
+                                    width: 80,
+                                    child: Row(
+                                      children: [
+                                        IconButton(
+                                          icon: const Icon(Icons.edit,
+                                              size: 16),
+                                          color: AppColors.primary,
+                                          onPressed: () => _openProduct(p),
+                                          tooltip: 'Edit',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: Icon(
+                                            isActive
+                                                ? Icons.visibility_off
+                                                : Icons.visibility,
+                                            size: 16,
+                                          ),
+                                          color: AppColors.textSecondary,
+                                          onPressed: () => _toggleActive(p),
+                                          tooltip: isActive
+                                              ? 'Deactivate'
+                                              : 'Activate',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static const _headerStyle = TextStyle(
+    fontSize: 10,
+    fontWeight: FontWeight.bold,
+    color: AppColors.textSecondary,
+    letterSpacing: 0.5,
+  );
+}
+
+// ── Product Form Dialog ───────────────────────────────────────
+
+class _ProductFormDialog extends StatefulWidget {
+  final Map<String, dynamic>? product;
+  final List<Map<String, dynamic>> categories;
+  final VoidCallback onSaved;
+
+  const _ProductFormDialog({
+    required this.product,
+    required this.categories,
+    required this.onSaved,
+  });
+
+  @override
+  State<_ProductFormDialog> createState() => _ProductFormDialogState();
+}
+
+class _ProductFormDialogState extends State<_ProductFormDialog>
+    with SingleTickerProviderStateMixin {
+  final _supabase = Supabase.instance.client;
+  final _formKey = GlobalKey<FormState>();
+  late TabController _tabController;
+  bool _isSaving = false;
+
+  // Section A
+  final _pluController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _posNameController = TextEditingController();
+  final _scaleLabelController = TextEditingController();
+  final _barcodeController = TextEditingController();
+  final _lookupController = TextEditingController();
+  String? _selectedCategory;
+  String _itemType = 'own_cut';
+  bool _scaleItem = false;
+  bool _ishidaSync = false;
+  bool _isActive = true;
+
+  // Section B
+  final _sellPriceController = TextEditingController();
+  final _costPriceController = TextEditingController();
+  final _targetMarginController = TextEditingController();
+  final _freezerMarkdownController = TextEditingController();
+  String _vatGroup = 'standard';
+
+  // Section C
+  String _stockControlType = 'use_stock_control';
+  String _unitType = 'kg';
+  bool _allowFraction = true;
+  final _reorderController = TextEditingController();
+  final _shelfLifeFreshController = TextEditingController();
+  final _shelfLifeFrozenController = TextEditingController();
+  final _slowMovingController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 4, vsync: this);
+    if (widget.product != null) _populateForm(widget.product!);
+  }
+
+  void _populateForm(Map<String, dynamic> p) {
+    _pluController.text = p['plu_code']?.toString() ?? '';
+    _nameController.text = p['name'] ?? '';
+    _posNameController.text = p['pos_display_name'] ?? '';
+    _scaleLabelController.text = p['scale_label_name'] ?? '';
+    _barcodeController.text = p['barcode'] ?? '';
+    _lookupController.text = p['text_lookup_code'] ?? '';
+    _selectedCategory = p['category'];
+    _itemType = p['item_type'] ?? 'own_cut';
+    _scaleItem = p['scale_item'] ?? false;
+    _ishidaSync = p['ishida_sync'] ?? false;
+    _isActive = p['is_active'] ?? true;
+    _sellPriceController.text = p['sell_price']?.toString() ?? '';
+    _costPriceController.text = p['cost_price']?.toString() ?? '';
+    _targetMarginController.text = p['target_margin_pct']?.toString() ?? '';
+    _freezerMarkdownController.text =
+        p['freezer_markdown_pct']?.toString() ?? '';
+    _vatGroup = p['vat_group'] ?? 'standard';
+    _stockControlType = p['stock_control_type'] ?? 'use_stock_control';
+    _unitType = p['unit_type'] ?? 'kg';
+    _allowFraction = p['allow_sell_by_fraction'] ?? true;
+    _reorderController.text = p['reorder_level']?.toString() ?? '';
+    _shelfLifeFreshController.text = p['shelf_life_fresh']?.toString() ?? '';
+    _shelfLifeFrozenController.text =
+        p['shelf_life_frozen']?.toString() ?? '';
+    _slowMovingController.text =
+        p['slow_moving_trigger_days']?.toString() ?? '3';
+  }
+
+  Future<void> _save() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+
+    final data = {
+      'plu_code': int.tryParse(_pluController.text),
+      'name': _nameController.text.trim(),
+      'pos_display_name': _posNameController.text.trim().isEmpty
+          ? _nameController.text.trim()
+          : _posNameController.text.trim(),
+      'scale_label_name': _scaleLabelController.text.trim(),
+      'barcode': _barcodeController.text.trim(),
+      'text_lookup_code': _lookupController.text.trim().toLowerCase(),
+      'category': _selectedCategory,
+      'item_type': _itemType,
+      'scale_item': _scaleItem,
+      'ishida_sync': _ishidaSync,
+      'is_active': _isActive,
+      'sell_price': double.tryParse(_sellPriceController.text),
+      'cost_price': double.tryParse(_costPriceController.text),
+      'target_margin_pct': double.tryParse(_targetMarginController.text),
+      'freezer_markdown_pct':
+          double.tryParse(_freezerMarkdownController.text),
+      'vat_group': _vatGroup,
+      'stock_control_type': _stockControlType,
+      'unit_type': _unitType,
+      'allow_sell_by_fraction': _allowFraction,
+      'reorder_level': double.tryParse(_reorderController.text),
+      'shelf_life_fresh': int.tryParse(_shelfLifeFreshController.text),
+      'shelf_life_frozen': int.tryParse(_shelfLifeFrozenController.text),
+      'slow_moving_trigger_days':
+          int.tryParse(_slowMovingController.text) ?? 3,
+      'price_last_changed': DateTime.now().toIso8601String(),
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    try {
+      if (widget.product == null) {
+        await _supabase.from('inventory_items').insert(data);
+      } else {
+        await _supabase
+            .from('inventory_items')
+            .update(data)
+            .eq('id', widget.product!['id']);
+      }
+      widget.onSaved();
+      if (mounted) Navigator.pop(context);
+    } catch (e) {
+      setState(() => _isSaving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    _pluController.dispose();
+    _nameController.dispose();
+    _posNameController.dispose();
+    _scaleLabelController.dispose();
+    _barcodeController.dispose();
+    _lookupController.dispose();
+    _sellPriceController.dispose();
+    _costPriceController.dispose();
+    _targetMarginController.dispose();
+    _freezerMarkdownController.dispose();
+    _reorderController.dispose();
+    _shelfLifeFreshController.dispose();
+    _shelfLifeFrozenController.dispose();
+    _slowMovingController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isEdit = widget.product != null;
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: SizedBox(
+        width: 720,
+        height: 620,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(24, 20, 16, 0),
+              child: Row(
+                children: [
+                  Icon(isEdit ? Icons.edit : Icons.add_circle,
+                      color: AppColors.primary),
+                  const SizedBox(width: 10),
+                  Text(
+                    isEdit
+                        ? 'Edit Product — PLU ${widget.product!['plu_code']}'
+                        : 'Add New Product',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+            ),
+
+            // Tabs
+            TabBar(
+              controller: _tabController,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.textSecondary,
+              indicatorColor: AppColors.primary,
+              tabs: const [
+                Tab(text: 'A — Identity'),
+                Tab(text: 'B — Pricing'),
+                Tab(text: 'C — Stock'),
+                Tab(text: 'D — Scale'),
+              ],
+            ),
+            const Divider(height: 1, color: AppColors.border),
+
+            // Form
+            Expanded(
+              child: Form(
+                key: _formKey,
+                child: TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildTabA(),
+                    _buildTabB(),
+                    _buildTabC(),
+                    _buildTabD(),
+                  ],
+                ),
+              ),
+            ),
+
+            // Footer
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Switch(
+                    value: _isActive,
+                    onChanged: (v) => setState(() => _isActive = v),
+                    activeColor: AppColors.success,
+                  ),
+                  Text(
+                    _isActive ? 'Active' : 'Inactive',
+                    style: TextStyle(
+                      color:
+                          _isActive ? AppColors.success : AppColors.textSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancel'),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: _isSaving ? null : _save,
+                    child: _isSaving
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2, color: Colors.white),
+                          )
+                        : Text(isEdit ? 'Save Changes' : 'Add Product'),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabA() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'PLU Code *',
+                  controller: _pluController,
+                  hint: '1001',
+                  keyboardType: TextInputType.number,
+                  enabled: widget.product == null,
+                  note: widget.product != null
+                      ? 'PLU cannot be changed after creation'
+                      : 'Unique — cashier shortcut & scale code',
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'PLU required' : null,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                flex: 2,
+                child: _field(
+                  label: 'Full Name *',
+                  controller: _nameController,
+                  hint: 'T-Bone Steak',
+                  validator: (v) =>
+                      v == null || v.isEmpty ? 'Name required' : null,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'POS Display Name',
+                  controller: _posNameController,
+                  hint: 'T-Bone Steak (max 20 chars)',
+                  maxLength: 20,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Scale Label Name',
+                  controller: _scaleLabelController,
+                  hint: 'T-Bone Steak (max 16 chars)',
+                  maxLength: 16,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Category',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _selectedCategory,
+                      decoration: const InputDecoration(isDense: true),
+                      hint: const Text('Select category'),
+                      items: widget.categories
+                          .map((c) => DropdownMenuItem(
+                                value: c['name'] as String,
+                                child: Text(c['name'] as String),
+                              ))
+                          .toList(),
+                      onChanged: (v) =>
+                          setState(() => _selectedCategory = v),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Item Type',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _itemType,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'own_cut', child: Text('Own Cut')),
+                        DropdownMenuItem(
+                            value: 'own_processed',
+                            child: Text('Own Processed')),
+                        DropdownMenuItem(
+                            value: 'third_party_resale',
+                            child: Text('Third Party Resale')),
+                        DropdownMenuItem(
+                            value: 'service', child: Text('Service')),
+                        DropdownMenuItem(
+                            value: 'packaging', child: Text('Packaging')),
+                        DropdownMenuItem(
+                            value: 'internal', child: Text('Internal')),
+                      ],
+                      onChanged: (v) => setState(() => _itemType = v!),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          _field(
+            label: 'Text Lookup Code',
+            controller: _lookupController,
+            hint: 'tbone — alternative search keyword for POS',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabB() {
+    final sell = double.tryParse(_sellPriceController.text) ?? 0;
+    final cost = double.tryParse(_costPriceController.text) ?? 0;
+    final gp = sell > 0 ? ((sell - cost) / sell * 100) : 0.0;
+    final markup = cost > 0 ? ((sell - cost) / cost * 100) : 0.0;
+    final target = double.tryParse(_targetMarginController.text) ?? 30.0;
+    final recommended = cost > 0 && target < 100
+        ? cost / (1 - target / 100)
+        : 0.0;
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Sell Price (R) *',
+                  controller: _sellPriceController,
+                  hint: '120.00',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Cost Price (R)',
+                  controller: _costPriceController,
+                  hint: '72.00',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Target Margin %',
+                  controller: _targetMarginController,
+                  hint: '30',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  onChanged: (_) => setState(() {}),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Auto-calculated
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Row(
+              children: [
+                _calcStat('GP %', '${gp.toStringAsFixed(1)}%',
+                    gp >= target ? AppColors.success : AppColors.error),
+                const SizedBox(width: 24),
+                _calcStat('Markup %', '${markup.toStringAsFixed(1)}%',
+                    AppColors.textPrimary),
+                const SizedBox(width: 24),
+                _calcStat(
+                    'Recommended Price',
+                    recommended > 0 ? 'R ${recommended.toStringAsFixed(2)}' : '—',
+                    AppColors.info),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Freezer Markdown % (per product)',
+                  controller: _freezerMarkdownController,
+                  hint: '20',
+                  note: 'Owner sets per product — NOT a system default',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('VAT Group',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _vatGroup,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'standard',
+                            child: Text('Standard (15%)')),
+                        DropdownMenuItem(
+                            value: 'zero_rated',
+                            child: Text('Zero-Rated (0%)')),
+                        DropdownMenuItem(
+                            value: 'exempt', child: Text('Exempt (0%)')),
+                      ],
+                      onChanged: (v) => setState(() => _vatGroup = v!),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabC() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Stock Control Type',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _stockControlType,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(
+                            value: 'use_stock_control',
+                            child: Text('Use Stock Control')),
+                        DropdownMenuItem(
+                            value: 'no_stock_control',
+                            child: Text('No Stock Control')),
+                        DropdownMenuItem(
+                            value: 'recipe_based',
+                            child: Text('Recipe Based')),
+                        DropdownMenuItem(
+                            value: 'carcass_linked',
+                            child: Text('Carcass Linked')),
+                        DropdownMenuItem(
+                            value: 'hanger_count',
+                            child: Text('Hanger Count')),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _stockControlType = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Unit Type',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _unitType,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(value: 'kg', child: Text('kg')),
+                        DropdownMenuItem(
+                            value: 'units', child: Text('Units')),
+                        DropdownMenuItem(
+                            value: 'packs', child: Text('Packs')),
+                      ],
+                      onChanged: (v) => setState(() => _unitType = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Allow Sell by Fraction',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    Switch(
+                      value: _allowFraction,
+                      onChanged: (v) =>
+                          setState(() => _allowFraction = v),
+                      activeColor: AppColors.primary,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Reorder Level',
+                  controller: _reorderController,
+                  hint: '5.0',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  note: 'Triggers reorder alert on dashboard',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Slow Moving Trigger (days)',
+                  controller: _slowMovingController,
+                  hint: '3',
+                  keyboardType: TextInputType.number,
+                  note: 'Days without sale = slow-moving alert (per product)',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Shelf Life Fresh (days)',
+                  controller: _shelfLifeFreshController,
+                  hint: '3',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Shelf Life Frozen (days)',
+                  controller: _shelfLifeFrozenController,
+                  hint: '90',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabD() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _field(
+            label: 'Barcode (EAN-13)',
+            controller: _barcodeController,
+            hint: '6001234567890',
+            note: 'For non-scale packaged items',
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Scale Item (Ishida)',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Switch(
+                          value: _scaleItem,
+                          onChanged: (v) =>
+                              setState(() => _scaleItem = v),
+                          activeColor: AppColors.primary,
+                        ),
+                        Text(
+                          _scaleItem ? 'Yes' : 'No',
+                          style: const TextStyle(
+                              color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Sync to Ishida Scale',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Switch(
+                          value: _ishidaSync,
+                          onChanged: (v) =>
+                              setState(() => _ishidaSync = v),
+                          activeColor: AppColors.primary,
+                        ),
+                        Text(
+                          _ishidaSync ? 'Sync ON' : 'Sync OFF',
+                          style: const TextStyle(
+                              color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppColors.info.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8),
+              border:
+                  Border.all(color: AppColors.info.withOpacity(0.3)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.info_outline,
+                    color: AppColors.info, size: 16),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'PLU Code = Scale Code. The PLU number is NEVER changed after creation — it is the Ishida scale code and cashier shortcut.',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _field({
+    required String label,
+    required TextEditingController controller,
+    String? hint,
+    String? note,
+    TextInputType? keyboardType,
+    bool enabled = true,
+    int? maxLength,
+    String? Function(String?)? validator,
+    void Function(String)? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: AppColors.textSecondary)),
+        const SizedBox(height: 6),
+        TextFormField(
+          controller: controller,
+          enabled: enabled,
+          keyboardType: keyboardType,
+          maxLength: maxLength,
+          decoration: InputDecoration(
+            hintText: hint,
+            isDense: true,
+            counterText: '',
+            filled: !enabled,
+            fillColor:
+                enabled ? null : AppColors.border.withOpacity(0.3),
+          ),
+          validator: validator,
+          onChanged: onChanged,
+        ),
+        if (note != null) ...[
+          const SizedBox(height: 4),
+          Text(note,
+              style: const TextStyle(
+                  fontSize: 11, color: AppColors.textSecondary)),
+        ],
+      ],
+    );
+  }
+
+  Widget _calcStat(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(
+                fontSize: 11, color: AppColors.textSecondary)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: color)),
+      ],
+    );
+  }
+}
