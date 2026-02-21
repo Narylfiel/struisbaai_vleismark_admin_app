@@ -3,7 +3,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
-import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
+import 'package:admin_app/features/inventory/screens/inventory_navigation_screen.dart';
 import 'package:admin_app/features/production/screens/carcass_intake_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_list_screen.dart';
 import 'package:admin_app/features/hr/screens/staff_list_screen.dart';
@@ -38,7 +38,7 @@ class _MainShellState extends State<MainShell> {
     final isOwner = widget.role == 'owner';
     return [
       _NavItem(icon: Icons.dashboard,     label: 'Dashboard',   screen: const DashboardScreen()),
-      _NavItem(icon: Icons.inventory_2,   label: 'Inventory',   screen: const ProductListScreen()),
+      _NavItem(icon: Icons.inventory_2,   label: 'Inventory',   screen: const InventoryNavigationScreen()),
       _NavItem(icon: Icons.cut,           label: 'Production',  screen: const CarcassIntakeScreen()),
       _NavItem(icon: Icons.forest,        label: 'Hunter',      screen: const JobListScreen()),
       _NavItem(icon: Icons.people,        label: 'HR / Staff',  screen: const StaffListScreen()),
