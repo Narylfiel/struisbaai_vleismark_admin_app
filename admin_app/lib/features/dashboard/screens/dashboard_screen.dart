@@ -61,14 +61,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       // Today's transactions
       final todayTxns = await _supabase
-          .from('transactions')
+          .from('sales')
           .select('total_amount, cost_amount')
           .gte('created_at', todayStart)
           .lte('created_at', todayEnd);
 
       // Yesterday's transactions
       final yesterdayTxns = await _supabase
-          .from('transactions')
+          .from('sales')
           .select('total_amount')
           .gte('created_at', yesterdayStart)
           .lte('created_at', yesterdayEnd);
@@ -135,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final overdue = await _supabase
           .from('business_accounts')
-          .select('business_name, balance, credit_terms')
+          .select('name, balance, credit_terms_days')
           .eq('active', true)
           .gt('balance', 0)
           .limit(5);
@@ -306,7 +306,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: AppColors.warning,
                       icon: Icons.account_balance_wallet,
                       text:
-                          'Overdue: ${a['business_name']} — R ${(a['balance'] as num).toStringAsFixed(2)}',
+                          'Overdue: ${a['name']} — R ${(a['balance'] as num).toStringAsFixed(2)}',
                     )),
                 ..._pendingLeave.map((a) => _AlertRow(
                       color: AppColors.dashAlertBlue,
