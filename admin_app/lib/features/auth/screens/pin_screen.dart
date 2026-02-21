@@ -50,7 +50,12 @@ class _StaffCache {
     final profiles = await load();
     try {
       return profiles.firstWhere(
-        (p) => p['pin_hash'] == pinHash && p['active'] == true,
+        (p) {
+          if (p['pin_hash'] != pinHash) return false;
+          if (p['active'] != true && p['active'] != 'true') return false;
+          final r = p['role'] as String? ?? '';
+          return AdminConfig.allowedRoles.contains(r.toLowerCase());
+        },
       );
     } catch (_) {
       return null;
@@ -147,12 +152,14 @@ class _PinScreenState extends State<PinScreen> {
           .from('profiles')
           .select('id, full_name, role, pin_hash, active')
           .eq('pin_hash', pinHash)
+          .inFilter('role', AdminConfig.allowedRoles)
           .eq('active', true)
-          .maybeSingle()
+          .limit(1)
           .timeout(const Duration(seconds: 6));
 
-      if (response != null) {
-        staff = Map<String, dynamic>.from(response);
+      final rows = List<Map<String, dynamic>>.from(response);
+      if (rows.isNotEmpty) {
+        staff = rows.first;
         // We're online — refresh cache in background
         _refreshCacheIfOnline();
         if (mounted) setState(() => _isOffline = false);
@@ -190,7 +197,7 @@ class _PinScreenState extends State<PinScreen> {
 
     // ── Role check — Admin app: Owner + Manager only ──────────
     final role = staff['role'] as String? ?? '';
-    if (!AdminConfig.allowedRoles.contains(role)) {
+    if (!AdminConfig.allowedRoles.contains(role.toLowerCase())) {
       setState(() {
         _message = 'Access restricted to Admin staff.';
         _enteredPin = '';

@@ -136,7 +136,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final overdue = await _supabase
           .from('business_accounts')
           .select('name, balance, credit_terms_days')
-          .eq('active', true)
+          .eq('is_active', true)
           .gt('balance', 0)
           .limit(5);
       _overdueAccounts = List<Map<String, dynamic>>.from(overdue);
@@ -147,8 +147,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final leave = await _supabase
           .from('leave_requests')
-          .select('*, profiles(full_name)')
-          .eq('status', 'pending')
+          .select('*, staff_profiles!staff_id(name)')
+          .eq('status', 'Pending')
           .limit(5);
       _pendingLeave = List<Map<String, dynamic>>.from(leave);
     } catch (e) {
@@ -162,17 +162,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final todayStart = DateTime(today.year, today.month, today.day).toIso8601String();
 
       final allStaff = await _supabase
-          .from('profiles')
-          .select('id, full_name, role')
-          .eq('active', true)
+          .from('staff_profiles')
+          .select('id, name, role')
+          .eq('is_active', true)
           .inFilter('role', ['cashier', 'blockman', 'manager', 'owner']);
 
       final todayCards = await _supabase
           .from('timecards')
-          .select('employee_id, clock_in')
+          .select('staff_id, clock_in')
           .gte('clock_in', todayStart);
 
-      final clockedInIds = todayCards.map((t) => t['employee_id']).toSet();
+      final clockedInIds = todayCards.map((t) => t['staff_id']).toSet();
 
       final inList = <Map<String, dynamic>>[];
       final outList = <Map<String, dynamic>>[];
@@ -180,7 +180,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       for (final staff in allStaff) {
         if (clockedInIds.contains(staff['id'])) {
           final card = todayCards.firstWhere(
-              (t) => t['employee_id'] == staff['id']);
+              (t) => t['staff_id'] == staff['id']);
           inList.add({...staff, 'clock_in': card['clock_in']});
         } else {
           outList.add(staff);
@@ -312,7 +312,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: AppColors.dashAlertBlue,
                       icon: Icons.event_available,
                       text:
-                          'Leave: ${a['profiles']?['full_name'] ?? 'Staff'} (pending)',
+                          'Leave: ${a['staff_profiles']?['name'] ?? 'Staff'} (pending)',
                     )),
               ],
             )
@@ -337,13 +337,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           ..._clockedIn.map((s) => _ClockRow(
-                name: s['full_name'],
+                name: s['name'],
                 role: s['role'],
                 clockIn: s['clock_in'],
                 isClockedIn: true,
               )),
           ..._notClockedIn.map((s) => _ClockRow(
-                name: s['full_name'],
+                name: s['name'],
                 role: s['role'],
                 clockIn: null,
                 isClockedIn: false,

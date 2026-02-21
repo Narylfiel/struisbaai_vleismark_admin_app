@@ -91,10 +91,10 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      var query = _supabase.from('profiles').select(
-          'id, full_name, role, phone, email, employment_type, hourly_rate, '
-          'monthly_salary, payroll_frequency, start_date, active, max_discount_pct');
-      if (!_showInactive) query = query.eq('active', true);
+      var query = _supabase.from('staff_profiles').select(
+          'id, name, role, phone, email, employment_type, hourly_rate, '
+          'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
+      if (!_showInactive) query = query.eq('is_active', true);
       final data = await query.order('full_name');
       setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
@@ -186,7 +186,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                       itemBuilder: (_, i) {
                         final s = _staff[i];
-                        final isActive = s['active'] as bool? ?? true;
+                        final isActive = s['is_active'] as bool? ?? true;
                         final empType = s['employment_type'] as String? ?? 'hourly';
                         final rate = empType == 'hourly'
                             ? 'R ${(s['hourly_rate'] as num?)?.toStringAsFixed(2) ?? '0.00'}/hr'
@@ -202,7 +202,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                                   radius: 16,
                                   backgroundColor: _roleColor(s['role']).withOpacity(0.15),
                                   child: Text(
-                                    (s['full_name'] as String? ?? '?')[0].toUpperCase(),
+                                    (s['name'] as String? ?? '?')[0].toUpperCase(),
                                     style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.bold,
@@ -211,7 +211,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: Text(s['full_name'] ?? '—',
+                                  child: Text(s['name'] ?? '—',
                                       style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -264,7 +264,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                             SizedBox(
                               width: 80,
                               child: Text(
-                                (s['payroll_frequency'] as String? ?? '—').toUpperCase(),
+                                (s['pay_frequency'] as String? ?? '—').toUpperCase(),
                                 style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                               ),
                             ),
@@ -364,10 +364,10 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   Future<void> _loadStaff() async {
     try {
       final data = await _supabase
-          .from('profiles')
-          .select('id, full_name')
-          .eq('active', true)
-          .order('full_name');
+          .from('staff_profiles')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
       setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Staff: $e');
@@ -398,10 +398,10 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
       var q = _supabase
           .from('timecards')
-          .select('*, profiles(full_name, role, hourly_rate)')
+          .select('*, staff_profiles!timecards_staff_id_fkey(name, role, hourly_rate)')
           .gte('clock_in', '${rangeStart}T00:00:00')
           .lte('clock_in', '${rangeEnd}T23:59:59');
-      if (_selectedStaffId != null) q = q.eq('employee_id', _selectedStaffId!);
+      if (_selectedStaffId != null) q = q.eq('staff_id', _selectedStaffId!);
       final cards =
           List<Map<String, dynamic>>.from(await q.order('clock_in'));
 
@@ -547,7 +547,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             items: [
               const DropdownMenuItem(value: null, child: Text('All Staff')),
               ..._staff.map((s) => DropdownMenuItem(
-                  value: s['id'] as String, child: Text(s['full_name'] as String))),
+                  value: s['id'] as String, child: Text(s['name'] as String))),
             ],
             onChanged: (v) { setState(() => _selectedStaffId = v); _load(); },
           ),
@@ -686,7 +686,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                               SizedBox(
                                 width: 110,
                                 child: Text(
-                                  t['profiles']?['full_name'] ?? '—',
+                                  t['staff_profiles']?['name'] ?? '—',
                                   style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -886,13 +886,13 @@ class _LeaveTabState extends State<_LeaveTab> {
     try {
       final requests = await _supabase
           .from('leave_requests')
-          .select('*, profiles(full_name, role)')
+          .select('*, staff_profiles!staff_id(name, role)')
           .eq('status', _filter)
           .order('created_at', ascending: false);
       final balances = await _supabase
           .from('leave_balances')
-          .select('*, profiles(full_name)')
-          .order('profiles(full_name)');
+          .select('*, staff_profiles!staff_id(name)')
+          .order('staff_id');
       setState(() {
         _requests = List<Map<String, dynamic>>.from(requests);
         _balances = List<Map<String, dynamic>>.from(balances);
@@ -972,7 +972,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                                 children: [
                               Row(children: [
                                 Text(
-                                  r['profiles']?['full_name'] ?? '—',
+                                  r['staff_profiles']?['name'] ?? '—',
                                   style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
@@ -1072,7 +1072,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text(b['profiles']?['full_name'] ?? '—',
+                    Text(b['staff_profiles']?['name'] ?? '—',
                         style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -1162,14 +1162,14 @@ class _PayrollTabState extends State<_PayrollTab> {
     final monthStart = DateTime(now.year, now.month, 1);
     try {
       final staff = await _supabase
-          .from('profiles')
-          .select('id, full_name, role, employment_type, hourly_rate, monthly_salary, payroll_frequency')
-          .eq('active', true)
-          .order('full_name');
+          .from('staff_profiles')
+          .select('id, name, role, employment_type, hourly_rate, monthly_salary, pay_frequency')
+          .eq('is_active', true)
+          .order('name');
 
       final timecards = await _supabase
           .from('timecards')
-          .select('employee_id, total_hours, regular_hours, overtime_hours, sunday_hours')
+          .select('staff_id, total_hours, regular_hours, overtime_hours, sunday_hours')
           .gte('clock_in', monthStart.toIso8601String())
           .not('clock_out', 'is', null);
 
@@ -1177,7 +1177,7 @@ class _PayrollTabState extends State<_PayrollTab> {
       final summary = <Map<String, dynamic>>[];
       for (final s in List<Map<String, dynamic>>.from(staff)) {
         final empTimecards = List<Map<String, dynamic>>.from(timecards)
-            .where((t) => t['employee_id'] == s['id'])
+            .where((t) => t['staff_id'] == s['id'])
             .toList();
         final totalHours = empTimecards.fold<double>(
             0, (sum, t) => sum + ((t['total_hours'] as num?)?.toDouble() ?? 0));
@@ -1313,7 +1313,7 @@ class _PayrollTabState extends State<_PayrollTab> {
                         child: Row(children: [
                           Expanded(
                             flex: 2,
-                            child: Text(e['full_name'] ?? '—',
+                            child: Text(e['name'] ?? '—',
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
@@ -1376,7 +1376,7 @@ class _PayrollTabState extends State<_PayrollTab> {
                           SizedBox(
                             width: 80,
                             child: Text(
-                              (e['payroll_frequency'] as String? ?? '—').toUpperCase(),
+                              (e['pay_frequency'] as String? ?? '—').toUpperCase(),
                               style: const TextStyle(
                                   fontSize: 11, color: AppColors.textSecondary),
                             ),
@@ -1452,22 +1452,22 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
   }
 
   void _populate(Map<String, dynamic> s) {
-    _nameController.text = s['full_name'] ?? '';
+    _nameController.text = s['name'] ?? '';
     _phoneController.text = s['phone'] ?? '';
     _emailController.text = s['email'] ?? '';
     _idNumberController.text = s['id_number'] ?? '';
     _role = s['role'] ?? 'cashier';
-    _isActive = s['active'] ?? true;
+    _isActive = s['is_active'] ?? true;
     _hourlyRateController.text = s['hourly_rate']?.toString() ?? '';
     _monthlySalaryController.text = s['monthly_salary']?.toString() ?? '';
     _maxDiscountController.text = s['max_discount_pct']?.toString() ?? '0';
     _empType = s['employment_type'] ?? 'hourly';
-    _payFrequency = s['payroll_frequency'] ?? 'weekly';
+    _payFrequency = s['pay_frequency'] ?? 'weekly';
     _bankNameController.text = s['bank_name'] ?? '';
     _bankAccController.text = s['bank_account'] ?? '';
     _bankBranchController.text = s['bank_branch_code'] ?? '';
-    if (s['start_date'] != null) {
-      _startDate = DateTime.tryParse(s['start_date']);
+    if (s['hire_date'] != null) {
+      _startDate = DateTime.tryParse(s['hire_date']);
     }
   }
 
@@ -1476,21 +1476,21 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     setState(() => _isSaving = true);
 
     final data = <String, dynamic>{
-      'full_name': _nameController.text.trim(),
+      'name': _nameController.text.trim(),
       'phone': _phoneController.text.trim(),
       'email': _emailController.text.trim(),
       'id_number': _idNumberController.text.trim(),
       'role': _role,
-      'active': _isActive,
+      'is_active': _isActive,
       'employment_type': _empType,
       'hourly_rate': double.tryParse(_hourlyRateController.text),
       'monthly_salary': double.tryParse(_monthlySalaryController.text),
-      'payroll_frequency': _payFrequency,
+      'pay_frequency': _payFrequency,
       'max_discount_pct': double.tryParse(_maxDiscountController.text) ?? 0,
       'bank_name': _bankNameController.text.trim(),
       'bank_account': _bankAccController.text.trim(),
       'bank_branch_code': _bankBranchController.text.trim(),
-      'start_date': _startDate?.toIso8601String().substring(0, 10),
+      'hire_date': _startDate?.toIso8601String().substring(0, 10),
       'updated_at': DateTime.now().toIso8601String(),
     };
 
@@ -1502,11 +1502,11 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
     try {
       if (widget.staff == null) {
-        await _supabase.from('profiles').insert(data);
+        await _supabase.from('staff_profiles').insert(data);
         // Create leave balance record for new staff
       } else {
         await _supabase
-            .from('profiles')
+            .from('staff_profiles')
             .update(data)
             .eq('id', widget.staff!['id']);
       }
@@ -1543,7 +1543,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               const Icon(Icons.person, color: AppColors.primary),
               const SizedBox(width: 10),
               Text(
-                widget.staff == null ? 'Add Staff Member' : 'Edit — ${widget.staff!['full_name']}',
+                widget.staff == null ? 'Add Staff Member' : 'Edit — ${widget.staff!['name']}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary),
               ),
