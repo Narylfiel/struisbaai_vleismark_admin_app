@@ -93,8 +93,8 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
     try {
       var query = _supabase.from('profiles').select(
           'id, full_name, role, phone, email, employment_type, hourly_rate, '
-          'monthly_salary, payroll_frequency, start_date, is_active, max_discount_pct');
-      if (!_showInactive) query = query.eq('is_active', true);
+          'monthly_salary, payroll_frequency, start_date, active, max_discount_pct');
+      if (!_showInactive) query = query.eq('active', true);
       final data = await query.order('full_name');
       setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
@@ -186,7 +186,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                       itemBuilder: (_, i) {
                         final s = _staff[i];
-                        final isActive = s['is_active'] as bool? ?? true;
+                        final isActive = s['active'] as bool? ?? true;
                         final empType = s['employment_type'] as String? ?? 'hourly';
                         final rate = empType == 'hourly'
                             ? 'R ${(s['hourly_rate'] as num?)?.toStringAsFixed(2) ?? '0.00'}/hr'
@@ -347,17 +347,18 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   List<Map<String, dynamic>> _staff = [];
   bool _isLoading = true;
   String? _selectedStaffId;
-  DateTime _weekStart = _getMonday(DateTime.now());
+  String _viewMode = 'daily'; // daily | weekly | monthly
+  DateTime _selectedDate = DateTime.now();
+  DateTime _weekStart = _monday(DateTime.now());
 
-  static DateTime _getMonday(DateTime d) {
-    return d.subtract(Duration(days: d.weekday - 1));
-  }
+  static DateTime _monday(DateTime d) =>
+      d.subtract(Duration(days: d.weekday - 1));
 
   @override
   void initState() {
     super.initState();
     _loadStaff();
-    _loadTimecards();
+    _load();
   }
 
   Future<void> _loadStaff() async {
@@ -365,7 +366,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       final data = await _supabase
           .from('profiles')
           .select('id, full_name')
-          .eq('is_active', true)
+          .eq('active', true)
           .order('full_name');
       setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
@@ -373,191 +374,433 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     }
   }
 
-  Future<void> _loadTimecards() async {
+  Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final weekEnd = _weekStart.add(const Duration(days: 6));
-      var query = _supabase
+      String rangeStart, rangeEnd;
+      if (_viewMode == 'daily') {
+        rangeStart = _selectedDate.toIso8601String().substring(0, 10);
+        rangeEnd = rangeStart;
+      } else if (_viewMode == 'weekly') {
+        rangeStart = _weekStart.toIso8601String().substring(0, 10);
+        rangeEnd = _weekStart
+            .add(const Duration(days: 6))
+            .toIso8601String()
+            .substring(0, 10);
+      } else {
+        // monthly
+        final m = DateTime(_selectedDate.year, _selectedDate.month, 1);
+        rangeStart = m.toIso8601String().substring(0, 10);
+        rangeEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0)
+            .toIso8601String()
+            .substring(0, 10);
+      }
+
+      var q = _supabase
           .from('timecards')
           .select('*, profiles(full_name, role, hourly_rate)')
-          .gte('clock_in', _weekStart.toIso8601String())
-          .lte('clock_in', '${weekEnd.toIso8601String().substring(0, 10)}T23:59:59');
-      if (_selectedStaffId != null) {
-        query = query.eq('employee_id', _selectedStaffId!);
+          .gte('clock_in', '${rangeStart}T00:00:00')
+          .lte('clock_in', '${rangeEnd}T23:59:59');
+      if (_selectedStaffId != null) q = q.eq('employee_id', _selectedStaffId!);
+      final cards =
+          List<Map<String, dynamic>>.from(await q.order('clock_in'));
+
+      // Fetch all breaks in one batch
+      if (cards.isNotEmpty) {
+        final ids = cards.map((t) => t['id'] as String).toList();
+        final breaks = List<Map<String, dynamic>>.from(
+          await _supabase
+              .from('timecard_breaks')
+              .select('*')
+              .inFilter('timecard_id', ids)
+              .order('break_start'),
+        );
+        for (final c in cards) {
+          c['breaks'] = breaks
+              .where((b) => b['timecard_id'] == c['id'])
+              .toList();
+        }
+      } else {
+        for (final c in cards) {
+          c['breaks'] = <Map<String, dynamic>>[];
+        }
       }
-      final data = await query.order('clock_in', ascending: false);
-      setState(() => _timecards = List<Map<String, dynamic>>.from(data));
+
+      setState(() => _timecards = cards);
     } catch (e) {
-      debugPrint('Timecards: $e');
+      debugPrint('Timecards load: $e');
     }
     setState(() => _isLoading = false);
   }
 
-  String _formatDateTime(String? dt) {
+  // Format full date + time: "06 Feb 07:28"
+  String _fmtDT(String? dt) {
     if (dt == null) return '—';
     final d = DateTime.parse(dt).toLocal();
-    return '${d.day}/${d.month} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day.toString().padLeft(2,'0')} ${months[d.month-1]} '
+        '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';
+  }
+
+  // Format time only: "10:15"
+  String _fmtT(String? dt) {
+    if (dt == null) return '—';
+    final d = DateTime.parse(dt).toLocal();
+    return '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';
+  }
+
+  // Format date only: "06 Feb"
+  String _fmtDate(String? dt) {
+    if (dt == null) return '—';
+    final d = DateTime.parse(dt).toLocal();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day.toString().padLeft(2,'0')} ${months[d.month-1]}';
+  }
+
+  String _fmtBreakDur(int mins) {
+    if (mins <= 0) return '—';
+    final h = mins ~/ 60;
+    final m = mins % 60;
+    if (h > 0) return '${h}h ${m}m';
+    return '${m}m';
   }
 
   double get _totalHours => _timecards.fold(
-      0, (sum, t) => sum + ((t['total_hours'] as num?)?.toDouble() ?? 0));
+      0, (s, t) => s + ((t['total_hours'] as num?)?.toDouble() ?? 0));
   double get _totalOT => _timecards.fold(
-      0, (sum, t) => sum + ((t['overtime_hours'] as num?)?.toDouble() ?? 0));
+      0, (s, t) => s + ((t['overtime_hours'] as num?)?.toDouble() ?? 0));
+  int get _totalBreakMins => _timecards.fold(0, (s, t) {
+    final breaks = (t['breaks'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+    return s + breaks.fold<int>(0,
+        (bs, b) => bs + ((b['break_duration_minutes'] as num?)?.toInt() ?? 0));
+  });
+
+  // Navigate date/week/month
+  void _prev() {
+    setState(() {
+      if (_viewMode == 'daily') _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+      else if (_viewMode == 'weekly') _weekStart = _weekStart.subtract(const Duration(days: 7));
+      else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
+    });
+    _load();
+  }
+
+  void _next() {
+    setState(() {
+      if (_viewMode == 'daily') _selectedDate = _selectedDate.add(const Duration(days: 1));
+      else if (_viewMode == 'weekly') _weekStart = _weekStart.add(const Duration(days: 7));
+      else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+    });
+    _load();
+  }
+
+  String get _rangeLabel {
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    if (_viewMode == 'daily') {
+      return '${_selectedDate.day} ${months[_selectedDate.month-1]} ${_selectedDate.year}';
+    } else if (_viewMode == 'weekly') {
+      final end = _weekStart.add(const Duration(days: 6));
+      return '${_weekStart.day} ${months[_weekStart.month-1]} — '
+          '${end.day} ${months[end.month-1]} ${end.year}';
+    } else {
+      return '${months[_selectedDate.month-1]} ${_selectedDate.year}';
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final weekEnd = _weekStart.add(const Duration(days: 6));
-
     return Column(children: [
-      // Toolbar
+      // ── Toolbar ─────────────────────────────────────────────────
       Container(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         color: AppColors.cardBg,
         child: Row(children: [
-          // Week navigation
-          IconButton(
-            icon: const Icon(Icons.chevron_left),
-            onPressed: () {
-              setState(() => _weekStart = _weekStart.subtract(const Duration(days: 7)));
-              _loadTimecards();
-            },
-          ),
-          Text(
-            '${_weekStart.day}/${_weekStart.month} — ${weekEnd.day}/${weekEnd.month}/${weekEnd.year}',
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
-          ),
-          IconButton(
-            icon: const Icon(Icons.chevron_right),
-            onPressed: () {
-              setState(() => _weekStart = _weekStart.add(const Duration(days: 7)));
-              _loadTimecards();
-            },
-          ),
-          const SizedBox(width: 16),
+          // View mode toggle
+          ...['daily', 'weekly', 'monthly'].map((m) => Padding(
+            padding: const EdgeInsets.only(right: 4),
+            child: ChoiceChip(
+              label: Text(m[0].toUpperCase() + m.substring(1),
+                  style: const TextStyle(fontSize: 12)),
+              selected: _viewMode == m,
+              onSelected: (_) { setState(() => _viewMode = m); _load(); },
+              selectedColor: AppColors.primary,
+              labelStyle: TextStyle(
+                  color: _viewMode == m ? Colors.white : AppColors.textSecondary),
+            ),
+          )),
+          const SizedBox(width: 8),
+          // Date navigation
+          IconButton(icon: const Icon(Icons.chevron_left, size: 20), onPressed: _prev),
+          Text(_rangeLabel,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+          IconButton(icon: const Icon(Icons.chevron_right, size: 20), onPressed: _next),
+          const SizedBox(width: 8),
           // Staff filter
           DropdownButton<String>(
             value: _selectedStaffId,
-            hint: const Text('All Staff'),
+            hint: const Text('All Staff', style: TextStyle(fontSize: 13)),
             underline: const SizedBox(),
+            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
             items: [
               const DropdownMenuItem(value: null, child: Text('All Staff')),
               ..._staff.map((s) => DropdownMenuItem(
                   value: s['id'] as String, child: Text(s['full_name'] as String))),
             ],
-            onChanged: (v) { setState(() => _selectedStaffId = v); _loadTimecards(); },
+            onChanged: (v) { setState(() => _selectedStaffId = v); _load(); },
           ),
           const Spacer(),
-          // Summary chips
-          _chip('Total Hours', '${_totalHours.toStringAsFixed(1)}h', AppColors.info),
-          const SizedBox(width: 12),
-          _chip('Overtime', '${_totalOT.toStringAsFixed(1)}h',
+          _sumChip('Shifts', '${_timecards.length}', AppColors.textSecondary),
+          const SizedBox(width: 20),
+          _sumChip('Total Hrs', '${_totalHours.toStringAsFixed(2)}h', AppColors.textPrimary),
+          const SizedBox(width: 20),
+          _sumChip('Total Break', _fmtBreakDur(_totalBreakMins), AppColors.info),
+          const SizedBox(width: 20),
+          _sumChip('Overtime', '${_totalOT.toStringAsFixed(2)}h',
               _totalOT > 0 ? AppColors.warning : AppColors.textSecondary),
-          const SizedBox(width: 12),
-          _chip('Entries', '${_timecards.length}', AppColors.textSecondary),
         ]),
       ),
       const Divider(height: 1, color: AppColors.border),
-      // Header
+
+      // ── Column header row — FIXED COLUMNS per blueprint ─────────
+      // DATE | STAFF | CLOCK IN | BRK1 OUT | BRK1 IN | BRK2 OUT | BRK2 IN | BRK3 OUT | BRK3 IN | CLOCK OUT | TOTAL BRK | REG HRS | OT HRS
       Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
         color: AppColors.surfaceBg,
-        child: const Row(children: [
-          Expanded(flex: 2, child: Text('STAFF MEMBER', style: _hStyle)),
-          SizedBox(width: 12),
-          SizedBox(width: 130, child: Text('CLOCK IN', style: _hStyle)),
-          SizedBox(width: 12),
-          SizedBox(width: 130, child: Text('CLOCK OUT', style: _hStyle)),
-          SizedBox(width: 12),
-          SizedBox(width: 70, child: Text('TOTAL', style: _hStyle)),
-          SizedBox(width: 12),
-          SizedBox(width: 70, child: Text('OVERTIME', style: _hStyle)),
-          SizedBox(width: 12),
-          SizedBox(width: 90, child: Text('STATUS', style: _hStyle)),
-        ]),
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(children: const [
+              SizedBox(width: 70,  child: Text('DATE',      style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 110, child: Text('STAFF',     style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 72,  child: Text('CLOCK IN',  style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 56,  child: Text('BRK 1\nOUT', style: _hS)),
+              SizedBox(width: 4),
+              SizedBox(width: 56,  child: Text('BRK 1\nIN',  style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 56,  child: Text('BRK 2\nOUT', style: _hS)),
+              SizedBox(width: 4),
+              SizedBox(width: 56,  child: Text('BRK 2\nIN',  style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 56,  child: Text('BRK 3\nOUT', style: _hS)),
+              SizedBox(width: 4),
+              SizedBox(width: 56,  child: Text('BRK 3\nIN',  style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 72,  child: Text('CLOCK OUT', style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 68,  child: Text('TOTAL BRK', style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 60,  child: Text('REG HRS',   style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 60,  child: Text('OT HRS',    style: _hS)),
+              SizedBox(width: 8),
+              SizedBox(width: 80,  child: Text('STATUS',    style: _hS)),
+            ]),
+          ),
+        ),
       ),
       const Divider(height: 1, color: AppColors.border),
+
+      // ── Data rows ───────────────────────────────────────────────
       Expanded(
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : _timecards.isEmpty
-                ? const Center(
-                    child: Text('No timecards for this period',
-                        style: TextStyle(color: AppColors.textSecondary)))
+                ? Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.access_time, size: 48, color: AppColors.border),
+                      const SizedBox(height: 12),
+                      Text('No timecards for $_rangeLabel',
+                          style: const TextStyle(color: AppColors.textSecondary)),
+                    ]),
+                  )
                 : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    padding: EdgeInsets.zero,
                     itemCount: _timecards.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (_, i) {
                       final t = _timecards[i];
-                      final hours = (t['total_hours'] as num?)?.toDouble() ?? 0;
-                      final ot = (t['overtime_hours'] as num?)?.toDouble() ?? 0;
-                      final needsApproval = t['requires_approval'] as bool? ?? false;
-                      final otApproved = t['overtime_approved'] as bool? ?? false;
-                      final isOpen = t['clock_out'] == null;
+                      final breaks = (t['breaks'] as List?)
+                              ?.cast<Map<String, dynamic>>() ??
+                          [];
 
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(
-                              t['profiles']?['full_name'] ?? '—',
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w500,
-                                  color: AppColors.textPrimary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 130,
-                            child: Text(_formatDateTime(t['clock_in']),
-                                style: const TextStyle(fontSize: 13, color: AppColors.textPrimary)),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 130,
-                            child: Text(
-                              isOpen ? '● Active' : _formatDateTime(t['clock_out']),
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: isOpen ? AppColors.success : AppColors.textPrimary,
-                                fontWeight: isOpen ? FontWeight.bold : FontWeight.normal,
+                      // Up to 3 breaks
+                      final b1 = breaks.isNotEmpty ? breaks[0] : null;
+                      final b2 = breaks.length > 1 ? breaks[1] : null;
+                      final b3 = breaks.length > 2 ? breaks[2] : null;
+
+                      final totalBreakMins = breaks.fold<int>(
+                          0,
+                          (s, b) =>
+                              s +
+                              ((b['break_duration_minutes'] as num?)
+                                      ?.toInt() ??
+                                  0));
+
+                      final regHrs =
+                          (t['regular_hours'] as num?)?.toDouble() ?? 0;
+                      final otHrs =
+                          (t['overtime_hours'] as num?)?.toDouble() ?? 0;
+                      final isOpen = t['clock_out'] == null;
+                      final needsApproval =
+                          t['requires_approval'] as bool? ?? false;
+                      final otApproved =
+                          t['overtime_approved'] as bool? ?? false;
+
+                      // BCEA violation: any single break > 60 min
+                      final longBreak = breaks.any((b) =>
+                          ((b['break_duration_minutes'] as num?)?.toInt() ??
+                              0) >
+                          60);
+
+                      final rowColor = longBreak
+                          ? AppColors.error.withOpacity(0.04)
+                          : (otHrs > 0 && !otApproved)
+                              ? AppColors.warning.withOpacity(0.04)
+                              : Colors.transparent;
+
+                      return Container(
+                        color: rowColor,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 9),
+                            child: Row(children: [
+                              // DATE
+                              SizedBox(
+                                width: 70,
+                                child: Text(_fmtDate(t['clock_in']),
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary)),
                               ),
-                            ),
+                              const SizedBox(width: 8),
+                              // STAFF
+                              SizedBox(
+                                width: 110,
+                                child: Text(
+                                  t['profiles']?['full_name'] ?? '—',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // CLOCK IN
+                              SizedBox(
+                                width: 72,
+                                child: Text(_fmtT(t['clock_in']),
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        color: AppColors.textPrimary)),
+                              ),
+                              const SizedBox(width: 8),
+                              // BRK 1 OUT
+                              _breakCell(b1?['break_start'], 56),
+                              const SizedBox(width: 4),
+                              // BRK 1 IN
+                              _breakCell(b1?['break_end'], 56,
+                                  isOnBreak: b1 != null && b1['break_end'] == null),
+                              const SizedBox(width: 8),
+                              // BRK 2 OUT
+                              _breakCell(b2?['break_start'], 56),
+                              const SizedBox(width: 4),
+                              // BRK 2 IN
+                              _breakCell(b2?['break_end'], 56,
+                                  isOnBreak: b2 != null && b2['break_end'] == null),
+                              const SizedBox(width: 8),
+                              // BRK 3 OUT
+                              _breakCell(b3?['break_start'], 56),
+                              const SizedBox(width: 4),
+                              // BRK 3 IN
+                              _breakCell(b3?['break_end'], 56,
+                                  isOnBreak: b3 != null && b3['break_end'] == null),
+                              const SizedBox(width: 8),
+                              // CLOCK OUT
+                              SizedBox(
+                                width: 72,
+                                child: Text(
+                                  isOpen ? '● Active' : _fmtT(t['clock_out']),
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: isOpen
+                                          ? AppColors.success
+                                          : AppColors.textPrimary,
+                                      fontWeight: isOpen
+                                          ? FontWeight.bold
+                                          : FontWeight.normal),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // TOTAL BREAK
+                              SizedBox(
+                                width: 68,
+                                child: Text(
+                                  _fmtBreakDur(totalBreakMins),
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: longBreak
+                                          ? AppColors.error
+                                          : totalBreakMins > 0
+                                              ? AppColors.info
+                                              : AppColors.textSecondary),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // REG HRS
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  regHrs > 0
+                                      ? regHrs.toStringAsFixed(2)
+                                      : '—',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // OT HRS
+                              SizedBox(
+                                width: 60,
+                                child: Text(
+                                  otHrs > 0
+                                      ? otHrs.toStringAsFixed(2)
+                                      : '—',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: otHrs > 0
+                                          ? AppColors.warning
+                                          : AppColors.textSecondary),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // STATUS
+                              SizedBox(
+                                width: 80,
+                                child: isOpen
+                                    ? _badge('CLOCKED IN', AppColors.success)
+                                    : needsApproval && !otApproved
+                                        ? _badge('OT PENDING', AppColors.warning)
+                                        : longBreak
+                                            ? _badge('LONG BREAK', AppColors.error)
+                                            : _badge('COMPLETE', AppColors.info),
+                              ),
+                            ]),
                           ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 70,
-                            child: Text(
-                              isOpen ? '—' : '${hours.toStringAsFixed(1)}h',
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppColors.textPrimary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 70,
-                            child: Text(
-                              ot > 0 ? '${ot.toStringAsFixed(1)}h' : '—',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: ot > 0 ? AppColors.warning : AppColors.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 90,
-                            child: isOpen
-                                ? _statusBadge('CLOCKED IN', AppColors.success)
-                                : needsApproval && !otApproved
-                                    ? _statusBadge('OT PENDING', AppColors.warning)
-                                    : _statusBadge('COMPLETE', AppColors.info),
-                          ),
-                        ]),
+                        ),
                       );
                     },
                   ),
@@ -565,29 +808,54 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     ]);
   }
 
-  Widget _chip(String label, String value, Color color) {
+  /// A single break time cell — shows time or '---' if no data
+  Widget _breakCell(String? dt, double width, {bool isOnBreak = false}) {
+    return SizedBox(
+      width: width,
+      child: Text(
+        isOnBreak ? '●' : _fmtT(dt),
+        style: TextStyle(
+          fontSize: 12,
+          color: isOnBreak
+              ? AppColors.warning
+              : dt != null
+                  ? AppColors.textPrimary
+                  : AppColors.border,
+        ),
+        textAlign: TextAlign.center,
+      ),
+    );
+  }
+
+  Widget _sumChip(String label, String value, Color color) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-      Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
+      Text(label,
+          style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+      Text(value,
+          style: TextStyle(
+              fontSize: 13, fontWeight: FontWeight.bold, color: color)),
     ]);
   }
 
-  Widget _statusBadge(String label, Color color) {
+  Widget _badge(String label, Color color) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
-      ),
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(4)),
       child: Text(label,
-          style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: color),
+          style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.bold, color: color),
           textAlign: TextAlign.center),
     );
   }
 
-  static const _hStyle = TextStyle(
-      fontSize: 10, fontWeight: FontWeight.bold,
-      color: AppColors.textSecondary, letterSpacing: 0.5);
+  static const _hS = TextStyle(
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      color: AppColors.textSecondary,
+      letterSpacing: 0.4,
+      height: 1.3);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -896,7 +1164,7 @@ class _PayrollTabState extends State<_PayrollTab> {
       final staff = await _supabase
           .from('profiles')
           .select('id, full_name, role, employment_type, hourly_rate, monthly_salary, payroll_frequency')
-          .eq('is_active', true)
+          .eq('active', true)
           .order('full_name');
 
       final timecards = await _supabase
@@ -1189,7 +1457,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     _emailController.text = s['email'] ?? '';
     _idNumberController.text = s['id_number'] ?? '';
     _role = s['role'] ?? 'cashier';
-    _isActive = s['is_active'] ?? true;
+    _isActive = s['active'] ?? true;
     _hourlyRateController.text = s['hourly_rate']?.toString() ?? '';
     _monthlySalaryController.text = s['monthly_salary']?.toString() ?? '';
     _maxDiscountController.text = s['max_discount_pct']?.toString() ?? '0';
@@ -1213,7 +1481,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
       'email': _emailController.text.trim(),
       'id_number': _idNumberController.text.trim(),
       'role': _role,
-      'is_active': _isActive,
+      'active': _isActive,
       'employment_type': _empType,
       'hourly_rate': double.tryParse(_hourlyRateController.text),
       'monthly_salary': double.tryParse(_monthlySalaryController.text),
