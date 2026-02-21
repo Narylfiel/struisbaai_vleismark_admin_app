@@ -52,7 +52,7 @@ class _StaffCache {
       return profiles.firstWhere(
         (p) {
           if (p['pin_hash'] != pinHash) return false;
-          if (p['active'] != true && p['active'] != 'true') return false;
+          if (p['is_active'] != true && p['is_active'] != 'true') return false;
           final r = p['role'] as String? ?? '';
           return AdminConfig.allowedRoles.contains(r.toLowerCase());
         },
@@ -97,9 +97,9 @@ class _PinScreenState extends State<PinScreen> {
     try {
       final supabase = Supabase.instance.client;
       final data = await supabase
-          .from('profiles')
-          .select('id, full_name, role, pin_hash, active')
-          .eq('active', true)
+          .from('staff_profiles')
+          .select('id, full_name, role, pin_hash, is_active')
+          .eq('is_active', true)
           .timeout(const Duration(seconds: 6));
       final profiles = List<Map<String, dynamic>>.from(data);
       await _StaffCache.save(profiles);
@@ -149,11 +149,11 @@ class _PinScreenState extends State<PinScreen> {
     try {
       final supabase = Supabase.instance.client;
       final response = await supabase
-          .from('profiles')
-          .select('id, full_name, role, pin_hash, active')
+          .from('staff_profiles')
+          .select('id, full_name, role, pin_hash, is_active')
           .eq('pin_hash', pinHash)
           .inFilter('role', AdminConfig.allowedRoles)
-          .eq('active', true)
+          .eq('is_active', true)
           .limit(1)
           .timeout(const Duration(seconds: 6));
 

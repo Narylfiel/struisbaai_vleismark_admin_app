@@ -147,7 +147,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       final leave = await _supabase
           .from('leave_requests')
-          .select('*, staff_profiles!staff_id(name)')
+          .select('*, staff_profiles!staff_id(full_name)')
           .eq('status', 'Pending')
           .limit(5);
       _pendingLeave = List<Map<String, dynamic>>.from(leave);
@@ -163,7 +163,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
       final allStaff = await _supabase
           .from('staff_profiles')
-          .select('id, name, role')
+          .select('id, full_name, role')
           .eq('is_active', true)
           .inFilter('role', ['cashier', 'blockman', 'manager', 'owner']);
 
@@ -312,7 +312,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       color: AppColors.dashAlertBlue,
                       icon: Icons.event_available,
                       text:
-                          'Leave: ${a['staff_profiles']?['name'] ?? 'Staff'} (pending)',
+                          'Leave: ${a['staff_profiles']?['full_name'] ?? 'Staff'} (pending)',
                     )),
               ],
             )
@@ -337,13 +337,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         children: [
           ..._clockedIn.map((s) => _ClockRow(
-                name: s['name'],
+                name: s['full_name'],
                 role: s['role'],
                 clockIn: s['clock_in'],
                 isClockedIn: true,
               )),
           ..._notClockedIn.map((s) => _ClockRow(
-                name: s['name'],
+                name: s['full_name'],
                 role: s['role'],
                 clockIn: null,
                 isClockedIn: false,

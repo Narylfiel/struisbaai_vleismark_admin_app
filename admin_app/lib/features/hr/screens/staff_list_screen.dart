@@ -92,7 +92,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
     setState(() => _isLoading = true);
     try {
       var query = _supabase.from('staff_profiles').select(
-          'id, name, role, phone, email, employment_type, hourly_rate, '
+          'id, full_name, role, phone, email, employment_type, hourly_rate, '
           'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
       if (!_showInactive) query = query.eq('is_active', true);
       final data = await query.order('full_name');
@@ -202,7 +202,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                                   radius: 16,
                                   backgroundColor: _roleColor(s['role']).withOpacity(0.15),
                                   child: Text(
-                                    (s['name'] as String? ?? '?')[0].toUpperCase(),
+                                    (s['full_name'] as String? ?? '?')[0].toUpperCase(),
                                     style: TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.bold,
@@ -211,7 +211,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                                 ),
                                 const SizedBox(width: 10),
                                 Expanded(
-                                  child: Text(s['name'] ?? '—',
+                                  child: Text(s['full_name'] ?? '—',
                                       style: const TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w600,
@@ -365,9 +365,9 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     try {
       final data = await _supabase
           .from('staff_profiles')
-          .select('id, name')
+          .select('id, full_name')
           .eq('is_active', true)
-          .order('name');
+          .order('full_name');
       setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Staff: $e');
@@ -398,7 +398,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
       var q = _supabase
           .from('timecards')
-          .select('*, staff_profiles!timecards_staff_id_fkey(name, role, hourly_rate)')
+          .select('*, staff_profiles!timecards_staff_id_fkey(full_name, role, hourly_rate)')
           .gte('clock_in', '${rangeStart}T00:00:00')
           .lte('clock_in', '${rangeEnd}T23:59:59');
       if (_selectedStaffId != null) q = q.eq('staff_id', _selectedStaffId!);
@@ -547,7 +547,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             items: [
               const DropdownMenuItem(value: null, child: Text('All Staff')),
               ..._staff.map((s) => DropdownMenuItem(
-                  value: s['id'] as String, child: Text(s['name'] as String))),
+                  value: s['id'] as String, child: Text(s['full_name'] as String))),
             ],
             onChanged: (v) { setState(() => _selectedStaffId = v); _load(); },
           ),
@@ -686,7 +686,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                               SizedBox(
                                 width: 110,
                                 child: Text(
-                                  t['staff_profiles']?['name'] ?? '—',
+                                  t['staff_profiles']?['full_name'] ?? '—',
                                   style: const TextStyle(
                                       fontSize: 13,
                                       fontWeight: FontWeight.w600,
@@ -886,12 +886,12 @@ class _LeaveTabState extends State<_LeaveTab> {
     try {
       final requests = await _supabase
           .from('leave_requests')
-          .select('*, staff_profiles!staff_id(name, role)')
+          .select('*, staff_profiles!staff_id(full_name, role)')
           .eq('status', _filter)
           .order('created_at', ascending: false);
       final balances = await _supabase
           .from('leave_balances')
-          .select('*, staff_profiles!staff_id(name)')
+          .select('*, staff_profiles!staff_id(full_name)')
           .order('staff_id');
       setState(() {
         _requests = List<Map<String, dynamic>>.from(requests);
@@ -972,7 +972,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                                 children: [
                               Row(children: [
                                 Text(
-                                  r['staff_profiles']?['name'] ?? '—',
+                                  r['staff_profiles']?['full_name'] ?? '—',
                                   style: const TextStyle(
                                       fontSize: 14,
                                       fontWeight: FontWeight.bold,
@@ -1072,7 +1072,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                   child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                    Text(b['staff_profiles']?['name'] ?? '—',
+                    Text(b['staff_profiles']?['full_name'] ?? '—',
                         style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
@@ -1163,9 +1163,9 @@ class _PayrollTabState extends State<_PayrollTab> {
     try {
       final staff = await _supabase
           .from('staff_profiles')
-          .select('id, name, role, employment_type, hourly_rate, monthly_salary, pay_frequency')
+          .select('id, full_name, role, employment_type, hourly_rate, monthly_salary, pay_frequency')
           .eq('is_active', true)
-          .order('name');
+          .order('full_name');
 
       final timecards = await _supabase
           .from('timecards')
@@ -1313,7 +1313,7 @@ class _PayrollTabState extends State<_PayrollTab> {
                         child: Row(children: [
                           Expanded(
                             flex: 2,
-                            child: Text(e['name'] ?? '—',
+                            child: Text(e['full_name'] ?? '—',
                                 style: const TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w600,
@@ -1452,7 +1452,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
   }
 
   void _populate(Map<String, dynamic> s) {
-    _nameController.text = s['name'] ?? '';
+    _nameController.text = s['full_name'] ?? '';
     _phoneController.text = s['phone'] ?? '';
     _emailController.text = s['email'] ?? '';
     _idNumberController.text = s['id_number'] ?? '';
@@ -1476,7 +1476,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     setState(() => _isSaving = true);
 
     final data = <String, dynamic>{
-      'name': _nameController.text.trim(),
+      'full_name': _nameController.text.trim(),
       'phone': _phoneController.text.trim(),
       'email': _emailController.text.trim(),
       'id_number': _idNumberController.text.trim(),
@@ -1543,7 +1543,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               const Icon(Icons.person, color: AppColors.primary),
               const SizedBox(width: 10),
               Text(
-                widget.staff == null ? 'Add Staff Member' : 'Edit — ${widget.staff!['name']}',
+                widget.staff == null ? 'Add Staff Member' : 'Edit — ${widget.staff!['full_name']}',
                 style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
                     color: AppColors.textPrimary),
               ),
