@@ -381,12 +381,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
           .from('timecards')
           .select('*, profiles(full_name, role, hourly_rate)')
           .gte('clock_in', _weekStart.toIso8601String())
-          .lte('clock_in', '${weekEnd.toIso8601String().substring(0, 10)}T23:59:59')
-          .order('clock_in', ascending: false);
+          .lte('clock_in', '${weekEnd.toIso8601String().substring(0, 10)}T23:59:59');
       if (_selectedStaffId != null) {
         query = query.eq('employee_id', _selectedStaffId!);
       }
-      final data = await query;
+      final data = await query.order('clock_in', ascending: false);
       setState(() => _timecards = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Timecards: $e');
