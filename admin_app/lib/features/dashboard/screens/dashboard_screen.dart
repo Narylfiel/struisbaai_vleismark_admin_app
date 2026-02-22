@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import '../services/dashboard_repository.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -11,10 +12,11 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   final _supabase = Supabase.instance.client;
+  final _dashboardRepo = DashboardRepository();
 
   bool _isLoading = true;
 
-  // Stats
+  // Stats from transactions (blueprint §3.2: Today's Sales, Transaction Count, Avg Basket, Gross Margin)
   double _todaySales = 0;
   double _salesChange = 0;
   int _transactionCount = 0;
@@ -52,58 +54,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadSalesStats() async {
-    final today = DateTime.now();
-    final todayStart = DateTime(today.year, today.month, today.day).toIso8601String();
-    final todayEnd = DateTime(today.year, today.month, today.day, 23, 59, 59).toIso8601String();
-    final yesterdayStart = DateTime(today.year, today.month, today.day - 1).toIso8601String();
-    final yesterdayEnd = DateTime(today.year, today.month, today.day - 1, 23, 59, 59).toIso8601String();
-
     try {
-      // Today's transactions
-      final todayTxns = await _supabase
-          .from('sales')
-          .select('total_amount, cost_amount')
-          .gte('created_at', todayStart)
-          .lte('created_at', todayEnd);
-
-      // Yesterday's transactions
-      final yesterdayTxns = await _supabase
-          .from('sales')
-          .select('total_amount')
-          .gte('created_at', yesterdayStart)
-          .lte('created_at', yesterdayEnd);
-
-      double todayTotal = 0;
-      double todayCost = 0;
-      for (final t in todayTxns) {
-        todayTotal += (t['total_amount'] as num?)?.toDouble() ?? 0;
-        todayCost += (t['cost_amount'] as num?)?.toDouble() ?? 0;
-      }
-
-      double yesterdayTotal = 0;
-      for (final t in yesterdayTxns) {
-        yesterdayTotal += (t['total_amount'] as num?)?.toDouble() ?? 0;
-      }
-
-      final count = todayTxns.length;
-      final avg = count > 0 ? todayTotal / count : 0.0;
-      final margin = todayTotal > 0
-          ? ((todayTotal - todayCost) / todayTotal) * 100
-          : 0.0;
-      final change = yesterdayTotal > 0
-          ? ((todayTotal - yesterdayTotal) / yesterdayTotal) * 100
-          : 0.0;
-
+      final stats = await _dashboardRepo.getTodayStats();
       setState(() {
-        _todaySales = todayTotal;
-        _transactionCount = count;
-        _avgBasket = avg;
-        _grossMargin = margin;
-        _salesChange = change;
+        _todaySales = stats.todayTotal;
+        _transactionCount = stats.transactionCount;
+        _avgBasket = stats.avgBasket;
+        _grossMargin = stats.grossMarginPct;
+        _salesChange = stats.salesChangePct;
       });
     } catch (e) {
       // transactions table may not exist yet (POS not built)
-      debugPrint('Sales stats: $e');
+      debugPrint('Dashboard transaction stats: $e');
     }
   }
 
@@ -247,7 +209,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: _StatCard(
             title: 'TRANSACTIONS',
             value: '$_transactionCount',
-            sub: 'sales today',
+            sub: 'transactions today',
             subColor: AppColors.textSecondary,
             icon: Icons.receipt_long,
             color: AppColors.info,

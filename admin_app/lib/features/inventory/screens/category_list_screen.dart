@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/constants/app_colors.dart';
-import '../../../shared/widgets/data_table.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../../../shared/widgets/search_bar.dart';
 import '../../../shared/widgets/filter_bar.dart';
@@ -25,7 +24,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
   @override
   void initState() {
     super.initState();
-    context.read<CategoryBloc>().add(LoadCategories());
+    context.read<CategoryBloc>().add(const LoadCategories());
   }
 
   @override
@@ -57,16 +56,16 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
             child: Column(
               children: [
                 SearchBarWidget(
-                  controller: _searchController,
                   hintText: 'Search categories...',
-                  onChanged: (value) {
+                  onSearch: (value) {
+                    _searchController.text = value;
                     setState(() {});
                     _applyFilters();
                   },
                 ),
                 const SizedBox(height: 16),
                 FilterBarWidget(
-                  filters: [
+                  filters: const [
                     FilterOption(
                       key: 'isActive',
                       label: 'Status',
@@ -98,13 +97,13 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
+                        const Icon(
                           Icons.error_outline,
                           size: 64,
                           color: AppColors.danger,
                         ),
                         const SizedBox(height: 16),
-                        Text(
+                        const Text(
                           'Error loading categories',
                           style: TextStyle(
                             color: AppColors.danger,
@@ -115,7 +114,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                         const SizedBox(height: 8),
                         Text(
                           state.message,
-                          style: TextStyle(
+                          style: const TextStyle(
                             color: AppColors.textSecondary,
                             fontSize: 14,
                           ),
@@ -123,7 +122,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                         ),
                         const SizedBox(height: 16),
                         ElevatedButton(
-                          onPressed: () => context.read<CategoryBloc>().add(LoadCategories()),
+                          onPressed: () => context.read<CategoryBloc>().add(const LoadCategories()),
                           child: const Text('Retry'),
                         ),
                       ],
@@ -139,13 +138,13 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.category_outlined,
                             size: 64,
                             color: AppColors.textSecondary,
                           ),
                           const SizedBox(height: 16),
-                          Text(
+                          const Text(
                             'No categories found',
                             style: TextStyle(
                               color: AppColors.textSecondary,
@@ -154,7 +153,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                             ),
                           ),
                           const SizedBox(height: 8),
-                          Text(
+                          const Text(
                             'Create your first category to get started',
                             style: TextStyle(
                               color: AppColors.textSecondary,
@@ -173,95 +172,89 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                     );
                   }
 
-                  return DataTableWidget<Category>(
-                    data: filteredCategories,
-                    columns: [
-                      DataColumn(
-                        label: const Text('Color'),
-                        onSort: (columnIndex, ascending) => _sortCategories(columnIndex, ascending),
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SingleChildScrollView(
+                      child: DataTable(
+                        columns: const [
+                          DataColumn(label: Text('Color')),
+                          DataColumn(label: Text('Name')),
+                          DataColumn(label: Text('Notes')),
+                          DataColumn(label: Text('Sort Order')),
+                          DataColumn(label: Text('Status')),
+                          DataColumn(label: Text('Actions')),
+                        ],
+                        rows: filteredCategories.map((category) {
+                          return DataRow(
+                            cells: [
+                              DataCell(
+                                Container(
+                                  width: 24,
+                                  height: 24,
+                                  decoration: BoxDecoration(
+                                    color: Color(int.parse(category.colorCode.replaceAll('#', '0xFF'))),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  category.name,
+                                  style: const TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  category.notes ?? '',
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                  ),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              DataCell(
+                                Text(category.sortOrder.toString()),
+                              ),
+                              DataCell(
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: category.isActive ? AppColors.success : AppColors.danger,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: Text(
+                                    category.isActive ? 'Active' : 'Inactive',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              DataCell(
+                                ActionButtonsWidget(
+                                  actions: [
+                                    ActionButtons.edit(
+                                      onPressed: () => _navigateToForm(category: category),
+                                      iconOnly: true,
+                                    ),
+                                    ActionButtons.delete(
+                                      onPressed: () => _confirmDelete(category),
+                                      iconOnly: true,
+                                    ),
+                                  ],
+                                  compact: true,
+                                  spacing: 8,
+                                ),
+                              ),
+                            ]
+                          );
+                        }).toList(),
                       ),
-                      const DataColumn(label: Text('Name')),
-                      const DataColumn(label: Text('Notes')),
-                      const DataColumn(label: Text('Sort Order')),
-                      const DataColumn(label: Text('Status')),
-                      const DataColumn(label: Text('Actions')),
-                    ],
-                    cellBuilder: (category, columnIndex) {
-                      switch (columnIndex) {
-                        case 0:
-                          return DataCell(
-                            Container(
-                              width: 24,
-                              height: 24,
-                              decoration: BoxDecoration(
-                                color: Color(int.parse(category.colorCode.replaceAll('#', '0xFF'))),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                            ),
-                          );
-                        case 1:
-                          return DataCell(
-                            Text(
-                              category.name,
-                              style: const TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                          );
-                        case 2:
-                          return DataCell(
-                            Text(
-                              category.notes ?? '',
-                              style: TextStyle(
-                                color: AppColors.textSecondary,
-                                fontSize: 12,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          );
-                        case 3:
-                          return DataCell(
-                            Text(category.sortOrder.toString()),
-                          );
-                        case 4:
-                          return DataCell(
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: category.isActive ? AppColors.success : AppColors.danger,
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                category.isActive ? 'Active' : 'Inactive',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                              ),
-                            ),
-                          );
-                        case 5:
-                          return DataCell(
-                            ActionButtonsWidget(
-                              actions: [
-                                ActionButtons.edit(
-                                  onPressed: () => _navigateToForm(category: category),
-                                  iconOnly: true,
-                                ),
-                                ActionButtons.delete(
-                                  onPressed: () => _confirmDelete(category),
-                                  iconOnly: true,
-                                ),
-                              ],
-                              direction: Axis.horizontal,
-                              spacing: 4,
-                            ),
-                          );
-                        default:
-                          return const DataCell(Text(''));
-                      }
-                    },
-                    onRowTap: (category) => _navigateToForm(category: category),
+                    ),
                   );
                 }
 
@@ -299,7 +292,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
   void _sortCategories(int columnIndex, bool ascending) {
     // Sorting logic would be implemented here
     // For now, just reload the data
-    context.read<CategoryBloc>().add(LoadCategories());
+    context.read<CategoryBloc>().add(const LoadCategories());
   }
 
   void _applyFilters() {
@@ -315,7 +308,7 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
       ),
     ).then((_) {
       // Refresh the list when returning from form
-      context.read<CategoryBloc>().add(LoadCategories());
+      context.read<CategoryBloc>().add(const LoadCategories());
     });
   }
 

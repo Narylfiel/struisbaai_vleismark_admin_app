@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import '../core/services/base_service.dart';
-import '../core/utils/app_constants.dart';
+import 'base_service.dart';
+import '../utils/app_constants.dart';
 
 /// OCR service for processing receipts and invoices using Google Cloud Vision API
 class OcrService extends BaseService {
@@ -14,41 +14,54 @@ class OcrService extends BaseService {
   final String _apiKey = ''; // TODO: Add Google Cloud Vision API key
   final String _apiUrl = 'https://vision.googleapis.com/v1/images:annotate';
 
-  /// Process image for OCR
+  /// Process image for OCR with retry logic
   Future<String> processImageForText(File imageFile) async {
-    try {
-      // Convert image to base64
-      final bytes = await imageFile.readAsBytes();
-      final base64Image = base64Encode(bytes);
-
-      // Prepare request
-      final request = {
-        'requests': [
-          {
-            'image': {'content': base64Image},
-            'features': [
-              {'type': 'TEXT_DETECTION', 'maxResults': 1}
-            ],
-          }
-        ]
-      };
-
-      // Make API call
-      final response = await http.post(
-        Uri.parse('$_apiUrl?key=$_apiKey'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(request),
-      );
-
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return _extractTextFromResponse(data);
-      } else {
-        throw Exception('OCR API error: ${response.statusCode}');
-      }
-    } catch (e) {
-      throw Exception('Failed to process image: $e');
+    if (!await isOnline()) {
+      throw Exception('OCR requires an active internet connection. Please try again later.');
     }
+
+    int attempts = 0;
+    while (attempts < 3) {
+      try {
+        // Convert image to base64
+        final bytes = await imageFile.readAsBytes();
+        final base64Image = base64Encode(bytes);
+
+        // Prepare request
+        final request = {
+          'requests': [
+            {
+              'image': {'content': base64Image},
+              'features': [
+                {'type': 'TEXT_DETECTION', 'maxResults': 1}
+              ],
+            }
+          ]
+        };
+
+        // Make API call
+        final response = await http.post(
+          Uri.parse('$_apiUrl?key=$_apiKey'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(request),
+        );
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return _extractTextFromResponse(data);
+        } else {
+          throw Exception('OCR API error: ${response.statusCode}');
+        }
+      } catch (e) {
+        attempts++;
+        print('⚠️ OCR attempt $attempts failed: $e');
+        if (attempts >= 3) {
+          throw Exception('Failed to process image after 3 attempts: $e');
+        }
+        await Future.delayed(Duration(seconds: attempts * 2)); // Exponential backoff
+      }
+    }
+    throw Exception('Failed to process image');
   }
 
   /// Process receipt/invoice from camera

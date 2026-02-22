@@ -188,7 +188,7 @@ class _JobsTabState extends State<_JobsTab> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
                             SizedBox(width: 120, child: Text(job['job_number'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             Expanded(
                               flex: 2, 
                               child: Column(
@@ -199,13 +199,13 @@ class _JobsTabState extends State<_JobsTab> {
                                 ],
                               )
                             ),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             Expanded(
                               child: Text('${job['animal_type'] ?? 'Unknown'} - ${(job['estimated_weight'] as num?)?.toStringAsFixed(1) ?? '0.0'} kg')
                             ),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(job['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(
                               width: 120, 
                               child: Container(
@@ -217,7 +217,7 @@ class _JobsTabState extends State<_JobsTab> {
                                 child: Text(status, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: _statusColor(status), fontWeight: FontWeight.bold)),
                               )
                             ),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(
                               width: 80, 
                               child: IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 16), onPressed: () => _openJobDetails(job)),
@@ -257,7 +257,7 @@ class _JobFormDialogState extends State<_JobFormDialog> {
   final _depositCtrl = TextEditingController(text: '500');
 
   List<Map<String, dynamic>> _services = [];
-  List<String> _selectedServices = [];
+  final List<String> _selectedServices = [];
 
   bool _isLoading = true;
   bool _isSaving = false;
@@ -377,8 +377,11 @@ class _JobFormDialogState extends State<_JobFormDialog> {
                         value: isSelected,
                         onChanged: (v) {
                           setState(() {
-                            if (v == true) _selectedServices.add(id);
-                            else _selectedServices.remove(id);
+                            if (v == true) {
+                              _selectedServices.add(id);
+                            } else {
+                              _selectedServices.remove(id);
+                            }
                           });
                         },
                       );
@@ -461,7 +464,7 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
             Row(
               children: [
                 Expanded(child: Text('Customer: ${widget.job['customer_name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                Text('Status: $_status', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                Text('Status: $_status', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
               ],
             ),
             Text('Animal: ${widget.job['animal_type']} (${widget.job['estimated_weight']} kg)'),
@@ -593,13 +596,13 @@ class _ServicesTabState extends State<_ServicesTab> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
                             Expanded(flex: 2, child: Text(s['service_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${s['rate']} / ${s['rate_type'] == 'per_kg' ? 'kg' : 'pack'}')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 80, child: Text('${s['expected_yield'] ?? '0'}%')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 80, child: Text(active ? 'Active' : 'Inactive', style: TextStyle(color: active ? AppColors.success : AppColors.error, fontSize: 12))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(
                               width: 60,
                               child: IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: () => _openService(s)),
@@ -690,7 +693,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
             TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Service Name'), validator: (v) => v!.isEmpty ? 'Req' : null),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _rateType,
+              initialValue: _rateType,
               decoration: const InputDecoration(labelText: 'Rate Type'),
               items: const [
                 DropdownMenuItem(value: 'per_kg', child: Text('Per Kg')),

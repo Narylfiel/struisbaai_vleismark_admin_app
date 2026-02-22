@@ -1,0 +1,217 @@
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/models/stock_movement.dart';
+
+/// Blueprint §4.5: Stock lifecycle — every stock change MUST create a movement record;
+/// stock levels must update correctly.
+/// Uses stock_movements + inventory_items (current_stock or stock_on_hand_fresh/frozen).
+class InventoryRepository {
+  final SupabaseClient _client;
+
+  InventoryRepository({SupabaseClient? client})
+      : _client = client ?? Supabase.instance.client;
+
+  /// Record a stock movement and update item stock.
+  /// For types that reduce stock (waste, donation, sponsorship, out, staff_meal): decrement current_stock.
+  /// For freezer: optional — if inventory has stock_on_hand_fresh/frozen, caller can pass metadata.markdown_pct.
+  /// For in/production: increment current_stock.
+  /// performedBy must be profile UUID (staff).
+  Future<StockMovement> recordMovement({
+    required String itemId,
+    required MovementType movementType,
+    required double quantity,
+    double? unitCost,
+    String? referenceType,
+    String? referenceId,
+    String? locationFromId,
+    String? locationToId,
+    required String performedBy,
+    String? notes,
+    Map<String, dynamic>? metadata,
+  }) async {
+    if (quantity < 0 || (quantity == 0 && movementType != MovementType.adjustment)) {
+      throw ArgumentError('Quantity must be non-negative (0 only for adjustment)');
+    }
+    final totalCost =
+        unitCost != null ? (unitCost * quantity) : null;
+    final row = {
+      'item_id': itemId,
+      'movement_type': movementType.dbValue,
+      'quantity': quantity,
+      'unit_cost': unitCost,
+      'total_cost': totalCost,
+      'reference_type': referenceType,
+      'reference_id': referenceId,
+      'location_from': locationFromId,
+      'location_to': locationToId,
+      'performed_by': performedBy,
+      'notes': notes,
+      'metadata': metadata,
+    };
+    final response = await _client
+        .from('stock_movements')
+        .insert(row)
+        .select()
+        .single();
+    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
+
+    // Update inventory_items stock: use current_stock if present; else no-op (caller may update fresh/frozen separately)
+    await _applyStockChange(
+      itemId: itemId,
+      movementType: movementType,
+      quantity: quantity,
+      metadata: metadata,
+    );
+    return movement;
+  }
+
+  /// Apply stock level change for a movement (current_stock column).
+  Future<void> _applyStockChange({
+    required String itemId,
+    required MovementType movementType,
+    required double quantity,
+    Map<String, dynamic>? metadata,
+  }) async {
+    // Check if inventory_items has current_stock (003 RPC uses it)
+    final item = await _client
+        .from('inventory_items')
+        .select('id, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
+        .eq('id', itemId)
+        .maybeSingle();
+    if (item == null) return;
+
+    final hasCurrentStock = item.containsKey('current_stock');
+    final hasFreshFrozen =
+        item.containsKey('stock_on_hand_fresh') &&
+            item.containsKey('stock_on_hand_frozen');
+
+    if (movementType == MovementType.freezer && hasFreshFrozen) {
+      // Move to freezer: reduce fresh, increase frozen (same total)
+      final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+      final frozen = (item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
+      final pct = (metadata?['markdown_pct'] as num?)?.toDouble() ?? 100.0;
+      final moveQty = quantity * (pct / 100).clamp(0.0, 1.0);
+      await _client.from('inventory_items').update({
+        'stock_on_hand_fresh': (fresh - moveQty).clamp(0.0, double.infinity),
+        'stock_on_hand_frozen': frozen + moveQty,
+      }).eq('id', itemId);
+      return;
+    }
+
+    if (quantity == 0) return;
+    if (movementType.reducesStock) {
+      if (hasCurrentStock) {
+        final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
+        await _client.from('inventory_items').update({
+          'current_stock': (cur - quantity).clamp(0.0, double.infinity),
+        }).eq('id', itemId);
+      } else if (hasFreshFrozen) {
+        final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+        final deduct = quantity > fresh ? fresh : quantity;
+        await _client.from('inventory_items').update({
+          'stock_on_hand_fresh': (fresh - deduct).clamp(0.0, double.infinity),
+        }).eq('id', itemId);
+      }
+    } else if (movementType.increasesStock) {
+      if (hasCurrentStock) {
+        final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
+        await _client.from('inventory_items').update({
+          'current_stock': cur + quantity,
+        }).eq('id', itemId);
+      } else if (hasFreshFrozen) {
+        final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+        await _client.from('inventory_items').update({
+          'stock_on_hand_fresh': fresh + quantity,
+        }).eq('id', itemId);
+      }
+    }
+    // transfer: total unchanged; location-level handled by caller or separate table
+  }
+
+  /// Stock-take adjustment: set item stock to actual count; record adjustment movement with variance in notes.
+  Future<StockMovement> adjustStock({
+    required String itemId,
+    required double actualQuantity,
+    required String performedBy,
+    String? notes,
+  }) async {
+    final item = await _client
+        .from('inventory_items')
+        .select('id, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
+        .eq('id', itemId)
+        .single();
+    final cur = (item['current_stock'] as num?)?.toDouble() ??
+        ((item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0) +
+            ((item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0);
+    final variance = actualQuantity - cur;
+    if (variance == 0) {
+      // Still record zero-quantity adjustment for audit
+      return recordMovement(
+        itemId: itemId,
+        movementType: MovementType.adjustment,
+        quantity: 0,
+        performedBy: performedBy,
+        notes: notes ?? 'Stock take: no change ($actualQuantity)',
+        metadata: {'previous': cur, 'actual': actualQuantity},
+      );
+    }
+    final row = {
+      'item_id': itemId,
+      'movement_type': 'adjustment',
+      'quantity': variance.abs(),
+      'performed_by': performedBy,
+      'notes': notes ?? 'Stock take: was $cur, set to $actualQuantity',
+      'metadata': {'previous': cur, 'actual': actualQuantity},
+    };
+    final response = await _client
+        .from('stock_movements')
+        .insert(row)
+        .select()
+        .single();
+
+    if (item.containsKey('current_stock')) {
+      await _client.from('inventory_items').update({
+        'current_stock': actualQuantity,
+      }).eq('id', itemId);
+    } else if (item.containsKey('stock_on_hand_fresh')) {
+      await _client.from('inventory_items').update({
+        'stock_on_hand_fresh': actualQuantity,
+        'stock_on_hand_frozen': 0,
+      }).eq('id', itemId);
+    }
+
+    return StockMovement.fromJson(response as Map<String, dynamic>);
+  }
+
+  /// Transfer between locations: record one transfer movement; total on-hand unchanged.
+  /// If inventory has location-level stock, caller can call recordMovement twice (out from A, in to B) or use a single transfer row.
+  Future<StockMovement> transferStock({
+    required String itemId,
+    required double quantity,
+    required String locationFromId,
+    required String locationToId,
+    required String performedBy,
+    String? notes,
+  }) async {
+    return recordMovement(
+      itemId: itemId,
+      movementType: MovementType.transfer,
+      quantity: quantity,
+      locationFromId: locationFromId,
+      locationToId: locationToId,
+      performedBy: performedBy,
+      notes: notes,
+    );
+  }
+
+  /// Movement history for a product (item_id).
+  Future<List<StockMovement>> getMovementHistory(String itemId, {int limit = 100}) async {
+    final response = await _client
+        .from('stock_movements')
+        .select()
+        .eq('item_id', itemId)
+        .order('performed_at', ascending: false)
+        .limit(limit);
+    final list = List<Map<String, dynamic>>.from(response);
+    return list.map((e) => StockMovement.fromJson(e)).toList();
+  }
+}

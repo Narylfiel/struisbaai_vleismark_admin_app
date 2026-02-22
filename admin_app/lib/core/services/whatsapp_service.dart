@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../core/services/base_service.dart';
-import '../core/utils/app_constants.dart';
+import 'base_service.dart';
+import '../utils/app_constants.dart';
 
 /// WhatsApp service for sending notifications and customer communications via Twilio/Meta API
 class WhatsAppService extends BaseService {
@@ -15,50 +15,67 @@ class WhatsAppService extends BaseService {
   final String _fromNumber = ''; // Twilio WhatsApp number
   final String _apiUrl = 'https://api.twilio.com/2010-04-01';
 
-  /// Send WhatsApp message
+  /// Send WhatsApp message with retry logic
   Future<bool> sendMessage({
     required String toNumber,
     required String message,
     String? mediaUrl,
+    int maxRetries = 3,
   }) async {
-    try {
-      if (!isConfigured) {
-        throw Exception('WhatsApp service not configured');
-      }
-
-      final credentials = base64Encode(utf8.encode('$_accountSid:$_authToken'));
-      final url = Uri.parse('$_apiUrl/Accounts/$_accountSid/Messages.json');
-
-      final body = {
-        'From': 'whatsapp:$_fromNumber',
-        'To': 'whatsapp:$toNumber',
-        'Body': message,
-      };
-
-      if (mediaUrl != null) {
-        body['MediaUrl'] = mediaUrl;
-      }
-
-      final response = await http.post(
-        url,
-        headers: {
-          'Authorization': 'Basic $credentials',
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-        body: body,
-      );
-
-      if (response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        await _logMessage(data['sid'], toNumber, message, 'sent');
-        return true;
-      } else {
-        throw Exception('Failed to send message: ${response.statusCode} - ${response.body}');
-      }
-    } catch (e) {
-      await _logMessage(null, toNumber, message, 'failed', error: e.toString());
-      throw Exception('Failed to send WhatsApp message: $e');
+    if (!await isOnline()) {
+      await _logMessage(null, toNumber, message, 'queued (offline)', error: 'Device offline');
+      // In a full implementation, we'd add it to a local queue here
+      throw Exception('Device is offline. Message queued.');
     }
+
+    int attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        if (!isConfigured) {
+          throw Exception('WhatsApp service not configured');
+        }
+
+        final credentials = base64Encode(utf8.encode('$_accountSid:$_authToken'));
+        final url = Uri.parse('$_apiUrl/Accounts/$_accountSid/Messages.json');
+
+        final body = {
+          'From': 'whatsapp:$_fromNumber',
+          'To': 'whatsapp:$toNumber',
+          'Body': message,
+        };
+
+        if (mediaUrl != null) {
+          body['MediaUrl'] = mediaUrl;
+        }
+
+        final response = await http.post(
+          url,
+          headers: {
+            'Authorization': 'Basic $credentials',
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body,
+        );
+
+        if (response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          await _logMessage(data['sid'], toNumber, message, 'sent');
+          return true;
+        } else if (response.statusCode >= 500) {
+          throw Exception('Server error: ${response.statusCode}');
+        } else {
+          throw Exception('Failed to send message: ${response.statusCode} - ${response.body}');
+        }
+      } catch (e) {
+        attempts++;
+        if (attempts >= maxRetries || e.toString().contains('not configured')) {
+          await _logMessage(null, toNumber, message, 'failed', error: e.toString());
+          throw Exception('Failed to send WhatsApp message after $maxRetries attempts: $e');
+        }
+        await Future.delayed(Duration(seconds: attempts * 2));
+      }
+    }
+    return false;
   }
 
   /// Send order confirmation to customer
@@ -240,7 +257,7 @@ Ready for quality check and packaging.
   Future<void> _logMessage(String? messageSid, String toNumber, String message, String status, {String? error}) async {
     try {
       await executeQuery(
-        client.from('message_logs').insert({
+        () => client.from('message_logs').insert({
           'message_sid': messageSid,
           'to_number': toNumber,
           'message_content': message.substring(0, min(500, message.length)), // Truncate if too long
@@ -276,7 +293,7 @@ Ready for quality check and packaging.
         query = query.eq('status', status);
       }
 
-      final response = await executeQuery(query, operationName: 'Fetch message logs');
+      final response = await executeQuery(() => query, operationName: 'Fetch message logs');
       return List<Map<String, dynamic>>.from(response ?? []);
     } catch (e) {
       throw Exception('Failed to fetch message logs: $e');

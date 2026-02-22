@@ -64,7 +64,7 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
+              const Text(
                 'Filters',
                 style: TextStyle(
                   color: AppColors.textPrimary,
@@ -77,7 +77,7 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
                   onPressed: _clearFilters,
                   child: Text(
                     widget.clearButtonText,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppColors.primary,
                       fontSize: 14,
                     ),
@@ -113,7 +113,7 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
         return SizedBox(
           width: 200,
           child: DropdownButtonFormField<String>(
-            value: currentValue,
+            initialValue: currentValue,
             decoration: InputDecoration(
               labelText: filter.label,
               border: OutlineInputBorder(
@@ -153,7 +153,7 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
                   borderRadius: BorderRadius.circular(8),
                 ),
                 contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                suffixIcon: Icon(
+                suffixIcon: const Icon(
                   Icons.date_range,
                   color: AppColors.textSecondary,
                 ),
@@ -261,13 +261,13 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
       return Chip(
         label: Text(
           '${filter.label}: $displayValue',
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.primary,
             fontSize: 12,
           ),
         ),
         backgroundColor: AppColors.primary.withOpacity(0.1),
-        deleteIcon: Icon(
+        deleteIcon: const Icon(
           Icons.close,
           size: 16,
           color: AppColors.primary,

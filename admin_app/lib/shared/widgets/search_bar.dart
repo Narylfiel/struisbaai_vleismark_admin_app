@@ -80,18 +80,18 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
         onSubmitted: _performSearch,
         decoration: InputDecoration(
           hintText: widget.hintText,
-          hintStyle: TextStyle(
+          hintStyle: const TextStyle(
             color: AppColors.textSecondary,
             fontSize: 14,
           ),
-          prefixIcon: Icon(
+          prefixIcon: const Icon(
             Icons.search,
             color: AppColors.textSecondary,
             size: 20,
           ),
           suffixIcon: widget.showClearButton && _controller.text.isNotEmpty
               ? IconButton(
-                  icon: Icon(
+                  icon: const Icon(
                     Icons.clear,
                     color: AppColors.textSecondary,
                     size: 20,
@@ -104,7 +104,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
           border: InputBorder.none,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
-        style: TextStyle(
+        style: const TextStyle(
           color: AppColors.textPrimary,
           fontSize: 14,
         ),
@@ -220,7 +220,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
+                    const Text(
                       'Filters',
                       style: TextStyle(
                         color: AppColors.textPrimary,
@@ -231,7 +231,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
                     if (_filterValues.isNotEmpty)
                       TextButton(
                         onPressed: _clearFilters,
-                        child: Text(
+                        child: const Text(
                           'Clear All',
                           style: TextStyle(
                             color: AppColors.primary,
@@ -265,7 +265,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
     switch (filter.type) {
       case SearchFilterType.dropdown:
         return DropdownButtonFormField<String>(
-          value: currentValue,
+          initialValue: currentValue,
           decoration: InputDecoration(
             labelText: filter.label,
             border: OutlineInputBorder(
@@ -302,7 +302,7 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
                 borderRadius: BorderRadius.circular(8),
               ),
               contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              suffixIcon: Icon(
+              suffixIcon: const Icon(
                 Icons.date_range,
                 color: AppColors.textSecondary,
               ),

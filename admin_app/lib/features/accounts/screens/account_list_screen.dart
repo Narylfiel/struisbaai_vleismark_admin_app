@@ -207,7 +207,7 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
             Switch(
               value: _showInactive,
               onChanged: (v) { setState(() => _showInactive = v); _load(); },
-              activeColor: AppColors.primary,
+              activeThumbColor: AppColors.primary,
             ),
             const Text('Show inactive',
                 style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
@@ -1306,7 +1306,7 @@ class _OverdueTabState extends State<_OverdueTab> {
                                   onChanged: (v) =>
                                       _saveAutoSuspendSettings(
                                           a, v, autoSuspendDays),
-                                  activeColor: AppColors.warning,
+                                  activeThumbColor: AppColors.warning,
                                 ),
                               ),
                               if (autoSuspend)
@@ -1550,7 +1550,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
                       const Text('Account Type', style: _lbl),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<String>(
-                        value: _accountType,
+                        initialValue: _accountType,
                         decoration: const InputDecoration(isDense: true),
                         items: const [
                           DropdownMenuItem(value: 'Restaurant', child: Text('Restaurant')),
@@ -1600,7 +1600,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
                       const Text('Credit Terms', style: _lbl),
                       const SizedBox(height: 6),
                       DropdownButtonFormField<int>(
-                        value: _creditTermsDays,
+                        initialValue: _creditTermsDays,
                         decoration: const InputDecoration(isDense: true),
                         items: const [
                           DropdownMenuItem(value: 7,  child: Text('7 days')),
@@ -1647,7 +1647,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
                         value: _autoSuspend,
                         onChanged: (v) =>
                             setState(() => _autoSuspend = v),
-                        activeColor: AppColors.warning,
+                        activeThumbColor: AppColors.warning,
                       ),
                     ]),
                     if (_autoSuspend) ...[
@@ -1692,7 +1692,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
                 Switch(
                   value: _isActive,
                   onChanged: (v) => setState(() => _isActive = v),
-                  activeColor: AppColors.success,
+                  activeThumbColor: AppColors.success,
                 ),
                 Text(_isActive ? 'Active' : 'Inactive',
                     style: TextStyle(
@@ -1839,8 +1839,8 @@ class _PaymentDialogState extends State<_PaymentDialog> {
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                  Text('Record Payment',
-                      style: const TextStyle(
+                  const Text('Record Payment',
+                      style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textPrimary)),
@@ -1927,7 +1927,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _method,
+                      initialValue: _method,
                       decoration: const InputDecoration(isDense: true),
                       items: const [
                         DropdownMenuItem(value: 'EFT',   child: Text('EFT')),

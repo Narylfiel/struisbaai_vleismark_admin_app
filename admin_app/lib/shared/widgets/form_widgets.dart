@@ -27,7 +27,7 @@ class FormWidgets {
       children: [
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -54,27 +54,27 @@ class FormWidgets {
             fillColor: enabled ? Colors.white : AppColors.cardBg,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.red, width: 1),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.red, width: 2),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 14,
           ),
@@ -99,7 +99,7 @@ class FormWidgets {
       children: [
         Text(
           label,
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 14,
             fontWeight: FontWeight.w500,
@@ -107,7 +107,7 @@ class FormWidgets {
         ),
         const SizedBox(height: 8),
         DropdownButtonFormField<T>(
-          value: value,
+          initialValue: value,
           items: items,
           onChanged: enabled ? onChanged : null,
           validator: validator,
@@ -118,32 +118,32 @@ class FormWidgets {
             fillColor: enabled ? Colors.white : AppColors.cardBg,
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.border),
+              borderSide: const BorderSide(color: AppColors.border),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: AppColors.primary, width: 2),
+              borderSide: const BorderSide(color: AppColors.primary, width: 2),
             ),
             errorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.red, width: 1),
+              borderSide: const BorderSide(color: Colors.red, width: 1),
             ),
             focusedErrorBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
-              borderSide: BorderSide(color: Colors.red, width: 2),
+              borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
-          style: TextStyle(
+          style: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 14,
           ),
           dropdownColor: Colors.white,
-          icon: Icon(
+          icon: const Icon(
             Icons.keyboard_arrow_down,
             color: AppColors.textSecondary,
           ),
@@ -172,7 +172,7 @@ class FormWidgets {
       helperText: helperText,
       validator: validator,
       enabled: enabled,
-      suffixIcon: Icon(
+      suffixIcon: const Icon(
         Icons.calendar_today,
         color: AppColors.textSecondary,
         size: 20,
@@ -213,7 +213,7 @@ class FormWidgets {
       helperText: helperText,
       validator: validator,
       enabled: enabled,
-      suffixIcon: Icon(
+      suffixIcon: const Icon(
         Icons.access_time,
         color: AppColors.textSecondary,
         size: 20,
@@ -250,7 +250,7 @@ class FormWidgets {
       controller: controller,
       hint: hint,
       helperText: helperText,
-      keyboardType: allowDecimals ? TextInputType.numberWithOptions(decimal: true) : TextInputType.number,
+      keyboardType: allowDecimals ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number,
       inputFormatters: [
         FilteringTextInputFormatter.allow(
           allowDecimals ? RegExp(r'^\d*\.?\d*$') : RegExp(r'^\d*$'),
@@ -296,7 +296,7 @@ class FormWidgets {
       controller: controller,
       hint: hint ?? '0.00',
       helperText: helperText,
-      keyboardType: TextInputType.numberWithOptions(decimal: true),
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
       inputFormatters: [
         FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d*$')),
       ],
@@ -321,8 +321,8 @@ class FormWidgets {
         return null;
       },
       enabled: enabled,
-      prefixIcon: Padding(
-        padding: const EdgeInsets.only(left: 16, right: 8),
+      prefixIcon: const Padding(
+        padding: EdgeInsets.only(left: 16, right: 8),
         child: Text(
           'R',
           style: TextStyle(
@@ -359,7 +359,7 @@ class FormWidgets {
             children: [
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -370,7 +370,7 @@ class FormWidgets {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     helperText,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,
                     ),
@@ -400,7 +400,7 @@ class FormWidgets {
             children: [
               Text(
                 label,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 14,
                   fontWeight: FontWeight.w500,
@@ -411,7 +411,7 @@ class FormWidgets {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     helperText,
-                    style: TextStyle(
+                    style: const TextStyle(
                       color: AppColors.textSecondary,
                       fontSize: 12,
                     ),
@@ -423,7 +423,7 @@ class FormWidgets {
         Switch(
           value: value,
           onChanged: enabled ? onChanged : null,
-          activeColor: AppColors.primary,
+          activeThumbColor: AppColors.primary,
           activeTrackColor: AppColors.primary.withOpacity(0.3),
         ),
       ],
@@ -443,7 +443,7 @@ class FormWidgets {
         children: [
           Text(
             title,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w600,
@@ -454,14 +454,14 @@ class FormWidgets {
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 subtitle,
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppColors.textSecondary,
                   fontSize: 14,
                 ),
               ),
             ),
           const SizedBox(height: 8),
-          Divider(color: AppColors.border, height: 1),
+          const Divider(color: AppColors.border, height: 1),
         ],
       ),
     );

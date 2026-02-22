@@ -28,6 +28,13 @@ class AppColors {
   static const Color textPrimary = Color(0xFF212121);
   static const Color textSecondary = Color(0xFF757575);
   static const Color textLight = Color(0xFFBDBDBD);
+  static const Color textDisabled = Color(0xFF9E9E9E);
+
+  // States
+  static const Color disabled = Color(0xFFE0E0E0);
+  static const Color secondary = Color(0xFF607D8B);
+  static const Color danger = error;
+
 
   // Category colours (from blueprint)
   static const Color catBeef = Color(0xFFD32F2F);       // Red

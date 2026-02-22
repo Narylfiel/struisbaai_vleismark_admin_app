@@ -134,7 +134,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                 Switch(
                   value: _showInactive,
                   onChanged: (v) { setState(() => _showInactive = v); _load(); },
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
                 const Text('Show inactive',
                     style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
@@ -480,8 +480,9 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   // Navigate date/week/month
   void _prev() {
     setState(() {
-      if (_viewMode == 'daily') _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-      else if (_viewMode == 'weekly') _weekStart = _weekStart.subtract(const Duration(days: 7));
+      if (_viewMode == 'daily') {
+        _selectedDate = _selectedDate.subtract(const Duration(days: 1));
+      } else if (_viewMode == 'weekly') _weekStart = _weekStart.subtract(const Duration(days: 7));
       else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
     });
     _load();
@@ -489,8 +490,9 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
   void _next() {
     setState(() {
-      if (_viewMode == 'daily') _selectedDate = _selectedDate.add(const Duration(days: 1));
-      else if (_viewMode == 'weekly') _weekStart = _weekStart.add(const Duration(days: 7));
+      if (_viewMode == 'daily') {
+        _selectedDate = _selectedDate.add(const Duration(days: 1));
+      } else if (_viewMode == 'weekly') _weekStart = _weekStart.add(const Duration(days: 7));
       else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
     });
     _load();
@@ -568,11 +570,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       // DATE | STAFF | CLOCK IN | BRK1 OUT | BRK1 IN | BRK2 OUT | BRK2 IN | BRK3 OUT | BRK3 IN | CLOCK OUT | TOTAL BRK | REG HRS | OT HRS
       Container(
         color: AppColors.surfaceBg,
-        child: SingleChildScrollView(
+        child: const SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Row(children: const [
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Row(children: [
               SizedBox(width: 70,  child: Text('DATE',      style: _hS)),
               SizedBox(width: 8),
               SizedBox(width: 110, child: Text('STAFF',     style: _hS)),
@@ -1130,7 +1132,7 @@ class _PayrollTab extends StatefulWidget {
 
 class _PayrollTabState extends State<_PayrollTab> {
   final _supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> _periods = [];
+  final List<Map<String, dynamic>> _periods = [];
   Map<String, dynamic>? _selectedPeriod;
   List<Map<String, dynamic>> _entries = [];
   bool _isLoading = true;
@@ -1585,7 +1587,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 Switch(
                   value: _isActive,
                   onChanged: (v) => setState(() => _isActive = v),
-                  activeColor: AppColors.success,
+                  activeThumbColor: AppColors.success,
                 ),
                 Text(_isActive ? 'Active' : 'Inactive',
                     style: TextStyle(
@@ -1624,7 +1626,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               const Text('Role', style: _labelStyle),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _role,
+                initialValue: _role,
                 decoration: const InputDecoration(isDense: true),
                 items: const [
                   DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
@@ -1710,7 +1712,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               const Text('Employment Type', style: _labelStyle),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _empType,
+                initialValue: _empType,
                 decoration: const InputDecoration(isDense: true),
                 items: const [
                   DropdownMenuItem(value: 'hourly', child: Text('Hourly')),
@@ -1727,7 +1729,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               const Text('Payroll Frequency', style: _labelStyle),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _payFrequency,
+                initialValue: _payFrequency,
                 decoration: const InputDecoration(isDense: true),
                 items: const [
                   DropdownMenuItem(value: 'weekly', child: Text('Weekly')),

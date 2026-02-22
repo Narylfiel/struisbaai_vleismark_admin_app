@@ -1,5 +1,5 @@
+import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../constants/admin_config.dart';
 
 /// Base service class providing common Supabase operations
 /// All services should extend this class for consistent error handling and logging
@@ -8,24 +8,37 @@ abstract class BaseService {
 
   SupabaseClient get client => _client;
 
-  /// Execute a database query with error handling
+  /// Execute a database query with error handling and retry logic
   Future<T> executeQuery<T>(
     Future<T> Function() query, {
     String? operationName,
+    int maxRetries = 3,
   }) async {
-    try {
-      final result = await query();
-      if (operationName != null) {
-        print('✅ $operationName completed successfully');
+    int attempts = 0;
+    while (attempts < maxRetries) {
+      try {
+        final result = await query();
+        if (operationName != null) {
+          print('✅ $operationName completed successfully');
+        }
+        return result;
+      } catch (e) {
+        attempts++;
+        final errorMsg = operationName != null
+            ? '$operationName failed (Attempt $attempts/$maxRetries): $e'
+            : 'Database operation failed (Attempt $attempts/$maxRetries): $e';
+        print('⚠️ $errorMsg');
+        
+        if (attempts >= maxRetries) {
+          print('❌ Final attempt failed for $operationName');
+          throw Exception(errorMsg);
+        }
+        
+        // Exponential backoff
+        await Future.delayed(Duration(seconds: attempts * 2));
       }
-      return result;
-    } catch (e) {
-      final errorMsg = operationName != null
-          ? '$operationName failed: $e'
-          : 'Database operation failed: $e';
-      print('❌ $errorMsg');
-      throw Exception(errorMsg);
     }
+    throw Exception('Failed to execute $operationName after $maxRetries attempts');
   }
 
   /// Handle Supabase auth errors

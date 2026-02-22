@@ -2,19 +2,22 @@
 /// Provides common functionality for serialization and validation
 abstract class BaseModel {
   /// Unique identifier for the model
-  String? id;
+  final String id;
 
   /// Timestamp when the record was created
-  DateTime? createdAt;
+  final DateTime? createdAt;
 
   /// Timestamp when the record was last updated
-  DateTime? updatedAt;
+  final DateTime? updatedAt;
+
+  const BaseModel({
+    required this.id,
+    this.createdAt,
+    this.updatedAt,
+  });
 
   /// Convert model to JSON map for database operations
   Map<String, dynamic> toJson();
-
-  /// Create model instance from JSON map
-  BaseModel fromJson(Map<String, dynamic> json);
 
   /// Validate the model data
   bool validate();

@@ -105,50 +105,50 @@ class ActionButtonsWidget extends StatelessWidget {
   ActionButtonStyle _getButtonStyle(ActionType type) {
     switch (type) {
       case ActionType.primary:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.primary,
           foregroundColor: Colors.white,
           iconColor: Colors.white,
         );
       case ActionType.secondary:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.secondary,
           foregroundColor: Colors.white,
           iconColor: Colors.white,
         );
       case ActionType.success:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.success,
           foregroundColor: Colors.white,
           iconColor: Colors.white,
         );
       case ActionType.danger:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.danger,
           foregroundColor: Colors.white,
           iconColor: Colors.white,
         );
       case ActionType.warning:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.warning,
           foregroundColor: AppColors.textPrimary,
           iconColor: AppColors.textPrimary,
         );
       case ActionType.info:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: AppColors.info,
           foregroundColor: Colors.white,
           iconColor: Colors.white,
         );
       case ActionType.outline:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: Colors.transparent,
           foregroundColor: AppColors.primary,
           iconColor: AppColors.primary,
           borderColor: AppColors.primary,
         );
       case ActionType.ghost:
-        return ActionButtonStyle(
+        return const ActionButtonStyle(
           backgroundColor: Colors.transparent,
           foregroundColor: AppColors.textSecondary,
           iconColor: AppColors.textSecondary,

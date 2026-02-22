@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
@@ -164,7 +165,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         setState(() => _showInactive = v);
                         _filterProducts();
                       },
-                      activeColor: AppColors.primary,
+                      activeThumbColor: AppColors.primary,
                     ),
                     const Text('Show inactive',
                         style: TextStyle(
@@ -215,7 +216,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 SizedBox(width: 12),
                 SizedBox(width: 60, child: Text('STATUS', style: _headerStyle)),
                 SizedBox(width: 12),
-                SizedBox(width: 80, child: Text('ACTIONS', style: _headerStyle)),
+                SizedBox(width: 120, child: Text('ACTIONS', style: _headerStyle)),
               ],
             ),
           ),
@@ -428,7 +429,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
                                   // Actions
                                   SizedBox(
-                                    width: 80,
+                                    width: 120,
                                     child: Row(
                                       children: [
                                         IconButton(
@@ -440,7 +441,22 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                           padding: EdgeInsets.zero,
                                           constraints: const BoxConstraints(),
                                         ),
-                                        const SizedBox(width: 8),
+                                        IconButton(
+                                          icon: const Icon(
+                                            Icons.inventory_2,
+                                            size: 16,
+                                          ),
+                                          color: AppColors.primary,
+                                          onPressed: () =>
+                                              showStockActionsMenu(
+                                            context,
+                                            product: p,
+                                            onDone: _loadData,
+                                          ),
+                                          tooltip: 'Stock (Waste, Transfer, Freezer, Donation, etc.)',
+                                          padding: EdgeInsets.zero,
+                                          constraints: const BoxConstraints(),
+                                        ),
                                         IconButton(
                                           icon: Icon(
                                             isActive
@@ -511,6 +527,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _barcodeController = TextEditingController();
   final _lookupController = TextEditingController();
   String? _selectedCategory;
+  String? _subCategory;
   String _itemType = 'own_cut';
   bool _scaleItem = false;
   bool _ishidaSync = false;
@@ -531,12 +548,54 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _shelfLifeFreshController = TextEditingController();
   final _shelfLifeFrozenController = TextEditingController();
   final _slowMovingController = TextEditingController();
+  final _packSizeController = TextEditingController(text: '1');
+  List<String> _storageLocationIds = [];
+  String? _carcassLinkId;
+  bool _dryerBiltongProduct = false;
+
+  // Section D (barcode in A; D adds prefix)
+  String? _barcodePrefix;
+
+  // Section E
+  List<String> _modifierGroupIds = [];
+  List<Map<String, dynamic>> _allModifierGroups = [];
+
+  // Section F
+  String? _recipeId;
+  String? _dryerProductType;
+  bool _manufacturedItem = false;
+  List<Map<String, dynamic>> _recipes = [];
+  List<Map<String, dynamic>> _dryerTypes = [];
+
+  // Section G
+  final _internalNotesController = TextEditingController();
+  List<String> _dietaryTags = [];
+  List<String> _allergenInfo = [];
+  final _imageUrlController = TextEditingController();
+  static const List<String> _dietaryOptions = ['Halal', 'Grass-fed', 'Free-range', 'Organic', 'Game', 'Venison'];
+  static const List<String> _allergenOptions = ['Gluten', 'Dairy', 'Nuts', 'Soy', 'Eggs', 'Shellfish', 'None'];
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
     if (widget.product != null) _populateForm(widget.product!);
+    _loadModifierGroups();
+    _loadRecipes();
+  }
+
+  Future<void> _loadModifierGroups() async {
+    try {
+      final r = await _supabase.from('modifier_groups').select('id, name').eq('is_active', true).order('name');
+      setState(() => _allModifierGroups = List<Map<String, dynamic>>.from(r));
+    } catch (_) {}
+  }
+
+  Future<void> _loadRecipes() async {
+    try {
+      final r = await _supabase.from('recipes').select('id, name').eq('is_active', true).order('name');
+      setState(() => _recipes = List<Map<String, dynamic>>.from(r));
+    } catch (_) {}
   }
 
   void _populateForm(Map<String, dynamic> p) {
@@ -547,6 +606,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _barcodeController.text = p['barcode'] ?? '';
     _lookupController.text = p['text_lookup_code'] ?? '';
     _selectedCategory = p['category'];
+    _subCategory = p['sub_category'] as String?;
     _itemType = p['item_type'] ?? 'own_cut';
     _scaleItem = p['scale_item'] ?? false;
     _ishidaSync = p['ishida_sync'] ?? false;
@@ -566,22 +626,38 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
         p['shelf_life_frozen']?.toString() ?? '';
     _slowMovingController.text =
         p['slow_moving_trigger_days']?.toString() ?? '3';
+    _packSizeController.text = p['pack_size']?.toString() ?? '1';
+    _storageLocationIds = List<String>.from(p['storage_location_ids'] ?? []);
+    _carcassLinkId = p['carcass_link_id'] as String?;
+    _dryerBiltongProduct = p['dryer_biltong_product'] as bool? ?? false;
+    _barcodePrefix = p['barcode_prefix'] as String?;
+    _modifierGroupIds = List<String>.from(p['modifier_group_ids'] ?? []);
+    _recipeId = p['recipe_id'] as String?;
+    _dryerProductType = p['dryer_product_type'] as String?;
+    _manufacturedItem = p['manufactured_item'] as bool? ?? false;
+    _internalNotesController.text = p['internal_notes'] ?? '';
+    _dietaryTags = List<String>.from(p['dietary_tags'] ?? []);
+    _allergenInfo = List<String>.from(p['allergen_info'] ?? []);
+    _imageUrlController.text = p['image_url']?.toString() ?? '';
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
 
-    final data = {
+    final data = <String, dynamic>{
       'plu_code': int.tryParse(_pluController.text),
       'name': _nameController.text.trim(),
       'pos_display_name': _posNameController.text.trim().isEmpty
           ? _nameController.text.trim()
           : _posNameController.text.trim(),
-      'scale_label_name': _scaleLabelController.text.trim(),
-      'barcode': _barcodeController.text.trim(),
-      'text_lookup_code': _lookupController.text.trim().toLowerCase(),
+      'scale_label_name': _scaleLabelController.text.trim().length > 16
+          ? _scaleLabelController.text.trim().substring(0, 16)
+          : _scaleLabelController.text.trim(),
+      'barcode': _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
+      'text_lookup_code': _lookupController.text.trim().toLowerCase().isEmpty ? null : _lookupController.text.trim().toLowerCase(),
       'category': _selectedCategory,
+      'sub_category': _subCategory,
       'item_type': _itemType,
       'scale_item': _scaleItem,
       'ishida_sync': _ishidaSync,
@@ -589,8 +665,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'sell_price': double.tryParse(_sellPriceController.text),
       'cost_price': double.tryParse(_costPriceController.text),
       'target_margin_pct': double.tryParse(_targetMarginController.text),
-      'freezer_markdown_pct':
-          double.tryParse(_freezerMarkdownController.text),
+      'freezer_markdown_pct': double.tryParse(_freezerMarkdownController.text),
       'vat_group': _vatGroup,
       'stock_control_type': _stockControlType,
       'unit_type': _unitType,
@@ -598,9 +673,22 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'reorder_level': double.tryParse(_reorderController.text),
       'shelf_life_fresh': int.tryParse(_shelfLifeFreshController.text),
       'shelf_life_frozen': int.tryParse(_shelfLifeFrozenController.text),
-      'slow_moving_trigger_days':
-          int.tryParse(_slowMovingController.text) ?? 3,
+      'slow_moving_trigger_days': int.tryParse(_slowMovingController.text) ?? 3,
+      'pack_size': double.tryParse(_packSizeController.text) ?? 1,
+      'storage_location_ids': _storageLocationIds.isEmpty ? null : _storageLocationIds,
+      'carcass_link_id': _carcassLinkId,
+      'dryer_biltong_product': _dryerBiltongProduct,
+      'barcode_prefix': _barcodePrefix,
+      'modifier_group_ids': _modifierGroupIds.isEmpty ? null : _modifierGroupIds,
+      'recipe_id': _recipeId,
+      'dryer_product_type': _dryerProductType,
+      'manufactured_item': _manufacturedItem,
+      'image_url': _imageUrlController.text.trim().isEmpty ? null : _imageUrlController.text.trim(),
+      'dietary_tags': _dietaryTags.isEmpty ? null : _dietaryTags,
+      'allergen_info': _allergenInfo.isEmpty ? null : _allergenInfo,
+      'internal_notes': _internalNotesController.text.trim().isEmpty ? null : _internalNotesController.text.trim(),
       'price_last_changed': DateTime.now().toIso8601String(),
+      'last_edited_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
     };
 
@@ -643,6 +731,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _shelfLifeFreshController.dispose();
     _shelfLifeFrozenController.dispose();
     _slowMovingController.dispose();
+    _packSizeController.dispose();
+    _internalNotesController.dispose();
+    _imageUrlController.dispose();
     super.dispose();
   }
 
@@ -652,8 +743,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
-        width: 720,
-        height: 620,
+        width: 760,
+        height: 680,
         child: Column(
           children: [
             // Header
@@ -689,11 +780,16 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
+              isScrollable: true,
               tabs: const [
                 Tab(text: 'A — Identity'),
                 Tab(text: 'B — Pricing'),
                 Tab(text: 'C — Stock'),
-                Tab(text: 'D — Scale'),
+                Tab(text: 'D — Barcode/Scale'),
+                Tab(text: 'E — Modifiers'),
+                Tab(text: 'F — Production'),
+                Tab(text: 'G — Media/Notes'),
+                Tab(text: 'H — Activity'),
               ],
             ),
             const Divider(height: 1, color: AppColors.border),
@@ -709,6 +805,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     _buildTabB(),
                     _buildTabC(),
                     _buildTabD(),
+                    _buildTabE(),
+                    _buildTabF(),
+                    _buildTabG(),
+                    _buildTabH(),
                   ],
                 ),
               ),
@@ -725,7 +825,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                   Switch(
                     value: _isActive,
                     onChanged: (v) => setState(() => _isActive = v),
-                    activeColor: AppColors.success,
+                    activeThumbColor: AppColors.success,
                   ),
                   Text(
                     _isActive ? 'Active' : 'Inactive',
@@ -850,6 +950,34 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const Text('Sub-Category',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _subCategory,
+                      decoration: const InputDecoration(isDense: true),
+                      hint: const Text('Optional'),
+                      items: const [
+                        DropdownMenuItem(value: null, child: Text('—')),
+                        DropdownMenuItem(value: 'Steaks', child: Text('Steaks')),
+                        DropdownMenuItem(value: 'Mince', child: Text('Mince')),
+                        DropdownMenuItem(value: 'Stew', child: Text('Stew')),
+                        DropdownMenuItem(value: 'Ribs', child: Text('Ribs')),
+                        DropdownMenuItem(value: 'Other', child: Text('Other')),
+                      ],
+                      onChanged: (v) => setState(() => _subCategory = v),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     const Text('Item Type',
                         style: TextStyle(
                             fontSize: 12,
@@ -881,12 +1009,6 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          _field(
-            label: 'Text Lookup Code',
-            controller: _lookupController,
-            hint: 'tbone — alternative search keyword for POS',
           ),
         ],
       ),
@@ -1103,7 +1225,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       value: _allowFraction,
                       onChanged: (v) =>
                           setState(() => _allowFraction = v),
-                      activeColor: AppColors.primary,
+                      activeThumbColor: AppColors.primary,
                     ),
                   ],
                 ),
@@ -1113,6 +1235,16 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           const SizedBox(height: 16),
           Row(
             children: [
+              Expanded(
+                child: _field(
+                  label: 'Pack Size (units per pack)',
+                  controller: _packSizeController,
+                  hint: '1',
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                ),
+              ),
+              const SizedBox(width: 16),
               Expanded(
                 child: _field(
                   label: 'Reorder Level',
@@ -1157,6 +1289,23 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ),
             ],
           ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Switch(
+                value: _dryerBiltongProduct,
+                onChanged: (v) => setState(() => _dryerBiltongProduct = v),
+                activeThumbColor: AppColors.primary,
+              ),
+              const Text(
+                'Dryer/Biltong Product (links to Dryer module)',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -1169,10 +1318,33 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _field(
-            label: 'Barcode (EAN-13)',
+            label: 'Standard Barcode (EAN-13)',
             controller: _barcodeController,
             hint: '6001234567890',
             note: 'For non-scale packaged items',
+          ),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Barcode Prefix (Ishida)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: _barcodePrefix,
+                decoration: const InputDecoration(isDense: true),
+                hint: const Text('None'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('None')),
+                  DropdownMenuItem(value: '20', child: Text('20 (weight)')),
+                  DropdownMenuItem(value: '21', child: Text('21 (price)')),
+                ],
+                onChanged: (v) => setState(() => _barcodePrefix = v),
+              ),
+            ],
           ),
           const SizedBox(height: 16),
           Row(
@@ -1193,7 +1365,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                           value: _scaleItem,
                           onChanged: (v) =>
                               setState(() => _scaleItem = v),
-                          activeColor: AppColors.primary,
+                          activeThumbColor: AppColors.primary,
                         ),
                         Text(
                           _scaleItem ? 'Yes' : 'No',
@@ -1210,7 +1382,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Sync to Ishida Scale',
+                    const Text('Ishida Scale Sync',
                         style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -1222,7 +1394,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                           value: _ishidaSync,
                           onChanged: (v) =>
                               setState(() => _ishidaSync = v),
-                          activeColor: AppColors.primary,
+                          activeThumbColor: AppColors.primary,
                         ),
                         Text(
                           _ishidaSync ? 'Sync ON' : 'Sync OFF',
@@ -1235,6 +1407,12 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          _field(
+            label: 'Text Lookup Code',
+            controller: _lookupController,
+            hint: 'tbone — alternative search keyword for POS',
           ),
           const SizedBox(height: 16),
           Container(
@@ -1260,6 +1438,272 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabE() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Modifier Group Linking',
+            style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'When this product is sold, show these modifier pop-ups at POS.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _allModifierGroups.map((g) {
+              final id = g['id'] as String?;
+              final name = g['name'] as String? ?? '';
+              final selected = id != null && _modifierGroupIds.contains(id);
+              return FilterChip(
+                label: Text(name),
+                selected: selected,
+                onSelected: (v) {
+                  setState(() {
+                    if (v && id != null) {
+                      _modifierGroupIds.add(id);
+                    } else if (id != null) {
+                      _modifierGroupIds.remove(id);
+                    }
+                  });
+                },
+              );
+            }).toList(),
+          ),
+          if (_allModifierGroups.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text(
+                'No modifier groups. Create groups in Inventory → Modifiers.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabF() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Recipe Link (Own-Processed)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: _recipeId,
+                decoration: const InputDecoration(isDense: true),
+                hint: const Text('None'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ..._recipes.map((r) => DropdownMenuItem<String>(
+                        value: r['id'] as String?,
+                        child: Text(r['name'] as String? ?? ''),
+                      )),
+                ],
+                onChanged: (v) => setState(() => _recipeId = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Dryer/Biltong Product Type',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                value: _dryerProductType,
+                decoration: const InputDecoration(isDense: true),
+                hint: const Text('None'),
+                items: const [
+                  DropdownMenuItem(value: null, child: Text('None')),
+                  DropdownMenuItem(value: 'biltong', child: Text('Biltong')),
+                  DropdownMenuItem(value: 'droewors', child: Text('Droewors')),
+                  DropdownMenuItem(value: 'chilli_bites', child: Text('Chilli Bites')),
+                  DropdownMenuItem(value: 'other', child: Text('Other')),
+                ],
+                onChanged: (v) => setState(() => _dryerProductType = v),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Switch(
+                value: _manufacturedItem,
+                onChanged: (v) => setState(() => _manufacturedItem = v),
+                activeThumbColor: AppColors.primary,
+              ),
+              const Text(
+                'Manufactured Item (cost-of-production tracking)',
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabG() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _field(
+            label: 'Image URL (optional)',
+            controller: _imageUrlController,
+            hint: 'https://... or leave empty — shown on POS grid button',
+          ),
+          const SizedBox(height: 16),
+          const Text('Dietary Tags',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _dietaryOptions.map((tag) {
+              final selected = _dietaryTags.contains(tag);
+              return FilterChip(
+                label: Text(tag),
+                selected: selected,
+                onSelected: (v) {
+                  setState(() {
+                    if (v) _dietaryTags.add(tag);
+                    else _dietaryTags.remove(tag);
+                  });
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          const Text('Allergen Info',
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _allergenOptions.map((tag) {
+              final selected = _allergenInfo.contains(tag);
+              return FilterChip(
+                label: Text(tag),
+                selected: selected,
+                onSelected: (v) {
+                  setState(() {
+                    if (v) _allergenInfo.add(tag);
+                    else _allergenInfo.remove(tag);
+                  });
+                },
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 16),
+          _field(
+            label: 'Internal Notes (Owner/Manager only)',
+            controller: _internalNotesController,
+            hint: 'Not on receipts or POS',
+            maxLength: 500,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabH() {
+    final lastEdited = widget.product?['last_edited_at'] != null
+        ? DateTime.tryParse(widget.product!['last_edited_at'] as String)
+        : null;
+    final lastEditedBy = widget.product?['last_edited_by'] as String?;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (widget.product != null) ...[
+            const Text('Item Activity Log',
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            if (lastEdited != null || lastEditedBy != null)
+              Text(
+                'Last edited: ${lastEdited?.toString().substring(0, 16) ?? '—'} ${lastEditedBy != null ? '($lastEditedBy)' : ''}',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              )
+            else
+              const Text(
+                'No edit history yet.',
+                style: TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+            const SizedBox(height: 16),
+            OutlinedButton.icon(
+              onPressed: () {
+                showMovementHistoryDialog(context, product: widget.product!);
+              },
+              icon: const Icon(Icons.history, size: 18),
+              label: const Text('View Item Activity / Movement History'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('Price history — link to audit log by PLU')),
+                );
+              },
+              icon: const Icon(Icons.trending_up, size: 18),
+              label: const Text('View Price History'),
+            ),
+          ] else
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Text(
+                  'Save the product first to see activity log.',
+                  style: TextStyle(
+                      fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ),
+            ),
         ],
       ),
     );

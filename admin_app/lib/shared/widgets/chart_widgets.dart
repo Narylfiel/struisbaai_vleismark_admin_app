@@ -21,22 +21,22 @@ class ChartWidgets {
       child: SfCartesianChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        legend: Legend(isVisible: false),
+        legend: const Legend(isVisible: false),
         tooltipBehavior: TooltipBehavior(enable: true),
         primaryXAxis: DateTimeAxis(
           dateFormat: DateFormat.MMMd(),
           intervalType: DateTimeIntervalType.days,
-          majorGridLines: MajorGridLines(width: 0),
+          majorGridLines: const MajorGridLines(width: 0),
         ),
         primaryYAxis: NumericAxis(
           numberFormat: NumberFormat.currency(symbol: 'R'),
-          majorGridLines: MajorGridLines(width: 0.5, color: AppColors.border),
+          majorGridLines: const MajorGridLines(width: 0.5, color: AppColors.border),
         ),
         series: <ChartSeries<ChartData, DateTime>>[
           LineSeries<ChartData, DateTime>(
@@ -45,7 +45,7 @@ class ChartWidgets {
             yValueMapper: (ChartData sales, _) => sales.y,
             color: AppColors.primary,
             width: 3,
-            markerSettings: MarkerSettings(
+            markerSettings: const MarkerSettings(
               isVisible: true,
               color: AppColors.primary,
               borderColor: Colors.white,
@@ -74,17 +74,17 @@ class ChartWidgets {
       child: SfCartesianChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        primaryXAxis: CategoryAxis(
+        primaryXAxis: const CategoryAxis(
           majorGridLines: MajorGridLines(width: 0),
           labelRotation: 45,
         ),
-        primaryYAxis: NumericAxis(
+        primaryYAxis: const NumericAxis(
           majorGridLines: MajorGridLines(width: 0.5, color: AppColors.border),
         ),
         tooltipBehavior: TooltipBehavior(enable: true),
@@ -95,7 +95,7 @@ class ChartWidgets {
             yValueMapper: (ChartData product, _) => product.y,
             color: AppColors.primary,
             borderRadius: BorderRadius.circular(4),
-            dataLabelSettings: DataLabelSettings(
+            dataLabelSettings: const DataLabelSettings(
               isVisible: true,
               textStyle: TextStyle(color: Colors.white, fontSize: 12),
             ),
@@ -122,13 +122,13 @@ class ChartWidgets {
       child: SfCircularChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        legend: Legend(
+        legend: const Legend(
           isVisible: true,
           position: LegendPosition.bottom,
           textStyle: TextStyle(color: AppColors.textPrimary, fontSize: 12),
@@ -139,7 +139,7 @@ class ChartWidgets {
             dataSource: data,
             xValueMapper: (ChartData data, _) => data.x.toString(),
             yValueMapper: (ChartData data, _) => data.y,
-            dataLabelSettings: DataLabelSettings(
+            dataLabelSettings: const DataLabelSettings(
               isVisible: true,
               textStyle: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
             ),
@@ -167,22 +167,22 @@ class ChartWidgets {
       child: SfCartesianChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        legend: Legend(isVisible: false),
+        legend: const Legend(isVisible: false),
         tooltipBehavior: TooltipBehavior(enable: true),
         primaryXAxis: DateTimeAxis(
           dateFormat: DateFormat.MMMd(),
           intervalType: DateTimeIntervalType.days,
-          majorGridLines: MajorGridLines(width: 0),
+          majorGridLines: const MajorGridLines(width: 0),
         ),
         primaryYAxis: NumericAxis(
           numberFormat: NumberFormat.percentPattern(),
-          majorGridLines: MajorGridLines(width: 0.5, color: AppColors.border),
+          majorGridLines: const MajorGridLines(width: 0.5, color: AppColors.border),
         ),
         series: <ChartSeries<ChartData, DateTime>>[
           AreaSeries<ChartData, DateTime>(
@@ -215,13 +215,13 @@ class ChartWidgets {
       child: SfPolarChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        legend: Legend(isVisible: false),
+        legend: const Legend(isVisible: false),
         tooltipBehavior: TooltipBehavior(enable: true),
         series: <PolarSeries<ChartData, String>>[
           RadarSeries<ChartData, String>(
@@ -231,7 +231,7 @@ class ChartWidgets {
             color: AppColors.primary.withOpacity(0.5),
             borderColor: AppColors.primary,
             borderWidth: 2,
-            markerSettings: MarkerSettings(
+            markerSettings: const MarkerSettings(
               isVisible: true,
               color: AppColors.primary,
             ),
@@ -258,13 +258,13 @@ class ChartWidgets {
       child: SfCircularChart(
         title: ChartTitle(
           text: title,
-          textStyle: TextStyle(
+          textStyle: const TextStyle(
             color: AppColors.textPrimary,
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
         ),
-        legend: Legend(
+        legend: const Legend(
           isVisible: true,
           position: LegendPosition.right,
           textStyle: TextStyle(color: AppColors.textPrimary, fontSize: 12),
@@ -275,7 +275,7 @@ class ChartWidgets {
             dataSource: data,
             xValueMapper: (ChartData data, _) => data.x.toString(),
             yValueMapper: (ChartData data, _) => data.y,
-            dataLabelSettings: DataLabelSettings(
+            dataLabelSettings: const DataLabelSettings(
               isVisible: true,
               textStyle: TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
             ),
@@ -305,7 +305,7 @@ class ChartData {
 
 // Import statements for date formatting
 class DateFormat {
-  static final MMMd = 'MMM d';
+  static const MMMd = 'MMM d';
 }
 
 class NumberFormat {

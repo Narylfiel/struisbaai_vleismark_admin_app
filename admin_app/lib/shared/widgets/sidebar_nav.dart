@@ -55,16 +55,16 @@ class _SidebarNavState extends State<SidebarNav> {
           // Header
           Container(
             padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
+            decoration: const BoxDecoration(
               color: AppColors.primary,
-              borderRadius: const BorderRadius.only(
+              borderRadius: BorderRadius.only(
                 bottomRight: Radius.circular(20),
               ),
             ),
-            child: Row(
+            child: const Row(
               children: [
                 Icon(Icons.store, color: Colors.white, size: 32),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     'Struisbaai\nVleismark',
@@ -102,7 +102,7 @@ class _SidebarNavState extends State<SidebarNav> {
           // Footer
           Container(
             padding: const EdgeInsets.all(16),
-            child: Text(
+            child: const Text(
               'Admin v2.0',
               style: TextStyle(
                 color: AppColors.textSecondary,

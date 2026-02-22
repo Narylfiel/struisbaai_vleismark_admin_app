@@ -582,7 +582,7 @@ class _PendingBreakdownsTabState extends State<_PendingBreakdownsTab> {
           color: AppColors.cardBg,
           child: Row(
             children: [
-              Icon(Icons.info_outline, size: 16, color: AppColors.info),
+              const Icon(Icons.info_outline, size: 16, color: AppColors.info),
               const SizedBox(width: 8),
               const Text(
                 'Partial breakdowns supported — cut what is needed, leave the rest on the hook.',
@@ -977,7 +977,7 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
                                 color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _carcassType,
+                          initialValue: _carcassType,
                           decoration: const InputDecoration(isDense: true),
                           items: _carcassTypes
                               .map((t) => DropdownMenuItem(
@@ -1097,7 +1097,7 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
                           value: cut['sellable'] as bool,
                           onChanged: (v) =>
                               setState(() => cut['sellable'] = v),
-                          activeColor: AppColors.success,
+                          activeThumbColor: AppColors.success,
                         ),
                       ),
                       SizedBox(
@@ -1239,7 +1239,9 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
   Future<void> _save() async {
     if (_selectedSupplierId == null ||
         _invoiceWeightController.text.isEmpty ||
-        _actualWeightController.text.isEmpty) return;
+        _actualWeightController.text.isEmpty) {
+      return;
+    }
 
     setState(() => _isSaving = true);
 
@@ -1373,8 +1375,9 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
                               lastDate: DateTime.now().add(
                                   const Duration(days: 1)),
                             );
-                            if (d != null)
+                            if (d != null) {
                               setState(() => _deliveryDate = d);
+                            }
                           },
                           child: Container(
                             padding: const EdgeInsets.symmetric(
@@ -1624,7 +1627,7 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
                 color: AppColors.textSecondary)),
         const SizedBox(height: 6),
         DropdownButtonFormField<String>(
-          value: value,
+          initialValue: value,
           decoration: const InputDecoration(isDense: true),
           items: items,
           onChanged: onChanged,
@@ -1828,7 +1831,7 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
                       Switch(
                         value: _isPartial,
                         onChanged: (v) => setState(() => _isPartial = v),
-                        activeColor: AppColors.warning,
+                        activeThumbColor: AppColors.warning,
                       ),
                     ],
                   ),

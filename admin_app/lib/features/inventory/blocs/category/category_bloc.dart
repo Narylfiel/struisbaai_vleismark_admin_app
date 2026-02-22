@@ -1,5 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../core/services/supabase_service.dart';
+import '../../../../core/services/supabase_service.dart';
 import '../../models/category.dart';
 import 'category_event.dart';
 import 'category_state.dart';
@@ -23,7 +23,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
     try {
       emit(const CategoryLoading());
 
-      final response = await _supabaseService.client
+      final response = await SupabaseService.client
           .from('categories')
           .select()
           .order('sort_order', ascending: true);
@@ -48,7 +48,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
         ..remove('created_at')
         ..remove('updated_at');
 
-      await _supabaseService.client
+      await SupabaseService.client
           .from('categories')
           .insert(categoryData);
 
@@ -68,7 +68,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
         ..remove('created_at')
         ..remove('updated_at');
 
-      await _supabaseService.client
+      await SupabaseService.client
           .from('categories')
           .update(categoryData)
           .eq('id', event.category.id);
@@ -85,10 +85,10 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
     Emitter<CategoryState> emit,
   ) async {
     try {
-      await _supabaseService.client
+      await SupabaseService.client
           .from('categories')
           .delete()
-          .eq('id', event.id);
+          .eq('id', event.categoryId);
 
       emit(const CategoryOperationSuccess('Category deleted successfully'));
       add(const LoadCategories());
@@ -105,7 +105,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
       // Update sort orders in batch
       for (int i = 0; i < event.categories.length; i++) {
         final category = event.categories[i];
-        await _supabaseService.client
+        await SupabaseService.client
             .from('categories')
             .update({'sort_order': i + 1})
             .eq('id', category.id);

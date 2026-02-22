@@ -5,8 +5,8 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../core/services/base_service.dart';
-import '../core/utils/app_constants.dart';
+import 'base_service.dart';
+import '../utils/app_constants.dart';
 
 /// Service for generating reports in PDF and Excel formats
 class ReportService extends BaseService {
@@ -162,16 +162,16 @@ class ReportService extends BaseService {
     }
   }
 
-  /// Generate sales report
+  /// Generate transactions report (blueprint §11: Daily/Weekly Sales from transactions).
   Future<File> generateSalesReport({
     required DateTime startDate,
     required DateTime endDate,
     String format = 'pdf',
   }) async {
     try {
-      final salesData = await executeQuery(
-        client
-            .from('sales')
+      final txnData = await executeQuery(
+        () => client
+            .from('transactions')
             .select('''
               *,
               transaction_items (
@@ -183,34 +183,34 @@ class ReportService extends BaseService {
             ''')
             .gte('created_at', startDate.toIso8601String())
             .lte('created_at', endDate.toIso8601String()),
-        operationName: 'Fetch sales data for report',
+        operationName: 'Fetch transactions data for report',
       );
 
-      final data = List<Map<String, dynamic>>.from(salesData ?? []);
+      final data = List<Map<String, dynamic>>.from(txnData ?? []);
       final columns = ['Date', 'Total Amount', 'Items Count', 'Payment Method'];
 
-      final processedData = data.map((sale) {
-        final items = sale['transaction_items'] as List? ?? [];
+      final processedData = data.map((txn) {
+        final items = txn['transaction_items'] as List? ?? [];
         return {
-          'Date': DateTime.parse(sale['created_at']).toString().split('T')[0],
-          'Total Amount': sale['total_amount']?.toString() ?? '0',
+          'Date': DateTime.parse(txn['created_at']).toString().split('T')[0],
+          'Total Amount': txn['total_amount']?.toString() ?? '0',
           'Items Count': items.length.toString(),
-          'Payment Method': sale['payment_method'] ?? 'Unknown',
+          'Payment Method': txn['payment_method'] ?? 'Unknown',
         };
       }).toList();
 
       final summary = {
-        'Total Sales': data.fold<double>(0, (sum, sale) => sum + (sale['total_amount'] as num? ?? 0)),
+        'Total Sales': data.fold<double>(0, (sum, txn) => sum + (txn['total_amount'] as num? ?? 0)),
         'Total Transactions': data.length,
         'Average Transaction': data.isNotEmpty
-            ? data.fold<double>(0, (sum, sale) => sum + (sale['total_amount'] as num? ?? 0)) / data.length
+            ? data.fold<double>(0, (sum, txn) => sum + (txn['total_amount'] as num? ?? 0)) / data.length
             : 0,
       };
 
       switch (format.toLowerCase()) {
         case 'pdf':
           return await generatePdfReport(
-            title: 'Sales Report',
+            title: 'Transactions Report',
             subtitle: '${startDate.toString().split('T')[0]} to ${endDate.toString().split('T')[0]}',
             data: processedData,
             columns: columns,
@@ -218,14 +218,14 @@ class ReportService extends BaseService {
           );
         case 'excel':
           return await generateExcelReport(
-            title: 'Sales Report',
+            title: 'Transactions Report',
             data: processedData,
             columns: columns,
             summary: summary,
           );
         case 'csv':
           return await generateCsvReport(
-            title: 'Sales Report',
+            title: 'Transactions Report',
             data: processedData,
             columns: columns,
           );
@@ -233,7 +233,7 @@ class ReportService extends BaseService {
           throw Exception('Unsupported format: $format');
       }
     } catch (e) {
-      throw Exception('Failed to generate sales report: $e');
+      throw Exception('Failed to generate transactions report: $e');
     }
   }
 
@@ -241,7 +241,7 @@ class ReportService extends BaseService {
   Future<File> generateInventoryReport({String format = 'pdf'}) async {
     try {
       final inventoryData = await executeQuery(
-        client
+        () => client
             .from('inventory_items')
             .select('*, categories(name)')
             .eq('is_active', true)
@@ -313,10 +313,10 @@ class ReportService extends BaseService {
         pw.Text(title, style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
         if (subtitle != null) ...[
           pw.SizedBox(height: 8),
-          pw.Text(subtitle, style: pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
+          pw.Text(subtitle, style: const pw.TextStyle(fontSize: 16, color: PdfColors.grey700)),
         ],
         pw.Text('Generated on ${DateTime.now().toString().split('T')[0]}',
-            style: pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
+            style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey600)),
       ],
     );
   }
@@ -326,15 +326,15 @@ class ReportService extends BaseService {
       headers: columns,
       data: data.map((row) => columns.map((col) => row[col]?.toString() ?? '').toList()).toList(),
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-      cellStyle: pw.TextStyle(fontSize: 10),
-      headerDecoration: pw.BoxDecoration(color: PdfColors.grey300),
+      cellStyle: const pw.TextStyle(fontSize: 10),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
       cellHeight: 25,
     );
   }
 
   pw.Widget _buildPdfSummary(Map<String, dynamic> summary) {
     return pw.Container(
-      padding: pw.EdgeInsets.all(10),
+      padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey400),
         borderRadius: pw.BorderRadius.circular(5),

@@ -80,12 +80,12 @@ class _DataTableWidgetState extends State<DataTableWidget> {
                 horizontalMargin: 16,
                 headingRowHeight: 48,
                 dataRowHeight: 52,
-                headingTextStyle: TextStyle(
+                headingTextStyle: const TextStyle(
                   color: AppColors.textPrimary,
                   fontWeight: FontWeight.w600,
                   fontSize: 14,
                 ),
-                dataTextStyle: TextStyle(
+                dataTextStyle: const TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 14,
                 ),
@@ -161,7 +161,7 @@ class _DataTableWidgetState extends State<DataTableWidget> {
   Widget _buildPagination(int totalPages) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
+      decoration: const BoxDecoration(
         color: AppColors.cardBg,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
@@ -170,28 +170,28 @@ class _DataTableWidgetState extends State<DataTableWidget> {
         children: [
           Text(
             'Page ${_currentPage + 1} of $totalPages (${_filteredData.length} total)',
-            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
           ),
           Row(
             children: [
               IconButton(
-                icon: Icon(Icons.chevron_left, size: 20),
+                icon: const Icon(Icons.chevron_left, size: 20),
                 onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
                 color: _currentPage > 0 ? AppColors.primary : AppColors.textSecondary,
               ),
               Container(
-                constraints: BoxConstraints(minWidth: 40),
+                constraints: const BoxConstraints(minWidth: 40),
                 child: Text(
                   '${_currentPage + 1}',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     color: AppColors.primary,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
               IconButton(
-                icon: Icon(Icons.chevron_right, size: 20),
+                icon: const Icon(Icons.chevron_right, size: 20),
                 onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
                 color: _currentPage < totalPages - 1 ? AppColors.primary : AppColors.textSecondary,
               ),
@@ -215,7 +215,7 @@ class _DataTableWidgetState extends State<DataTableWidget> {
           const SizedBox(height: 16),
           Text(
             widget.emptyMessage!,
-            style: TextStyle(
+            style: const TextStyle(
               color: AppColors.textSecondary,
               fontSize: 16,
             ),

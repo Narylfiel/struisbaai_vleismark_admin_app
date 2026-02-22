@@ -213,7 +213,7 @@ class _ScaleTabState extends State<_ScaleTab> {
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
           decoration: const InputDecoration(labelText: 'Primary Barcode Target Mode'),
-          value: _primaryMode,
+          initialValue: _primaryMode,
           items: const [
             DropdownMenuItem(value: 'Price-embedded', child: Text('Price-embedded (21 Prefix)')),
             DropdownMenuItem(value: 'Weight-embedded', child: Text('Weight-embedded (20 Prefix)')),
@@ -386,7 +386,7 @@ class _NotificationTabState extends State<_NotificationTab> {
             subtitle: Text(c['description'] ?? 'System configuration environment flag.'),
             trailing: Switch(
               value: c['is_active'] == true,
-              activeColor: AppColors.primary,
+              activeThumbColor: AppColors.primary,
               onChanged: (val) => _toggle(c['id']?.toString() ?? '', val),
             ),
           ),

@@ -140,7 +140,7 @@ class _AuditLogScreenState extends State<AuditLogScreen> {
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     decoration: const InputDecoration(labelText: 'Action Type', prefixIcon: Icon(Icons.list)),
-                    value: _selectedAction,
+                    initialValue: _selectedAction,
                     items: _actionTypes.map((a) => DropdownMenuItem(value: a, child: Text(a))).toList(),
                     onChanged: (val) {
                       if (val != null) setState(() => _selectedAction = val);

@@ -12,14 +12,13 @@ class ReportRepository {
   // REPORT AGGREGATORS (Direct to Supabase queries/RPCs)
   // ═════════════════════════════════════════════════════════
 
-  /// Daily Sales Summary
+  /// Daily Sales Summary — from transactions (blueprint §11: Daily Sales Summary).
   Future<List<Map<String, dynamic>>> getDailySales(DateTime date) async {
     try {
       final start = DateTime(date.year, date.month, date.day).toIso8601String();
       final end = DateTime(date.year, date.month, date.day, 23, 59, 59).toIso8601String();
-      
       final response = await _client
-          .from('sales_transactions')
+          .from('transactions')
           .select()
           .gte('created_at', start)
           .lte('created_at', end)

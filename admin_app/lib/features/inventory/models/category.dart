@@ -73,6 +73,19 @@ class Category extends BaseModel {
   }
 
   @override
+  bool validate() {
+    return name.isNotEmpty && colorCode.isNotEmpty;
+  }
+
+  @override
+  List<String> getValidationErrors() {
+    final errors = <String>[];
+    if (name.isEmpty) errors.add('Name is required');
+    if (colorCode.isEmpty) errors.add('Color code is required');
+    return errors;
+  }
+
+  @override
   String toString() {
     return 'Category(id: $id, name: $name, colorCode: $colorCode, sortOrder: $sortOrder, isActive: $isActive)';
   }

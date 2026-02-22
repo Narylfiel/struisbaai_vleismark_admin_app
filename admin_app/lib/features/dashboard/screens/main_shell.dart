@@ -94,10 +94,10 @@ class _MainShellState extends State<MainShell> {
                                   color: Colors.white, size: 20),
                             ),
                             const SizedBox(width: 10),
-                            Expanded(
+                            const Expanded(
                               child: Text(
                                 AdminConfig.appName,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 13,
                                   fontWeight: FontWeight.bold,

@@ -6,8 +6,8 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import '../core/services/base_service.dart';
-import '../core/utils/app_constants.dart';
+import 'base_service.dart';
+import '../utils/app_constants.dart';
 
 /// Service for exporting data in various formats (CSV, Excel, PDF)
 class ExportService extends BaseService {
@@ -111,7 +111,7 @@ class ExportService extends BaseService {
       pdf.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
-          margin: pw.EdgeInsets.all(32),
+          margin: const pw.EdgeInsets.all(32),
           build: (context) => [
             _buildPdfHeader(title, subtitle),
             pw.SizedBox(height: 20),
@@ -148,7 +148,7 @@ class ExportService extends BaseService {
         query = query.eq('is_active', true);
       }
 
-      final inventoryData = await executeQuery(query, operationName: 'Export inventory data');
+      final inventoryData = await executeQuery(() => query, operationName: 'Export inventory data');
 
       final data = List<Map<String, dynamic>>.from(inventoryData ?? []);
       final columns = ['plu_code', 'name', 'categories.name', 'current_stock', 'reorder_point', 'average_cost', 'total_value'];
@@ -193,24 +193,24 @@ class ExportService extends BaseService {
     }
   }
 
-  /// Export sales data
+  /// Export transactions data (blueprint: transactions + transaction_items).
   Future<File> exportSales({
     required DateTime startDate,
     required DateTime endDate,
     String format = 'excel',
   }) async {
     try {
-      final salesData = await executeQuery(
-        client
-            .from('sales')
+      final txnData = await executeQuery(
+        () => client
+            .from('transactions')
             .select('*, transaction_items(quantity, unit_price, line_total, inventory_items(name))')
             .gte('created_at', startDate.toIso8601String())
             .lte('created_at', endDate.toIso8601String())
             .order('created_at'),
-        operationName: 'Export sales data',
+        operationName: 'Export transactions data',
       );
 
-      final data = List<Map<String, dynamic>>.from(salesData ?? []);
+      final data = List<Map<String, dynamic>>.from(txnData ?? []);
       final columns = ['created_at', 'total_amount', 'payment_method', 'items_count'];
       final headers = {
         'created_at': 'Date/Time',
@@ -219,14 +219,13 @@ class ExportService extends BaseService {
         'items_count': 'Items Count',
       };
 
-      // Process data
-      for (final sale in data) {
-        final items = sale['transaction_items'] as List? ?? [];
-        sale['items_count'] = items.length;
-        sale['created_at'] = DateTime.parse(sale['created_at']).toLocal().toString();
+      for (final txn in data) {
+        final items = txn['transaction_items'] as List? ?? [];
+        txn['items_count'] = items.length;
+        txn['created_at'] = DateTime.parse(txn['created_at']).toLocal().toString();
       }
 
-      final fileName = 'sales_export_${startDate.toIso8601String().split('T')[0]}_to_${endDate.toIso8601String().split('T')[0]}';
+      final fileName = 'transactions_export_${startDate.toIso8601String().split('T')[0]}_to_${endDate.toIso8601String().split('T')[0]}';
 
       switch (format) {
         case 'csv':
@@ -235,16 +234,16 @@ class ExportService extends BaseService {
           return await exportToExcel(fileName: fileName, data: data, columns: columns, columnHeaders: headers);
         case 'pdf':
           final summary = {
-            'Total Sales': data.fold<double>(0, (sum, sale) => sum + (sale['total_amount'] as num? ?? 0)),
+            'Total Sales': data.fold<double>(0, (sum, txn) => sum + (txn['total_amount'] as num? ?? 0)),
             'Total Transactions': data.length,
             'Average Transaction': data.isNotEmpty
-                ? data.fold<double>(0, (sum, sale) => sum + (sale['total_amount'] as num? ?? 0)) / data.length
+                ? data.fold<double>(0, (sum, txn) => sum + (txn['total_amount'] as num? ?? 0)) / data.length
                 : 0,
           };
 
           return await exportToPdf(
             fileName: fileName,
-            title: 'Sales Report',
+            title: 'Transactions Report',
             subtitle: '${startDate.toString().split('T')[0]} to ${endDate.toString().split('T')[0]}',
             data: data,
             columns: columns,
@@ -255,7 +254,7 @@ class ExportService extends BaseService {
           throw Exception('Unsupported format: $format');
       }
     } catch (e) {
-      throw Exception('Failed to export sales: $e');
+      throw Exception('Failed to export transactions: $e');
     }
   }
 
@@ -266,7 +265,7 @@ class ExportService extends BaseService {
   }) async {
     try {
       final payrollData = await executeQuery(
-        client
+        () => client
             .from('payroll_entries')
             .select('*, profiles(full_name)')
             .eq('payroll_period_id', payrollPeriodId),
@@ -366,10 +365,10 @@ class ExportService extends BaseService {
         pw.Text(title, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
         if (subtitle != null) ...[
           pw.SizedBox(height: 8),
-          pw.Text(subtitle, style: pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+          pw.Text(subtitle, style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
         ],
         pw.Text('Generated: ${DateTime.now().toString().split('T')[0]}',
-            style: pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+            style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
       ],
     );
   }
@@ -381,18 +380,18 @@ class ExportService extends BaseService {
       headers: headerTexts,
       data: data.map((row) => columns.map((col) => _formatValueForPdf(row[col])).toList()).toList(),
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
-      cellStyle: pw.TextStyle(fontSize: 9),
-      headerDecoration: pw.BoxDecoration(color: PdfColors.grey300),
+      cellStyle: const pw.TextStyle(fontSize: 9),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
       cellHeight: 20,
       columnWidths: Map.fromEntries(
-        columns.asMap().entries.map((e) => MapEntry(e.key, pw.FlexColumnWidth(1))),
+        columns.asMap().entries.map((e) => MapEntry(e.key, const pw.FlexColumnWidth(1))),
       ),
     );
   }
 
   pw.Widget _buildPdfSummary(Map<String, dynamic> summary) {
     return pw.Container(
-      padding: pw.EdgeInsets.all(10),
+      padding: const pw.EdgeInsets.all(10),
       decoration: pw.BoxDecoration(
         border: pw.Border.all(color: PdfColors.grey400),
         borderRadius: pw.BorderRadius.circular(5),
@@ -403,7 +402,7 @@ class ExportService extends BaseService {
           pw.Text('Summary', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
           ...summary.entries.map((entry) => pw.Text('${entry.key}: ${entry.value}',
-              style: pw.TextStyle(fontSize: 10))),
+              style: const pw.TextStyle(fontSize: 10))),
         ],
       ),
     );

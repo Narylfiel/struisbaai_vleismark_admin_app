@@ -190,11 +190,6 @@ class _PinScreenState extends State<PinScreen> {
       }
     }
 
-    if (staff == null) {
-      _handleFailedAttempt();
-      return;
-    }
-
     // ── Role check — Admin app: Owner + Manager only ──────────
     final role = staff['role'] as String? ?? '';
     if (!AdminConfig.allowedRoles.contains(role.toLowerCase())) {
@@ -230,7 +225,7 @@ class _PinScreenState extends State<PinScreen> {
         _enteredPin = '';
         _isLoading = false;
       });
-      Future.delayed(Duration(minutes: AdminConfig.pinLockoutMinutes), () {
+      Future.delayed(const Duration(minutes: AdminConfig.pinLockoutMinutes), () {
         if (mounted) {
           setState(() {
             _isLocked = false;
@@ -281,13 +276,13 @@ class _PinScreenState extends State<PinScreen> {
                 child: const Icon(Icons.storefront, color: Colors.white, size: 36),
               ),
               const SizedBox(height: 16),
-              Text(AdminConfig.appName,
-                  style: const TextStyle(
+              const Text(AdminConfig.appName,
+                  style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                       color: AppColors.textPrimary)),
-              Text(AdminConfig.appSubtitle,
-                  style: const TextStyle(
+              const Text(AdminConfig.appSubtitle,
+                  style: TextStyle(
                       fontSize: 13, color: AppColors.textSecondary)),
 
               // Offline indicator — only shows when no internet

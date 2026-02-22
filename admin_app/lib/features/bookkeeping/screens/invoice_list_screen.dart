@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -163,13 +164,13 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
                             Expanded(flex: 2, child: Text(inv['supplier_name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 120, child: Text(inv['invoice_number'] ?? '—')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text(inv['date'] ?? '—')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(inv['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 120, child: Text(inv['status'] ?? 'Pending Review', style: const TextStyle(color: AppColors.warning))),
                           ]),
                         );
@@ -262,11 +263,11 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
                         padding: const EdgeInsets.symmetric(vertical: 8),
                         child: Row(children: [
                           SizedBox(width: 80, child: Text('${acc['account_number']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           Expanded(flex: 2, child: Text(acc['name'] ?? '—')),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           SizedBox(width: 150, child: Text(acc['type'] ?? '—')),
-                          SizedBox(width: 16),
+                          const SizedBox(width: 16),
                           SizedBox(width: 100, child: Text('R ${(acc['balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                         ]),
                       );
@@ -279,57 +280,97 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// TAB 3: P&L / REPORTS
+// TAB 3: P&L / REPORTS (from ledger — Blueprint §9.4, §9.5, §9.6)
 // ══════════════════════════════════════════════════════════════════
 
-class _ReportsTab extends StatelessWidget {
+/// Blueprint account code → display label (fallback when chart_of_accounts not used).
+const Map<String, String> _accountLabels = {
+  '4000': 'Meat Sales (POS)',
+  '4100': 'Hunter Processing Fees',
+  '4200': 'Other Income',
+  '5000': 'Meat Purchases',
+  '5100': 'Spices & Casings',
+  '5200': 'Packaging Materials',
+  '5300': 'Shrinkage / Waste',
+  '6000': 'Salaries & Wages',
+  '6100': 'Rent',
+  '6200': 'Electricity',
+  '6300': 'Equipment Maintenance',
+  '6400': 'Insurance',
+  '6500': 'Marketing & Sponsorship',
+  '6510': 'Donations',
+  '6600': 'Transport & Fuel',
+  '6700': 'Purchase Sale Repayments',
+  '6900': 'Sundry Expenses',
+};
+
+class _ReportsTab extends StatefulWidget {
   const _ReportsTab();
 
-  Widget _buildPnLCard() {
-    return Card(
-      margin: const EdgeInsets.all(16),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('PROFIT & LOSS STATEMENT', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const Text('Botha\'s Butchery (Pty) Ltd - Period: February 2026', style: TextStyle(color: AppColors.textSecondary)),
-            const Divider(height: 32),
-            const Text('REVENUE:', style: TextStyle(fontWeight: FontWeight.bold)),
-            _pnlRow('Meat Sales (POS)', 145230.00),
-            _pnlRow('Hunter Processing Fees', 8500.00),
-            const Divider(),
-            _pnlRow('Total Revenue', 153730.00, isBold: true),
-            const SizedBox(height: 24),
-            const Text('COST OF GOODS SOLD:', style: TextStyle(fontWeight: FontWeight.bold)),
-            _pnlRow('Meat Purchases', 85340.00),
-            _pnlRow('Spices & Casings', 3210.00),
-            _pnlRow('Packaging Materials', 1850.00),
-            _pnlRow('Shrinkage / Waste', 4520.00),
-            const Divider(),
-            _pnlRow('Total COGS', 94920.00, isBold: true),
-            const SizedBox(height: 24),
-            _pnlRow('GROSS PROFIT', 58810.00, isBold: true, highlight: AppColors.info),
-            const Text(' (38.2%)', style: TextStyle(color: AppColors.info, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 24),
-            const Text('OPERATING EXPENSES:', style: TextStyle(fontWeight: FontWeight.bold)),
-            _pnlRow('Salaries & Wages', 28450.00),
-            _pnlRow('Rent', 6500.00),
-            _pnlRow('Electricity', 2340.00),
-            _pnlRow('Equipment Maintenance', 850.00),
-            _pnlRow('Marketing & Sponsorship', 500.00),
-            _pnlRow('Donations', 200.00),
-            _pnlRow('Purchase Sale Repayment', 5000.00),
-            const Divider(),
-            _pnlRow('Total Operating Expenses', 47260.00, isBold: true),
-            const SizedBox(height: 24),
-            _pnlRow('NET PROFIT', 11550.00, isBold: true, highlight: AppColors.success),
-            const Text(' (7.5%)', style: TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
-          ],
-        ),
-      ),
-    );
+  @override
+  State<_ReportsTab> createState() => _ReportsTabState();
+}
+
+class _ReportsTabState extends State<_ReportsTab> {
+  final LedgerRepository _ledger = LedgerRepository();
+  DateTime _periodStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
+  DateTime _periodEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
+  bool _loading = true;
+  Map<String, Map<String, double>> _pnlSummary = {};
+  double _outputVat = 0, _inputVat = 0, _vatPayable = 0;
+  double _cashIn = 0, _cashOut = 0, _bankIn = 0, _bankOut = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final pnl = await _ledger.getPnLSummary(_periodStart, _periodEnd);
+      final vat = await _ledger.getVatSummary(_periodStart, _periodEnd);
+      final cash = await _ledger.getCashFlowSummary(_periodStart, _periodEnd);
+      setState(() {
+        _pnlSummary = pnl;
+        _outputVat = vat.outputVat;
+        _inputVat = vat.inputVat;
+        _vatPayable = vat.payable;
+        _cashIn = cash.cashIn;
+        _cashOut = cash.cashOut;
+        _bankIn = cash.bankIn;
+        _bankOut = cash.bankOut;
+        _loading = false;
+      });
+    } catch (e) {
+      debugPrint('Reports load: $e');
+      setState(() => _loading = false);
+    }
+  }
+
+  double _revenueTotal() {
+    double t = 0;
+    for (final code in ['4000', '4100', '4200']) {
+      t += _pnlSummary[code]?['credit'] ?? 0;
+    }
+    return t;
+  }
+
+  double _cogsTotal() {
+    double t = 0;
+    for (final code in ['5000', '5100', '5200', '5300']) {
+      t += _pnlSummary[code]?['debit'] ?? 0;
+    }
+    return t;
+  }
+
+  double _expensesTotal() {
+    double t = 0;
+    for (final code in ['6000', '6100', '6200', '6300', '6400', '6500', '6510', '6600', '6700', '6900']) {
+      t += _pnlSummary[code]?['debit'] ?? 0;
+    }
+    return t;
   }
 
   Widget _pnlRow(String label, double amount, {bool isBold = false, Color? highlight}) {
@@ -345,6 +386,89 @@ class _ReportsTab extends StatelessWidget {
     );
   }
 
+  Widget _buildPnLCard() {
+    final revenue = _revenueTotal();
+    final cogs = _cogsTotal();
+    final grossProfit = revenue - cogs;
+    final grossPct = revenue > 0 ? (grossProfit / revenue * 100) : 0.0;
+    final expenses = _expensesTotal();
+    final netProfit = grossProfit - expenses;
+    final netPct = revenue > 0 ? (netProfit / revenue * 100) : 0.0;
+    final periodLabel = '${_periodStart.year}-${_periodStart.month.toString().padLeft(2, '0')}';
+
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Text('PROFIT & LOSS STATEMENT', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: _loading ? null : () async {
+                    final now = DateTime.now();
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: _periodStart,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime(now.year + 1),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        _periodStart = DateTime(picked.year, picked.month, 1);
+                        _periodEnd = DateTime(picked.year, picked.month + 1, 0);
+                      });
+                      _load();
+                    }
+                  },
+                  icon: const Icon(Icons.calendar_month, size: 18),
+                  label: Text(periodLabel),
+                ),
+              ],
+            ),
+            const Text('From ledger — select period', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const Divider(height: 32),
+            const Text('REVENUE:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...['4000', '4100', '4200'].map((code) {
+              final credit = _pnlSummary[code]?['credit'] ?? 0;
+              if (credit == 0) return const SizedBox.shrink();
+              return _pnlRow(_accountLabels[code] ?? code, credit);
+            }),
+            const Divider(),
+            _pnlRow('Total Revenue', revenue, isBold: true),
+            const SizedBox(height: 24),
+            const Text('COST OF GOODS SOLD:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...['5000', '5100', '5200', '5300'].map((code) {
+              final debit = _pnlSummary[code]?['debit'] ?? 0;
+              if (debit == 0) return const SizedBox.shrink();
+              return _pnlRow(_accountLabels[code] ?? code, debit);
+            }),
+            const Divider(),
+            _pnlRow('Total COGS', cogs, isBold: true),
+            const SizedBox(height: 24),
+            _pnlRow('GROSS PROFIT', grossProfit, isBold: true, highlight: AppColors.info),
+            Text(' (${grossPct.toStringAsFixed(1)}%)', style: const TextStyle(color: AppColors.info, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 24),
+            const Text('OPERATING EXPENSES:', style: TextStyle(fontWeight: FontWeight.bold)),
+            ...['6000', '6100', '6200', '6300', '6400', '6500', '6510', '6600', '6700', '6900'].map((code) {
+              final debit = _pnlSummary[code]?['debit'] ?? 0;
+              if (debit == 0) return const SizedBox.shrink();
+              return _pnlRow(_accountLabels[code] ?? code, debit);
+            }),
+            const Divider(),
+            _pnlRow('Total Operating Expenses', expenses, isBold: true),
+            const SizedBox(height: 24),
+            _pnlRow('NET PROFIT', netProfit, isBold: true, highlight: AppColors.success),
+            Text(' (${netPct.toStringAsFixed(1)}%)', style: const TextStyle(color: AppColors.success, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildVatCard() {
     return Card(
       margin: const EdgeInsets.fromLTRB(0, 16, 16, 16),
@@ -354,11 +478,38 @@ class _ReportsTab extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text('VAT REPORT (SARS VAT201)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('From ledger — ${_periodStart.year}-${_periodStart.month.toString().padLeft(2, '0')}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
             const Divider(height: 32),
-            _pnlRow('Output VAT (Sales)', 20052.00),
-            _pnlRow('Input VAT (Purchases)', 12450.00),
+            _pnlRow('Output VAT (Sales)', _outputVat),
+            _pnlRow('Input VAT (Purchases)', _inputVat),
             const Divider(),
-            _pnlRow('VAT Payable to SARS', 7602.00, isBold: true, highlight: AppColors.error),
+            _pnlRow('VAT Payable to SARS', _vatPayable, isBold: true, highlight: AppColors.error),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCashFlowCard() {
+    final cashNet = _cashIn - _cashOut;
+    final bankNet = _bankIn - _bankOut;
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('CASH FLOW', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            Text('From ledger — ${_periodStart.year}-${_periodStart.month.toString().padLeft(2, '0')}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const Divider(height: 24),
+            _pnlRow('+ Cash in', _cashIn),
+            _pnlRow('− Cash out', _cashOut),
+            _pnlRow('Cash net', cashNet, isBold: true),
+            const SizedBox(height: 12),
+            _pnlRow('+ Bank in', _bankIn),
+            _pnlRow('− Bank out', _bankOut),
+            _pnlRow('Bank net', bankNet, isBold: true),
           ],
         ),
       ),
@@ -367,12 +518,23 @@ class _ReportsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
     return SingleChildScrollView(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(flex: 3, child: _buildPnLCard()),
-          Expanded(flex: 2, child: _buildVatCard()),
+          Expanded(
+            flex: 2,
+            child: Column(
+              children: [
+                _buildVatCard(),
+                _buildCashFlowCard(),
+              ],
+            ),
+          ),
         ],
       ),
     );
@@ -464,15 +626,15 @@ class _PtyConversionTabState extends State<_PtyConversionTab> {
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
                             Expanded(flex: 2, child: Text(eq['name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 120, child: Text(eq['serial_number'] ?? '—')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(eq['original_cost'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(eq['transfer_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(color: AppColors.primary))),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 80, child: Text('${eq['useful_life_years'] ?? '0'}')),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(eq['current_book_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold))),
                           ]),
                         );

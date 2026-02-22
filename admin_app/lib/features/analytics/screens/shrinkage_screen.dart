@@ -464,9 +464,9 @@ class _EventTabState extends State<_EventTab> {
             ),
           )
         else
-          Card(
+          const Card(
             color: AppColors.surfaceBg,
-            child: const Padding(
+            child: Padding(
               padding: EdgeInsets.all(16),
               child: Text('No recent unusual sales spikes detected requiring tagging. Models are currently stable.'),
             ),
@@ -485,7 +485,7 @@ class _EventTabState extends State<_EventTab> {
                 else
                   DropdownButtonFormField<String>(
                     decoration: const InputDecoration(labelText: 'Select Tagged Holiday / Event'),
-                    value: _selectedEventTagId,
+                    initialValue: _selectedEventTagId,
                     items: _tags.map((t) {
                       return DropdownMenuItem<String>(
                         value: t['event_type'],
@@ -500,8 +500,8 @@ class _EventTabState extends State<_EventTab> {
                 const Text('Demand prediction based on past tagged events (Sales history matching tag index):', style: TextStyle(color: AppColors.textSecondary)),
                 const SizedBox(height: 8),
                 if (_selectedEventTagId != null) ...[
-                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on ${_selectedEventTagId} forecasts, generate a 35kg target for Mince...')),
-                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on ${_selectedEventTagId} forecasts, generate a 60kg target for Boerewors...')),
+                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on $_selectedEventTagId forecasts, generate a 35kg target for Mince...')),
+                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on $_selectedEventTagId forecasts, generate a 60kg target for Boerewors...')),
                 ] else
                   const Text('Select an event to load forecast models based on its historical performance tag.'),
               ],

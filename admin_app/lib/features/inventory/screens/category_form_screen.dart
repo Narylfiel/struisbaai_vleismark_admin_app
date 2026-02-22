@@ -111,7 +111,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
                 const SizedBox(height: 24),
 
                 // Form Fields
-                CustomTextFormField(
+                FormWidgets.textFormField(
                   controller: _nameController,
                   label: 'Category Name',
                   hint: 'Enter category name',
@@ -124,12 +124,12 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
                     }
                     return null;
                   },
-                  prefixIcon: Icons.category,
+                  prefixIcon: const Icon(Icons.category),
                 ),
 
                 const SizedBox(height: 16),
 
-                CustomTextFormField(
+                FormWidgets.textFormField(
                   controller: _sortOrderController,
                   label: 'Sort Order',
                   hint: 'Enter sort order (lower numbers appear first)',
@@ -145,17 +145,17 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
                     }
                     return null;
                   },
-                  prefixIcon: Icons.sort,
+                  prefixIcon: const Icon(Icons.sort),
                 ),
 
                 const SizedBox(height: 16),
 
-                CustomTextFormField(
+                FormWidgets.textFormField(
                   controller: _notesController,
                   label: 'Notes (Optional)',
                   hint: 'Enter any additional notes',
                   maxLines: 3,
-                  prefixIcon: Icons.notes,
+                  prefixIcon: const Icon(Icons.notes),
                 ),
 
                 const SizedBox(height: 16),
@@ -166,7 +166,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
                   subtitle: const Text('Inactive categories are hidden from POS'),
                   value: _isActive,
                   onChanged: (value) => setState(() => _isActive = value),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                 ),
 
                 const SizedBox(height: 32),
@@ -178,7 +178,8 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
                       onPressed: () => Navigator.pop(context),
                     ),
                     ActionButtons.save(
-                      onPressed: _isLoading ? null : _saveCategory,
+                      onPressed: _saveCategory,
+                      enabled: !_isLoading,
                     ),
                   ],
                   mainAxisAlignment: MainAxisAlignment.end,
@@ -199,7 +200,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Category Color',
               style: TextStyle(
                 fontSize: 16,
@@ -208,7 +209,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Choose a color to represent this category',
               style: TextStyle(
                 fontSize: 14,
@@ -246,7 +247,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
             ),
             const SizedBox(height: 16),
             // Predefined Colors
-            Text(
+            const Text(
               'Quick Colors',
               style: TextStyle(
                 fontSize: 14,

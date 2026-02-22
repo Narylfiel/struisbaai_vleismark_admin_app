@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../core/services/base_service.dart';
-import '../core/constants/admin_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'base_service.dart';
+import '../constants/admin_config.dart';
 
 /// Authentication service handling PIN-based login, offline fallback, and session management
 class AuthService extends BaseService {
@@ -13,6 +14,9 @@ class AuthService extends BaseService {
   String? _currentStaffId;
   String? _currentStaffName;
   String? _currentRole;
+
+  static const String _cachedStaffKey = 'cached_staff_profiles';
+  static const String _activeSessionKey = 'active_session';
 
   // Getters
   String? get currentStaffId => _currentStaffId;
@@ -52,7 +56,7 @@ class AuthService extends BaseService {
   Future<Map<String, dynamic>?> _authenticateOnline(String pinHash) async {
     try {
       final response = await executeQuery(
-        client
+        () => client
             .from('profiles')
             .select('id, full_name, role, is_active, pin_hash')
             .eq('pin_hash', pinHash)
@@ -78,26 +82,42 @@ class AuthService extends BaseService {
   /// Offline authentication using cached profiles
   Future<Map<String, dynamic>?> _authenticateOffline(String pinHash) async {
     try {
-      // This would use the same caching mechanism as PIN screen
-      // For now, return null as we need to implement the cache
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStaffJson = prefs.getString(_cachedStaffKey);
+      
+      if (cachedStaffJson != null) {
+        final List<dynamic> cachedStaff = jsonDecode(cachedStaffJson);
+        final profile = cachedStaff.firstWhere(
+          (staff) => staff['pin_hash'] == pinHash && staff['is_active'] == true,
+          orElse: () => null,
+        );
+        
+        if (profile != null) {
+          print('✅ Offline authentication successful for: ${profile['name']}');
+          // Cache the active session locally
+          await prefs.setString(_activeSessionKey, jsonEncode(profile));
+          return Map<String, dynamic>.from(profile);
+        }
+      }
       return null;
     } catch (e) {
-      print('Offline auth failed: $e');
+      print('❌ Offline auth failed: $e');
       return null;
     }
   }
 
   /// Validate current session
   Future<bool> validateSession() async {
-    if (!isLoggedIn) return false;
+    if (!isLoggedIn || _currentStaffId == null) return false;
+    final staffId = _currentStaffId!;
 
     try {
       // Check if user still exists and is active
       final response = await executeQuery(
-        client
+        () => client
             .from('profiles')
             .select('is_active')
-            .eq('id', _currentStaffId)
+            .eq('id', staffId)
             .single(),
         operationName: 'Session validation',
       );
@@ -114,6 +134,12 @@ class AuthService extends BaseService {
     _currentStaffId = null;
     _currentStaffName = null;
     _currentRole = null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove(_activeSessionKey);
+    } catch (e) {
+      print('Failed to clear active session cache: $e');
+    }
   }
 
   /// Check if user has required role
@@ -156,7 +182,7 @@ class AuthService extends BaseService {
   Future<List<Map<String, dynamic>>> getAllActiveStaff() async {
     try {
       final response = await executeQuery(
-        client
+        () => client
             .from('profiles')
             .select('id, full_name, role, pin_hash')
             .eq('is_active', true)
@@ -172,8 +198,24 @@ class AuthService extends BaseService {
 
   /// Cache staff profile for offline use
   Future<void> _cacheStaffProfile(Map<String, dynamic> profile) async {
-    // Implementation would use the same caching as PIN screen
-    // For now, this is a placeholder
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedStaffJson = prefs.getString(_cachedStaffKey);
+      List<dynamic> cachedStaff = cachedStaffJson != null ? jsonDecode(cachedStaffJson) : [];
+      
+      // Update existing or add new
+      final index = cachedStaff.indexWhere((staff) => staff['id'] == profile['id']);
+      if (index >= 0) {
+        cachedStaff[index] = profile;
+      } else {
+        cachedStaff.add(profile);
+      }
+      
+      await prefs.setString(_cachedStaffKey, jsonEncode(cachedStaff));
+      await prefs.setString(_activeSessionKey, jsonEncode(profile));
+    } catch (e) {
+      print('Failed to cache staff profile: $e');
+    }
   }
 
   /// Hash PIN using SHA-256

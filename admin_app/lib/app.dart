@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'core/constants/app_colors.dart';
-import 'core/constants/admin_config.dart';
-import 'features/auth/screens/pin_screen.dart';
+import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/constants/admin_config.dart';
+import 'package:admin_app/features/auth/screens/pin_screen.dart';
 
 class AdminApp extends StatelessWidget {
   const AdminApp({super.key});
