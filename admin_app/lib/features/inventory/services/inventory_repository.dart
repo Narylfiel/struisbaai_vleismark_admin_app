@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../../../core/models/stock_movement.dart';
 
 /// Blueprint §4.5: Stock lifecycle — every stock change MUST create a movement record;
@@ -8,7 +9,7 @@ class InventoryRepository {
   final SupabaseClient _client;
 
   InventoryRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   /// Record a stock movement and update item stock.
   /// For types that reduce stock (waste, donation, sponsorship, out, staff_meal): decrement current_stock.

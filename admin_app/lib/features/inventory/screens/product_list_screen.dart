@@ -532,6 +532,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   bool _scaleItem = false;
   bool _ishidaSync = false;
   bool _isActive = true;
+  List<String> _supplierIds = [];
+  List<Map<String, dynamic>> _allSuppliers = [];
 
   // Section B
   final _sellPriceController = TextEditingController();
@@ -582,6 +584,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     if (widget.product != null) _populateForm(widget.product!);
     _loadModifierGroups();
     _loadRecipes();
+    _loadSuppliers();
+  }
+
+  Future<void> _loadSuppliers() async {
+    try {
+      final r = await _supabase.from('suppliers').select('id, name').eq('is_active', true).order('name');
+      setState(() => _allSuppliers = List<Map<String, dynamic>>.from(r));
+    } catch (_) {}
   }
 
   Future<void> _loadModifierGroups() async {
@@ -632,6 +642,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _dryerBiltongProduct = p['dryer_biltong_product'] as bool? ?? false;
     _barcodePrefix = p['barcode_prefix'] as String?;
     _modifierGroupIds = List<String>.from(p['modifier_group_ids'] ?? []);
+    _supplierIds = List<String>.from(p['supplier_ids'] ?? []);
     _recipeId = p['recipe_id'] as String?;
     _dryerProductType = p['dryer_product_type'] as String?;
     _manufacturedItem = p['manufactured_item'] as bool? ?? false;
@@ -680,6 +691,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'dryer_biltong_product': _dryerBiltongProduct,
       'barcode_prefix': _barcodePrefix,
       'modifier_group_ids': _modifierGroupIds.isEmpty ? null : _modifierGroupIds,
+      'supplier_ids': _supplierIds.isEmpty ? null : _supplierIds,
       'recipe_id': _recipeId,
       'dryer_product_type': _dryerProductType,
       'manufactured_item': _manufacturedItem,
@@ -1009,6 +1021,32 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 16),
+          const Text('Supplier Link',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _allSuppliers.map((s) {
+              final id = s['id'] as String?;
+              final name = s['name'] as String? ?? '';
+              final selected = id != null && _supplierIds.contains(id);
+              return FilterChip(
+                label: Text(name),
+                selected: selected,
+                onSelected: (v) {
+                  setState(() {
+                    if (v && id != null) {
+                      _supplierIds.add(id);
+                    } else if (id != null) {
+                      _supplierIds.remove(id);
+                    }
+                  });
+                },
+              );
+            }).toList(),
           ),
         ],
       ),

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/ocr_service.dart';
+import 'package:admin_app/features/bookkeeping/models/invoice.dart';
+import 'package:admin_app/features/bookkeeping/screens/invoice_form_screen.dart';
+import 'package:admin_app/features/bookkeeping/services/invoice_repository.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
+import 'package:admin_app/features/inventory/services/supplier_repository.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -76,9 +81,12 @@ class _InvoicesTab extends StatefulWidget {
 }
 
 class _InvoicesTabState extends State<_InvoicesTab> {
-  final _supabase = Supabase.instance.client;
-  List<Map<String, dynamic>> _invoices = [];
+  final _repo = InvoiceRepository();
+  final _ocrService = OcrService();
+  final _supplierRepo = SupplierRepository();
+  List<Invoice> _invoices = [];
   bool _isLoading = true;
+  bool _ocrLoading = false;
 
   @override
   void initState() {
@@ -89,22 +97,120 @@ class _InvoicesTabState extends State<_InvoicesTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _supabase.from('invoices').select('*').order('created_at', ascending: false);
-      setState(() => _invoices = List<Map<String, dynamic>>.from(data));
+      final list = await _repo.getInvoices();
+      setState(() => _invoices = list);
     } catch (e) {
       debugPrint('Invoices load: $e');
     }
     setState(() => _isLoading = false);
   }
 
-  void _openInvoiceForm() {
-    showDialog(
-      context: context,
-      builder: (_) => const AlertDialog(
-        title: Text('Add Invoice Manually'),
-        content: Text('Form to manually add supplier invoice details...'),
+  void _openInvoiceForm({Invoice? invoice}) async {
+    final result = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => InvoiceFormScreen(invoice: invoice),
       ),
     );
+    if (result == true) _load();
+  }
+
+  void _showOcrSourceDialog() {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Add invoice from photo'),
+        content: const Text('Take a photo of the receipt/invoice or choose from gallery. The invoice will be created as Pending review.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _addFromPhoto(fromGallery: false);
+            },
+            child: const Text('Take photo'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              _addFromPhoto(fromGallery: true);
+            },
+            child: const Text('Choose from gallery'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// OCR pipeline: photo/gallery → OcrService → InvoiceRepository.createFromOcrResult → invoice with status pending_review.
+  Future<void> _addFromPhoto({bool fromGallery = false}) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to add from photo'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    setState(() => _ocrLoading = true);
+    try {
+      final result = fromGallery
+          ? await _ocrService.processReceiptFromGallery()
+          : await _ocrService.processReceiptFromCamera();
+      if (!mounted) return;
+      if (result == null || (result['total_amount'] == null && (result['items'] as List?)?.isEmpty == true)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not read invoice from image. Try manual entry.'), backgroundColor: AppColors.warning),
+        );
+        return;
+      }
+      String? supplierId;
+      final vendorName = result['vendor_name']?.toString()?.trim();
+      if (vendorName != null && vendorName.isNotEmpty) {
+        final suppliers = await _supplierRepo.getSuppliers(activeOnly: true);
+        final matched = suppliers.where((s) => s.name.toLowerCase().contains(vendorName.toLowerCase())).toList();
+        if (matched.isNotEmpty) supplierId = matched.first.id;
+      }
+      final invoice = await _repo.createFromOcrResult(ocrResult: result, createdBy: userId, supplierId: supplierId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invoice created from photo (pending review)'), backgroundColor: AppColors.success),
+      );
+      _load();
+      _openInvoiceForm(invoice: invoice);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('OCR failed: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _ocrLoading = false);
+    }
+  }
+
+  Future<void> _approve(Invoice inv) async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to approve'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    try {
+      await _repo.approve(inv.id, userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Invoice approved and posted to ledger'), backgroundColor: AppColors.success),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Approval failed: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
   }
 
   @override
@@ -123,9 +229,15 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                 icon: const Icon(Icons.upload_file, size: 18),
                 label: const Text('Bulk Import CSV'),
               ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: _ocrLoading ? null : () => _showOcrSourceDialog(),
+                icon: _ocrLoading ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.camera_alt, size: 18),
+                label: Text(_ocrLoading ? 'Processing…' : 'From photo'),
+              ),
               const SizedBox(width: 16),
               ElevatedButton.icon(
-                onPressed: _openInvoiceForm,
+                onPressed: () => _openInvoiceForm(),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Manually'),
               ),
@@ -160,19 +272,30 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                       itemBuilder: (_, i) {
                         final inv = _invoices[i];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(children: [
-                            Expanded(flex: 2, child: Text(inv['supplier_name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 120, child: Text(inv['invoice_number'] ?? '—')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text(inv['date'] ?? '—')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${(inv['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 120, child: Text(inv['status'] ?? 'Pending Review', style: const TextStyle(color: AppColors.warning))),
-                          ]),
+                        final dateStr = '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
+                        return InkWell(
+                          onTap: () => _openInvoiceForm(invoice: inv),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                Expanded(flex: 2, child: Text(inv.supplierName ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 120, child: Text(inv.invoiceNumber)),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 100, child: Text(dateStr)),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 100, child: Text('R ${inv.totalAmount.toStringAsFixed(2)}')),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 120, child: Text(inv.status.dbValue, style: TextStyle(color: inv.canApprove ? AppColors.warning : AppColors.textSecondary))),
+                                if (inv.canApprove)
+                                  TextButton(
+                                    onPressed: () => _approve(inv),
+                                    child: const Text('Approve'),
+                                  ),
+                              ],
+                            ),
+                          ),
                         );
                       },
                     ),

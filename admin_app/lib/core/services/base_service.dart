@@ -1,12 +1,11 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'supabase_service.dart';
 
-/// Base service class providing common Supabase operations
-/// All services should extend this class for consistent error handling and logging
+/// Base service class providing common Supabase operations.
+/// All services extend this for consistent error handling and single client source.
 abstract class BaseService {
-  final SupabaseClient _client = Supabase.instance.client;
-
-  SupabaseClient get client => _client;
+  SupabaseClient get client => SupabaseService.client;
 
   /// Execute a database query with error handling and retry logic
   Future<T> executeQuery<T>(

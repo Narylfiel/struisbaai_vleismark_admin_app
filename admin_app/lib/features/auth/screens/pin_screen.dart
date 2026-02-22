@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import 'package:admin_app/features/dashboard/screens/main_shell.dart';
@@ -95,7 +96,7 @@ class _PinScreenState extends State<PinScreen> {
   /// Runs silently — does not block the UI.
   Future<void> _refreshCacheIfOnline() async {
     try {
-      final supabase = Supabase.instance.client;
+      final supabase = SupabaseService.client;
       final data = await supabase
           .from('staff_profiles')
           .select('id, full_name, role, pin_hash, is_active')
@@ -147,7 +148,7 @@ class _PinScreenState extends State<PinScreen> {
 
     // 1. Try Supabase (online path)
     try {
-      final supabase = Supabase.instance.client;
+      final supabase = SupabaseService.client;
       final response = await supabase
           .from('staff_profiles')
           .select('id, full_name, role, pin_hash, is_active')

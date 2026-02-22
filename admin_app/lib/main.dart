@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:admin_app/core/constants/admin_config.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url: AdminConfig.supabaseUrl,
-    anonKey: AdminConfig.supabaseAnonKey,
-  );
+  // Blueprint: Supabase initialized ONCE, only in SupabaseService
+  await SupabaseService.initialize();
 
   runApp(const AdminApp());
 }

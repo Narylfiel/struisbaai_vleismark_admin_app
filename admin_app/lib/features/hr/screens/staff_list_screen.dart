@@ -3,6 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
+import 'package:admin_app/features/hr/models/awol_record.dart';
+import 'package:admin_app/features/hr/models/staff_credit.dart';
+import 'package:admin_app/features/hr/services/awol_repository.dart';
+import 'package:admin_app/features/hr/services/staff_credit_repository.dart';
+import 'package:admin_app/features/hr/services/compliance_service.dart';
+import 'package:admin_app/shared/widgets/form_widgets.dart';
 
 class StaffListScreen extends StatefulWidget {
   const StaffListScreen({super.key});
@@ -18,7 +24,7 @@ class _StaffListScreenState extends State<StaffListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 7, vsync: this);
   }
 
   @override
@@ -45,6 +51,9 @@ class _StaffListScreenState extends State<StaffListScreen>
                 Tab(icon: Icon(Icons.access_time, size: 18), text: 'Timecards'),
                 Tab(icon: Icon(Icons.beach_access, size: 18), text: 'Leave'),
                 Tab(icon: Icon(Icons.payments, size: 18), text: 'Payroll'),
+                Tab(icon: Icon(Icons.warning_amber, size: 18), text: 'AWOL'),
+                Tab(icon: Icon(Icons.credit_card, size: 18), text: 'Staff Credit'),
+                Tab(icon: Icon(Icons.verified_user, size: 18), text: 'Compliance'),
               ],
             ),
           ),
@@ -57,6 +66,9 @@ class _StaffListScreenState extends State<StaffListScreen>
                 _TimecardsTab(),
                 _LeaveTab(),
                 _PayrollTab(),
+                _AwolTab(),
+                _StaffCreditTab(),
+                _ComplianceTab(),
               ],
             ),
           ),
@@ -1401,6 +1413,586 @@ class _PayrollTabState extends State<_PayrollTab> {
   static const _pHdr = TextStyle(
       fontSize: 10, fontWeight: FontWeight.bold,
       color: AppColors.textSecondary, letterSpacing: 0.5);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 5: AWOL / Absconding (Blueprint §7.3a)
+// ══════════════════════════════════════════════════════════════════
+
+class _AwolTab extends StatefulWidget {
+  const _AwolTab();
+  @override
+  State<_AwolTab> createState() => _AwolTabState();
+}
+
+class _AwolTabState extends State<_AwolTab> {
+  final _repo = AwolRepository();
+  List<AwolRecord> _records = [];
+  List<Map<String, dynamic>> _staff = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _loadStaff();
+  }
+
+  Future<void> _loadStaff() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('staff_profiles')
+          .select('id, full_name')
+          .eq('is_active', true)
+          .order('full_name');
+      if (mounted) setState(() => _staff = List<Map<String, dynamic>>.from(data));
+    } catch (_) {}
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final list = await _repo.getRecords();
+      if (mounted) setState(() => _records = list);
+    } catch (e) {
+      debugPrint('AWOL load: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _openRecordAwol() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to record AWOL'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    String? staffId;
+    DateTime awolDate = DateTime.now();
+    TimeOfDay? expectedStart = const TimeOfDay(hour: 7, minute: 0);
+    bool notified = false;
+    final notifiedWhoController = TextEditingController();
+    final notesController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Record AWOL'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                FormWidgets.dropdownFormField<String>(
+                  label: 'Staff',
+                  value: staffId,
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Select staff —')),
+                    ..._staff.map((s) => DropdownMenuItem(value: s['id'] as String, child: Text(s['full_name'] ?? ''))),
+                  ],
+                  onChanged: (v) { setDialog(() => staffId = v); },
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'AWOL date',
+                  controller: TextEditingController(text: '${awolDate.day}/${awolDate.month}/${awolDate.year}'),
+                  enabled: false,
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () async {
+                    final d = await showDatePicker(context: ctx, initialDate: awolDate, firstDate: DateTime(2020), lastDate: DateTime.now());
+                    if (d != null) setDialog(() => awolDate = d);
+                  },
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  label: const Text('Set date'),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Notes',
+                  controller: notesController,
+                  maxLines: 2,
+                ),
+                SwitchListTile(
+                  title: const Text('Notified owner/manager'),
+                  value: notified,
+                  onChanged: (v) => setDialog(() => notified = v),
+                ),
+                if (notified)
+                  FormWidgets.textFormField(
+                    label: 'Who was notified',
+                    controller: notifiedWhoController,
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: staffId == null ? null : () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != true || staffId == null) return;
+    try {
+      await _repo.create(
+        staffId: staffId!,
+        awolDate: awolDate,
+        expectedStartTime: expectedStart != null ? DateTime(2000, 1, 1, expectedStart.hour, expectedStart.minute) : null,
+        notifiedOwnerManager: notified,
+        notifiedWho: notifiedWhoController.text.trim().isEmpty ? null : notifiedWhoController.text.trim(),
+        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        recordedBy: userId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AWOL recorded'), backgroundColor: AppColors.success),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: AppColors.cardBg,
+          child: Row(
+            children: [
+              const Text('AWOL / Absconding records', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _openRecordAwol,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Record AWOL'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          color: AppColors.surfaceBg,
+          child: Row(children: [
+            Expanded(flex: 2, child: Text('STAFF', style: _awolH)),
+            SizedBox(width: 100, child: Text('DATE', style: _awolH)),
+            SizedBox(width: 100, child: Text('RESOLUTION', style: _awolH)),
+            SizedBox(width: 80, child: Text('NOTIFIED', style: _awolH)),
+            Expanded(child: Text('NOTES', style: _awolH)),
+          ]),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _records.isEmpty
+                  ? const Center(child: Text('No AWOL records'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: _records.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                      itemBuilder: (_, i) {
+                        final r = _records[i];
+                        final dateStr = '${r.awolDate.day}/${r.awolDate.month}/${r.awolDate.year}';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(flex: 2, child: Text(r.staffName ?? r.staffId, style: const TextStyle(fontWeight: FontWeight.w600))),
+                              SizedBox(width: 100, child: Text(dateStr)),
+                              SizedBox(width: 100, child: Text(r.resolution.dbValue)),
+                              SizedBox(width: 80, child: Text(r.notifiedOwnerManager ? 'Yes' : 'No')),
+                              Expanded(child: Text(r.notes ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+const _awolH = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5);
+const _creditH = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5);
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 6: Staff Credit (Blueprint §7.5)
+// ══════════════════════════════════════════════════════════════════
+
+class _StaffCreditTab extends StatefulWidget {
+  const _StaffCreditTab();
+  @override
+  State<_StaffCreditTab> createState() => _StaffCreditTabState();
+}
+
+class _StaffCreditTabState extends State<_StaffCreditTab> {
+  final _repo = StaffCreditRepository();
+  List<StaffCredit> _credits = [];
+  Map<String, double> _balances = {};
+  List<Map<String, dynamic>> _staff = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _loadStaff();
+  }
+
+  Future<void> _loadStaff() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('staff_profiles')
+          .select('id, full_name')
+          .eq('is_active', true)
+          .order('full_name');
+      if (mounted) setState(() => _staff = List<Map<String, dynamic>>.from(data));
+    } catch (_) {}
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final list = await _repo.getCredits();
+      final balances = await _repo.getOutstandingBalancesByStaff();
+      if (mounted) {
+        setState(() {
+          _credits = list;
+          _balances = balances;
+        });
+      }
+    } catch (e) {
+      debugPrint('Staff credit load: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  void _openAddCredit() async {
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to add credit'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    String? staffId;
+    StaffCreditType type = StaffCreditType.meatPurchase;
+    final amountController = TextEditingController();
+    final reasonController = TextEditingController();
+    final itemsController = TextEditingController();
+    final repaymentController = TextEditingController();
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Add staff credit / loan'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FormWidgets.dropdownFormField<String>(
+                  label: 'Staff',
+                  value: staffId,
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Select staff —')),
+                    ..._staff.map((s) => DropdownMenuItem(value: s['id'] as String, child: Text(s['full_name'] ?? ''))),
+                  ],
+                  onChanged: (v) => setDialog(() => staffId = v),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.dropdownFormField<StaffCreditType>(
+                  label: 'Type',
+                  value: type,
+                  items: [
+                    const DropdownMenuItem(value: StaffCreditType.meatPurchase, child: Text('Meat purchase')),
+                    const DropdownMenuItem(value: StaffCreditType.salaryAdvance, child: Text('Salary advance')),
+                    const DropdownMenuItem(value: StaffCreditType.loan, child: Text('Loan')),
+                  ],
+                  onChanged: (v) { setDialog(() => type = v ?? StaffCreditType.meatPurchase); },
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Amount (R)',
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Reason / description',
+                  controller: reasonController,
+                  maxLines: 1,
+                ),
+                if (type == StaffCreditType.meatPurchase)
+                  FormWidgets.textFormField(
+                    label: 'Items purchased',
+                    controller: itemsController,
+                    hint: 'e.g. 500g Rump + 1kg Mince',
+                  ),
+                if (type == StaffCreditType.loan)
+                  FormWidgets.textFormField(
+                    label: 'Repayment plan',
+                    controller: repaymentController,
+                    hint: 'e.g. R500/month × 4 months',
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: staffId == null || amountController.text.isEmpty ? null : () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != true || staffId == null) return;
+    final amount = double.tryParse(amountController.text.replaceAll(',', '.')) ?? 0;
+    if (amount <= 0) return;
+    try {
+      await _repo.create(
+        staffId: staffId!,
+        creditType: type,
+        amount: amount,
+        reason: reasonController.text.trim().isEmpty ? 'Staff credit' : reasonController.text.trim(),
+        grantedDate: DateTime.now(),
+        itemsPurchased: itemsController.text.trim().isEmpty ? null : itemsController.text.trim(),
+        repaymentPlan: repaymentController.text.trim().isEmpty ? null : repaymentController.text.trim(),
+        grantedBy: userId,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Credit recorded'), backgroundColor: AppColors.success),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: AppColors.cardBg,
+          child: Row(
+            children: [
+              const Text('Staff credit (meat, advances, loans)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: _openAddCredit,
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add credit / loan'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          color: AppColors.surfaceBg,
+          child: Row(children: [
+            Expanded(flex: 2, child: Text('STAFF', style: _creditH)),
+            SizedBox(width: 100, child: Text('TYPE', style: _creditH)),
+            SizedBox(width: 90, child: Text('AMOUNT', style: _creditH)),
+            SizedBox(width: 90, child: Text('STATUS', style: _creditH)),
+            Expanded(child: Text('REASON', style: _creditH)),
+          ]),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _credits.isEmpty
+                  ? const Center(child: Text('No credit entries'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: _credits.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                      itemBuilder: (_, i) {
+                        final c = _credits[i];
+                        final typeStr = c.creditType == StaffCreditType.meatPurchase
+                            ? 'Meat'
+                            : c.creditType == StaffCreditType.salaryAdvance
+                                ? 'Advance'
+                                : 'Loan';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              Expanded(flex: 2, child: Text(c.staffName ?? c.staffId, style: const TextStyle(fontWeight: FontWeight.w600))),
+                              SizedBox(width: 100, child: Text(typeStr)),
+                              SizedBox(width: 90, child: Text('R ${c.amount.toStringAsFixed(2)}')),
+                              SizedBox(width: 90, child: Text(c.status.dbValue)),
+                              Expanded(child: Text(c.reason, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+        if (_balances.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.all(16),
+            color: AppColors.surfaceBg,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Outstanding balances', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                ..._balances.entries.map((e) {
+                  final matched = _staff.where((s) => s['id'] == e.key).toList();
+                  final name = matched.isEmpty ? e.key : matched.first['full_name'];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [Text(name.toString()), Text('R ${e.value.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.w600))],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 7: BCEA Compliance (Blueprint §7.6)
+// ══════════════════════════════════════════════════════════════════
+
+class _ComplianceTab extends StatefulWidget {
+  const _ComplianceTab();
+  @override
+  State<_ComplianceTab> createState() => _ComplianceTabState();
+}
+
+class _ComplianceTabState extends State<_ComplianceTab> {
+  final _service = ComplianceService();
+  List<ComplianceItem> _items = [];
+  bool _loading = true;
+  DateTime _month = DateTime(DateTime.now().year, DateTime.now().month, 1);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final list = await _service.getBceaCompliance(_month);
+      if (mounted) setState(() => _items = list);
+    } catch (e) {
+      debugPrint('Compliance load: $e');
+    }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Color _statusColor(ComplianceStatus s) {
+    switch (s) {
+      case ComplianceStatus.ok:
+        return AppColors.success;
+      case ComplianceStatus.warning:
+        return AppColors.warning;
+      case ComplianceStatus.error:
+        return AppColors.error;
+      case ComplianceStatus.info:
+        return AppColors.info;
+    }
+  }
+
+  IconData _statusIcon(ComplianceStatus s) {
+    switch (s) {
+      case ComplianceStatus.ok:
+        return Icons.check_circle;
+      case ComplianceStatus.warning:
+        return Icons.warning_amber;
+      case ComplianceStatus.error:
+        return Icons.error;
+      case ComplianceStatus.info:
+        return Icons.info_outline;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: AppColors.cardBg,
+          child: Row(
+            children: [
+              const Text('BCEA Compliance', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: () async {
+                  final d = await showDatePicker(
+                    context: context,
+                    initialDate: _month,
+                    firstDate: DateTime(2020),
+                    lastDate: DateTime.now(),
+                  );
+                  if (d != null) {
+                    setState(() => _month = DateTime(d.year, d.month, 1));
+                    _load();
+                  }
+                },
+                icon: const Icon(Icons.calendar_month, size: 18),
+                label: Text('${_month.year}-${_month.month.toString().padLeft(2, '0')}'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: _loading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Compliance status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                      const SizedBox(height: 12),
+                      ..._items.map((item) => Card(
+                            margin: const EdgeInsets.only(bottom: 12),
+                            child: ListTile(
+                              leading: Icon(_statusIcon(item.status), color: _statusColor(item.status), size: 28),
+                              title: Text(item.title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                              subtitle: Text(item.detail, style: const TextStyle(fontSize: 13)),
+                            ),
+                          )),
+                    ],
+                  ),
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════

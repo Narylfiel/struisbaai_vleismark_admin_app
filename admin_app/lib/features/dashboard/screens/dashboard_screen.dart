@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../services/dashboard_repository.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -11,7 +11,7 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _dashboardRepo = DashboardRepository();
 
   bool _isLoading = true;

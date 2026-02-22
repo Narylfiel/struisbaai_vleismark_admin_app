@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Repository for managing Customer metrics and CRM features 
 /// defined in AdminAppBluePrintTruth Module 12.
@@ -6,7 +7,7 @@ class CustomerRepository {
   final SupabaseClient _client;
 
   CustomerRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   // ═════════════════════════════════════════════════════════
   // 1. LIFECYCLE CUSTOMERS (LOYALTY)

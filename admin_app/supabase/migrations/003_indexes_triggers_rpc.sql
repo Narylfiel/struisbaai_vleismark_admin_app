@@ -42,10 +42,14 @@ BEGIN
         CREATE INDEX IF NOT EXISTS idx_sales_total_amount ON sales_transactions(total_amount);
     END IF;
 
-    -- Transaction items indexes
+    -- Transaction items indexes (only if columns exist)
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'transaction_items') THEN
-        CREATE INDEX IF NOT EXISTS idx_transaction_items_sale_id ON transaction_items(sale_id);
-        CREATE INDEX IF NOT EXISTS idx_transaction_items_product_id ON transaction_items(inventory_item_id);
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_items' AND column_name = 'sale_id') THEN
+            CREATE INDEX IF NOT EXISTS idx_transaction_items_sale_id ON transaction_items(sale_id);
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'transaction_items' AND column_name = 'inventory_item_id') THEN
+            CREATE INDEX IF NOT EXISTS idx_transaction_items_product_id ON transaction_items(inventory_item_id);
+        END IF;
     END IF;
 
     -- Profile indexes
@@ -65,67 +69,84 @@ BEGIN
         CREATE INDEX IF NOT EXISTS idx_leave_requests_status ON leave_requests(status);
     END IF;
 
-    -- Payroll indexes
+    -- Payroll indexes (only if column exists)
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'payroll_entries') THEN
-        CREATE INDEX IF NOT EXISTS idx_payroll_entries_payroll_period ON payroll_entries(payroll_period_id);
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'payroll_entries' AND column_name = 'payroll_period_id') THEN
+            CREATE INDEX IF NOT EXISTS idx_payroll_entries_payroll_period ON payroll_entries(payroll_period_id);
+        END IF;
     END IF;
 
-    -- Alert indexes
+    -- Alert indexes (only if column exists)
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'shrinkage_alerts') THEN
-        CREATE INDEX IF NOT EXISTS idx_shrinkage_alerts_resolved ON shrinkage_alerts(resolved);
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'shrinkage_alerts' AND column_name = 'resolved') THEN
+            CREATE INDEX IF NOT EXISTS idx_shrinkage_alerts_resolved ON shrinkage_alerts(resolved);
+        END IF;
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'reorder_recommendations') THEN
-        CREATE INDEX IF NOT EXISTS idx_reorder_recommendations_resolved ON reorder_recommendations(auto_resolved);
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'reorder_recommendations' AND column_name = 'auto_resolved') THEN
+            CREATE INDEX IF NOT EXISTS idx_reorder_recommendations_resolved ON reorder_recommendations(auto_resolved);
+        END IF;
     END IF;
 END $$;
 
--- Additional indexes for new tables (only create for tables that exist)
+-- Additional indexes for new tables (only create if table and columns exist)
 DO $$
 BEGIN
     -- Production tables
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'carcass_intakes') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'carcass_intakes' AND column_name = 'intake_date') THEN
         CREATE INDEX IF NOT EXISTS idx_carcass_intakes_date ON carcass_intakes(intake_date);
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'carcass_breakdown_sessions') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'carcass_breakdown_sessions' AND column_name = 'status') THEN
         CREATE INDEX IF NOT EXISTS idx_carcass_breakdown_sessions_status ON carcass_breakdown_sessions(status);
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'stock_movements') THEN
-        CREATE INDEX IF NOT EXISTS idx_stock_movements_item_type ON stock_movements(item_id, movement_type);
-        CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements(performed_at);
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'stock_movements' AND column_name = 'item_id') AND
+           EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'stock_movements' AND column_name = 'movement_type') THEN
+            CREATE INDEX IF NOT EXISTS idx_stock_movements_item_type ON stock_movements(item_id, movement_type);
+        END IF;
+        IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'stock_movements' AND column_name = 'performed_at') THEN
+            CREATE INDEX IF NOT EXISTS idx_stock_movements_date ON stock_movements(performed_at);
+        END IF;
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'production_batches') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'production_batches' AND column_name = 'status') THEN
         CREATE INDEX IF NOT EXISTS idx_production_batches_status ON production_batches(status);
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'hunter_jobs') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'hunter_jobs' AND column_name = 'status') THEN
         CREATE INDEX IF NOT EXISTS idx_hunter_jobs_status ON hunter_jobs(status);
     END IF;
 
     -- Accounting tables
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'invoices') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name = 'status') THEN
         CREATE INDEX IF NOT EXISTS idx_invoices_status ON invoices(status);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'invoices' AND column_name = 'due_date') THEN
         CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'ledger_entries') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ledger_entries' AND column_name = 'entry_date') THEN
         CREATE INDEX IF NOT EXISTS idx_ledger_entries_date ON ledger_entries(entry_date);
+    END IF;
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'ledger_entries' AND column_name = 'account_code') THEN
         CREATE INDEX IF NOT EXISTS idx_ledger_entries_account ON ledger_entries(account_code);
     END IF;
 
     -- Customer tables
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'loyalty_customers') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'loyalty_customers' AND column_name = 'tier') THEN
         CREATE INDEX IF NOT EXISTS idx_loyalty_customers_tier ON loyalty_customers(tier);
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'announcements') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'announcements' AND column_name = 'is_active') THEN
         CREATE INDEX IF NOT EXISTS idx_announcements_active ON announcements(is_active);
     END IF;
 
-    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'event_sales_history') THEN
+    IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'event_sales_history') AND
+       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'event_sales_history' AND column_name = 'event_id') AND
+       EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'event_sales_history' AND column_name = 'date') THEN
         CREATE INDEX IF NOT EXISTS idx_event_sales_history_event_date ON event_sales_history(event_id, date);
     END IF;
 END $$;
@@ -141,22 +162,26 @@ BEGIN
 END;
 $$ language 'plpgsql';
 
--- Apply to tables with updated_at (only for tables that exist)
+-- Apply to tables with updated_at (only for tables that exist; idempotent)
 DO $$
 BEGIN
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'inventory_items') THEN
+        DROP TRIGGER IF EXISTS update_inventory_items_updated_at ON inventory_items;
         CREATE TRIGGER update_inventory_items_updated_at BEFORE UPDATE ON inventory_items FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'invoices') THEN
+        DROP TRIGGER IF EXISTS update_invoices_updated_at ON invoices;
         CREATE TRIGGER update_invoices_updated_at BEFORE UPDATE ON invoices FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'loyalty_customers') THEN
+        DROP TRIGGER IF EXISTS update_loyalty_customers_updated_at ON loyalty_customers;
         CREATE TRIGGER update_loyalty_customers_updated_at BEFORE UPDATE ON loyalty_customers FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     END IF;
 
     IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'announcements') THEN
+        DROP TRIGGER IF EXISTS update_announcements_updated_at ON announcements;
         CREATE TRIGGER update_announcements_updated_at BEFORE UPDATE ON announcements FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
     END IF;
 END $$;

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../models/modifier_group.dart';
 import '../models/modifier_item.dart';
 
@@ -8,7 +9,7 @@ class ModifierRepository {
   final SupabaseClient _client;
 
   ModifierRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   // ---------- Modifier Groups ----------
 

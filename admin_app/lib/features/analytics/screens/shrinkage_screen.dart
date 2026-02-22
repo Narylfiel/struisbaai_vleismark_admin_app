@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/models/shrinkage_alert.dart';
 import 'package:admin_app/features/analytics/services/analytics_repository.dart';
 
 class ShrinkageScreen extends StatefulWidget {
@@ -74,7 +75,7 @@ class _ShrinkageTab extends StatefulWidget {
 
 class _ShrinkageTabState extends State<_ShrinkageTab> {
   final _repo = AnalyticsRepository();
-  List<Map<String, dynamic>> _alerts = [];
+  List<ShrinkageAlert> _alerts = [];
   bool _isLoading = true;
 
   @override
@@ -132,7 +133,6 @@ class _ShrinkageTabState extends State<_ShrinkageTab> {
                       itemCount: _alerts.length,
                       itemBuilder: (_, i) {
                         final alert = _alerts[i];
-                        final alertId = alert['id']?.toString() ?? '';
                         return Card(
                           margin: const EdgeInsets.only(bottom: 16),
                           child: Padding(
@@ -144,27 +144,27 @@ class _ShrinkageTabState extends State<_ShrinkageTab> {
                                   children: [
                                     const Icon(Icons.circle, color: AppColors.error, size: 12),
                                     const SizedBox(width: 8),
-                                    Text('Product: ${alert['product_name'] ?? 'Unknown'}', 
+                                    Text('Product: ${alert.productName ?? 'Unknown'}',
                                       style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                                     const Spacer(),
-                                    Text(alert['status'] ?? 'Pending', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.warning)),
+                                    Text(alert.status, style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.warning)),
                                   ],
                                 ),
                                 const SizedBox(height: 8),
-                                Text('Expected Stock: ${alert['theoretical_stock'] ?? '0'} kg'),
-                                Text('Actual Stock: ${alert['actual_stock'] ?? '0'} kg'),
-                                Text('Variance: ${alert['gap_amount'] ?? '0'} kg (${alert['gap_percentage'] ?? '0'}%)', style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
+                                Text('Expected Stock: ${alert.theoreticalStock ?? 0} kg'),
+                                Text('Actual Stock: ${alert.actualStock ?? 0} kg'),
+                                Text('Variance: ${alert.gapAmount ?? 0} kg (${alert.gapPercentage ?? 0}%)', style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.w600)),
                                 const SizedBox(height: 8),
-                                Text('Reason Candidates: ${alert['possible_reasons'] ?? 'Investigation needed'}', style: const TextStyle(color: AppColors.warning)),
-                                Text('Linked Staff Activity: ${alert['staff_involved'] ?? 'Unknown'}', style: const TextStyle(color: AppColors.textSecondary)),
+                                Text('Reason Candidates: ${alert.possibleReasons ?? 'Investigation needed'}', style: const TextStyle(color: AppColors.warning)),
+                                Text('Linked Staff Activity: ${alert.staffInvolved ?? 'Unknown'}', style: const TextStyle(color: AppColors.textSecondary)),
                                 const SizedBox(height: 16),
-                                if (alert['status'] != 'Acknowledged') Row(
+                                if (alert.status != 'Acknowledged') Row(
                                   children: [
-                                    ElevatedButton(onPressed: () => _handleAction(alertId, 'Investigating'), child: const Text('Investigate')),
+                                    ElevatedButton(onPressed: () => _handleAction(alert.id, 'Investigating'), child: const Text('Investigate')),
                                     const SizedBox(width: 8),
-                                    OutlinedButton(onPressed: () => _handleAction(alertId, 'StockTakeTriggered'), child: const Text('Trigger Stock Take')),
+                                    OutlinedButton(onPressed: () => _handleAction(alert.id, 'StockTakeTriggered'), child: const Text('Trigger Stock Take')),
                                     const SizedBox(width: 8),
-                                    TextButton(onPressed: () => _handleAction(alertId, 'Acknowledged'), child: const Text('Acknowledge Alert')),
+                                    TextButton(onPressed: () => _handleAction(alert.id, 'Acknowledged'), child: const Text('Acknowledge Alert')),
                                   ],
                                 )
                               ],
@@ -320,7 +320,11 @@ class _ReorderTabState extends State<_ReorderTab> {
               const Text('Predictive Reorder Insights', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const Spacer(),
               ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Purchase order: use Inventory → Suppliers or Bookkeeping → Invoices to create orders.')),
+                  );
+                },
                 icon: const Icon(Icons.add_shopping_cart, size: 18),
                 label: const Text('Create Purchase Order'),
               ),
@@ -379,11 +383,19 @@ class _EventTabState extends State<_EventTab> {
   final _repo = AnalyticsRepository();
   List<Map<String, dynamic>> _tags = [];
   List<Map<String, dynamic>> _spikes = [];
+  List<Map<String, dynamic>> _forecast = [];
   bool _isLoading = true;
-  String? _selectedEventTagId;
+  bool _forecastLoading = false;
+  String? _selectedEventType;
 
-  final _typeController = TextEditingController();
-  final _descController = TextEditingController();
+  final _eventNameController = TextEditingController();
+  static const List<String> _eventTypes = [
+    'public_holiday',
+    'holiday',
+    'school_holiday',
+    'sporting_event',
+    'local_event',
+  ];
 
   @override
   void initState() {
@@ -391,10 +403,16 @@ class _EventTabState extends State<_EventTab> {
     _load();
   }
 
+  @override
+  void dispose() {
+    _eventNameController.dispose();
+    super.dispose();
+  }
+
   Future<void> _load() async {
     setState(() => _isLoading = true);
     final t = await _repo.getHistoricalEventTags();
-    final s = await _repo.getRecentEvents(); // Untagged
+    final s = await _repo.getRecentEvents();
     if (mounted) {
       setState(() {
         _tags = t;
@@ -404,11 +422,22 @@ class _EventTabState extends State<_EventTab> {
     }
   }
 
+  Future<void> _loadForecast(String eventType) async {
+    setState(() => _forecastLoading = true);
+    final f = await _repo.getForecastForEvent(eventType);
+    if (mounted) {
+      setState(() {
+        _forecast = f;
+        _forecastLoading = false;
+      });
+    }
+  }
+
   Future<void> _saveTag() async {
-    if (_typeController.text.isEmpty || _descController.text.isEmpty) return;
-    await _repo.saveEventTag(_typeController.text, _descController.text);
-    _typeController.clear();
-    _descController.clear();
+    final type = _selectedEventType ?? _eventTypes.first;
+    if (_eventNameController.text.trim().isEmpty) return;
+    await _repo.saveEventTag(type, _eventNameController.text.trim());
+    _eventNameController.clear();
     _load();
   }
 
@@ -433,29 +462,22 @@ class _EventTabState extends State<_EventTab> {
                     children: [
                       const Icon(Icons.stars, color: AppColors.accent),
                       const SizedBox(width: 8),
-                      Text('Unusual Event Detected: ${_spikes.first['date']?.toString().substring(0, 10)}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                      Text('Unusual sales: ${_spikes.first['date'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                     ],
                   ),
                   const SizedBox(height: 8),
-                  Text('Sales spiked by ${_spikes.first['variance_percentage'] ?? '0'}% over rolling average. Tag this for future predictions:'),
+                  Text('Sales +${_spikes.first['variance_percentage'] ?? '0'}% vs 14-day average. Tag for future forecasts:'),
                   const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: _typeController,
-                          decoration: const InputDecoration(labelText: 'Event Tag (e.g. Easter)'),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        flex: 2,
-                        child: TextFormField(
-                          controller: _descController,
-                          decoration: const InputDecoration(labelText: 'Event Description'),
-                        ),
-                      ),
-                    ],
+                  DropdownButtonFormField<String>(
+                    value: _selectedEventType ?? _eventTypes.first,
+                    decoration: const InputDecoration(labelText: 'Event type'),
+                    items: _eventTypes.map((t) => DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' ')))).toList(),
+                    onChanged: (v) => setState(() => _selectedEventType = v),
+                  ),
+                  const SizedBox(height: 12),
+                  TextFormField(
+                    controller: _eventNameController,
+                    decoration: const InputDecoration(labelText: 'Event name (e.g. Easter Weekend)'),
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton(onPressed: _saveTag, child: const Text('Save Event Tag')),
@@ -478,32 +500,46 @@ class _EventTabState extends State<_EventTab> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Demand Prediction for Upcoming Events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                const Text('Demand prediction for upcoming events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
                 const SizedBox(height: 8),
                 if (_tags.isEmpty)
-                  const Text('No historical events tagged yet.')
-                else
+                  const Text('No historical events tagged yet. Tag spikes above to build forecasts.')
+                else ...[
                   DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: 'Select Tagged Holiday / Event'),
-                    initialValue: _selectedEventTagId,
+                    decoration: const InputDecoration(labelText: 'Select tagged event type'),
+                    value: _tags.any((t) => (t['event_type'] ?? t['event_name']) == _selectedEventType)
+                        ? _selectedEventType
+                        : (_tags.isNotEmpty ? _tags.first['event_type']?.toString() ?? _tags.first['event_name']?.toString() : null),
                     items: _tags.map((t) {
+                      final type = t['event_type']?.toString() ?? t['event_name']?.toString() ?? 'unknown';
                       return DropdownMenuItem<String>(
-                        value: t['event_type'],
-                        child: Text(t['event_type'] ?? 'Unknown'),
+                        value: type,
+                        child: Text(t['event_name']?.toString() ?? type),
                       );
                     }).toList(),
                     onChanged: (v) {
-                      setState(() => _selectedEventTagId = v);
+                      setState(() {
+                        _selectedEventType = v;
+                        _forecast = [];
+                      });
+                      if (v != null) _loadForecast(v);
                     },
                   ),
-                const SizedBox(height: 16),
-                const Text('Demand prediction based on past tagged events (Sales history matching tag index):', style: TextStyle(color: AppColors.textSecondary)),
-                const SizedBox(height: 8),
-                if (_selectedEventTagId != null) ...[
-                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on $_selectedEventTagId forecasts, generate a 35kg target for Mince...')),
-                  ListTile(leading: const Icon(Icons.trending_up), title: Text('Based on $_selectedEventTagId forecasts, generate a 60kg target for Boerewors...')),
-                ] else
-                  const Text('Select an event to load forecast models based on its historical performance tag.'),
+                  const SizedBox(height: 16),
+                  if (_selectedEventType != null) ...[
+                    if (_forecastLoading)
+                      const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+                    else if (_forecast.isEmpty)
+                      const Text('No forecast data for this event type yet.', style: TextStyle(color: AppColors.textSecondary))
+                    else
+                      ..._forecast.map((f) => ListTile(
+                            leading: const Icon(Icons.trending_up, color: AppColors.primary),
+                            title: Text(f['product_name']?.toString() ?? '—'),
+                            subtitle: Text('Suggested: ${f['suggested_quantity_kg'] ?? f['suggested_quantity'] ?? '—'} kg'),
+                          )),
+                  ] else
+                    const Text('Select an event type to load forecast from historical performance.', style: TextStyle(color: AppColors.textSecondary)),
+                ],
               ],
             ),
           ),

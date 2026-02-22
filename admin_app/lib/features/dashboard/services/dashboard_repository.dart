@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../../../core/models/transaction.dart';
 
 /// Dashboard data from blueprint §3.2: transactions (today), Transaction Count,
@@ -8,7 +9,7 @@ class DashboardRepository {
   final SupabaseClient _client;
 
   DashboardRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   /// Today's transactions for stats (Today's Sales, Transaction Count, Avg Basket, Margin).
   Future<List<Transaction>> getTransactionsForDateRange(

@@ -60,8 +60,9 @@ class ReportService extends BaseService {
       final sheet = excel[excel.getDefaultSheet()!];
 
       // Add title
-      sheet.cell(CellIndex.indexByString('A1')).value = title;
-      sheet.cell(CellIndex.indexByString('A1')).cellStyle = CellStyle(
+      final titleCell = sheet.cell(CellIndex.indexByString('A1'));
+      titleCell.value = TextCellValue(title);
+      titleCell.cellStyle = CellStyle(
         bold: true,
         fontSize: 16,
       );
@@ -72,7 +73,7 @@ class ReportService extends BaseService {
           columnIndex: i,
           rowIndex: 2,
         ));
-        cell.value = columns[i];
+        cell.value = TextCellValue(columns[i]);
         cell.cellStyle = CellStyle(bold: true);
       }
 
@@ -83,28 +84,26 @@ class ReportService extends BaseService {
             columnIndex: col,
             rowIndex: row + 3,
           ));
-          cell.value = data[row][columns[col]]?.toString() ?? '';
+          cell.value = TextCellValue(data[row][columns[col]]?.toString() ?? '');
         }
       }
 
       // Add summary if provided
       if (summary != null) {
         final summaryRow = data.length + 5;
-        sheet.cell(CellIndex.indexByColumnRow(
+        final summaryLabelCell = sheet.cell(CellIndex.indexByColumnRow(
           columnIndex: 0,
           rowIndex: summaryRow,
-        )).value = 'Summary';
-        sheet.cell(CellIndex.indexByColumnRow(
-          columnIndex: 0,
-          rowIndex: summaryRow,
-        )).cellStyle = CellStyle(bold: true);
+        ));
+        summaryLabelCell.value = TextCellValue('Summary');
+        summaryLabelCell.cellStyle = CellStyle(bold: true);
 
         var summaryIndex = 1;
         summary.forEach((key, value) {
           sheet.cell(CellIndex.indexByColumnRow(
             columnIndex: summaryIndex,
             rowIndex: summaryRow,
-          )).value = '$key: $value';
+          )).value = TextCellValue('$key: $value');
           summaryIndex++;
         });
       }

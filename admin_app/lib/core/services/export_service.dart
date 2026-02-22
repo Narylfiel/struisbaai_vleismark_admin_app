@@ -66,9 +66,9 @@ class ExportService extends BaseService {
       // Add headers
       for (var col = 0; col < columns.length; col++) {
         final headerText = columnHeaders?[columns[col]] ?? columns[col];
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0)).value = headerText;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0)).cellStyle =
-            CellStyle(bold: true, fontSize: 12);
+        final headerCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0));
+        headerCell.value = TextCellValue(headerText);
+        headerCell.cellStyle = CellStyle(bold: true, fontSize: 12);
       }
 
       // Add data rows
@@ -139,14 +139,9 @@ class ExportService extends BaseService {
     bool includeInactive = false,
   }) async {
     try {
-      var query = client
-          .from('inventory_items')
-          .select('*, categories(name)')
-          .order('plu_code');
-
-      if (!includeInactive) {
-        query = query.eq('is_active', true);
-      }
+      final query = !includeInactive
+          ? client.from('inventory_items').select('*, categories(name)').eq('is_active', true).order('plu_code')
+          : client.from('inventory_items').select('*, categories(name)').order('plu_code');
 
       final inventoryData = await executeQuery(() => query, operationName: 'Export inventory data');
 
@@ -345,17 +340,19 @@ class ExportService extends BaseService {
     return stringValue;
   }
 
-  dynamic _formatValueForExcel(dynamic value) {
-    if (value == null) return '';
+  CellValue? _formatValueForExcel(dynamic value) {
+    if (value == null) return TextCellValue('');
 
-    // Handle different data types for Excel
     if (value is DateTime) {
-      return value.toIso8601String().split('T')[0]; // Date only
-    } else if (value is num) {
-      return value;
-    } else {
-      return value.toString();
+      return TextCellValue(value.toIso8601String().split('T')[0]);
     }
+    if (value is int) {
+      return IntCellValue(value);
+    }
+    if (value is double) {
+      return DoubleCellValue(value);
+    }
+    return TextCellValue(value.toString());
   }
 
   pw.Widget _buildPdfHeader(String title, String? subtitle) {

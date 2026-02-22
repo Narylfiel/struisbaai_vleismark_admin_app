@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Repository for storing and reading application configurations mapped directly
 /// to the Business Blueprint Module 13.
@@ -6,7 +7,7 @@ class SettingsRepository {
   final SupabaseClient _client;
 
   SettingsRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   // ═════════════════════════════════════════════════════════
   // 1. BUSINESS SETTINGS

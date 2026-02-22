@@ -9,6 +9,9 @@ import 'category_form_screen.dart';
 import 'product_list_screen.dart';
 import 'modifier_group_list_screen.dart';
 import 'modifier_group_form_screen.dart';
+import 'supplier_list_screen.dart';
+import 'supplier_form_screen.dart';
+import 'stock_take_screen.dart';
 
 class InventoryNavigationScreen extends StatefulWidget {
   const InventoryNavigationScreen({super.key});
@@ -24,7 +27,7 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -54,6 +57,8 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
             Tab(text: 'Categories', icon: Icon(Icons.category)),
             Tab(text: 'Products', icon: Icon(Icons.inventory_2)),
             Tab(text: 'Modifiers', icon: Icon(Icons.add_circle_outline)),
+            Tab(text: 'Suppliers', icon: Icon(Icons.local_shipping)),
+            Tab(text: 'Stock-Take', icon: Icon(Icons.checklist)),
             Tab(text: 'Stock Levels', icon: Icon(Icons.warehouse)),
           ],
         ),
@@ -89,6 +94,16 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
               ],
               compact: true,
             ),
+          if (_tabController.index == 3) // Suppliers
+            ActionButtonsWidget(
+              actions: [
+                ActionButtons.add(
+                  onPressed: () => _navigateToSupplierForm(),
+                  iconOnly: true,
+                )
+              ],
+              compact: true,
+            ),
         ],
       ),
       body: TabBarView(
@@ -103,6 +118,12 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
           // Modifiers Tab - Blueprint §4.3
           const ModifierGroupListScreen(),
 
+          // Suppliers Tab - Blueprint §4.6
+          const SupplierListScreen(),
+
+          // Stock-Take Tab - Blueprint §4.7
+          const StockTakeScreen(),
+
           // Stock Levels Tab - Placeholder for now
           const _StockLevelsPlaceholderScreen(),
         ],
@@ -114,11 +135,12 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
   }
 
   void _navigateToCategoryForm(BuildContext context) {
+    final categoryBloc = context.read<CategoryBloc>();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => BlocProvider.value(
-          value: context.read<CategoryBloc>(),
+        builder: (_) => BlocProvider.value(
+          value: categoryBloc,
           child: CategoryFormScreen(),
         ),
       ),
@@ -139,6 +161,17 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
         builder: (context) => const ModifierGroupFormScreen(),
       ),
     );
+  }
+
+  void _navigateToSupplierForm() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => SupplierFormScreen(),
+      ),
+    ).then((_) {
+      // Refresh supplier list if needed (SupplierListScreen loads on init)
+    });
   }
 }
 

@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'recipe_list_screen.dart';
+import 'production_batch_screen.dart';
+import 'dryer_batch_screen.dart';
 
 class CarcassIntakeScreen extends StatefulWidget {
   const CarcassIntakeScreen({super.key});
@@ -16,7 +19,7 @@ class _CarcassIntakeScreenState extends State<CarcassIntakeScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -38,10 +41,14 @@ class _CarcassIntakeScreenState extends State<CarcassIntakeScreen>
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
+              isScrollable: true,
               tabs: const [
                 Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Yield Templates'),
                 Tab(icon: Icon(Icons.add_box, size: 18), text: 'Carcass Intake'),
                 Tab(icon: Icon(Icons.cut, size: 18), text: 'Pending Breakdowns'),
+                Tab(icon: Icon(Icons.menu_book, size: 18), text: 'Recipes'),
+                Tab(icon: Icon(Icons.batch_prediction, size: 18), text: 'Batches'),
+                Tab(icon: Icon(Icons.ac_unit, size: 18), text: 'Dryer'),
               ],
             ),
           ),
@@ -53,6 +60,9 @@ class _CarcassIntakeScreenState extends State<CarcassIntakeScreen>
                 _YieldTemplatesTab(),
                 _CarcassIntakeTab(),
                 _PendingBreakdownsTab(),
+                RecipeListScreen(),
+                ProductionBatchScreen(),
+                DryerBatchScreen(),
               ],
             ),
           ),

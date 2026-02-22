@@ -301,10 +301,14 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
   }
 
   void _navigateToForm({Category? category}) {
+    final categoryBloc = context.read<CategoryBloc>();
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CategoryFormScreen(category: category),
+        builder: (_) => BlocProvider.value(
+          value: categoryBloc,
+          child: CategoryFormScreen(category: category),
+        ),
       ),
     ).then((_) {
       // Refresh the list when returning from form

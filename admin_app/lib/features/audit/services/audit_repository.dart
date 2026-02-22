@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Repository for retrieving immutable system activity logs 
 /// as defined in AdminAppBluePrintTruth Module 14.
@@ -6,7 +7,7 @@ class AuditRepository {
   final SupabaseClient _client;
 
   AuditRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   // ═════════════════════════════════════════════════════════
   // 1. CHRONOLOGICAL AUDIT LOGS

@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import '../../../core/models/ledger_entry.dart';
 
 /// Blueprint §9: ledger_entries as single financial truth.
@@ -7,7 +8,7 @@ class LedgerRepository {
   final SupabaseClient _client;
 
   LedgerRepository({SupabaseClient? client})
-      : _client = client ?? Supabase.instance.client;
+      : _client = client ?? SupabaseService.client;
 
   /// Create a single ledger entry (one leg of double-entry). Call twice for full double-entry.
   Future<LedgerEntry> createEntry({
