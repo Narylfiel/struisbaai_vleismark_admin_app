@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/auth_service.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import 'package:admin_app/features/dashboard/screens/main_shell.dart';
@@ -88,8 +89,29 @@ class _PinScreenState extends State<PinScreen> {
   @override
   void initState() {
     super.initState();
+    _tryRestoreSession();
     // Silently refresh cache in background on startup
     _refreshCacheIfOnline();
+  }
+
+  /// Restore session from cache with Supabase validation. If valid, navigate to MainShell.
+  Future<void> _tryRestoreSession() async {
+    final staff = await AuthService().restoreSessionFromCache();
+    if (!mounted) return;
+    if (staff != null) {
+      final staffId = staff['id'] as String;
+      final staffName = staff['full_name'] as String;
+      final role = staff['role'] as String;
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => MainShell(
+            staffId: staffId,
+            staffName: staffName,
+            role: role,
+          ),
+        ),
+      );
+    }
   }
 
   /// Try to pull fresh staff data from Supabase and cache it.
@@ -203,6 +225,11 @@ class _PinScreenState extends State<PinScreen> {
     }
 
     // ── Success ───────────────────────────────────────────────
+    AuthService().setSession(
+      staff!['id'] as String,
+      staff['full_name'] as String,
+      role,
+    );
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(

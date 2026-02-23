@@ -15,7 +15,7 @@ class ExportService extends BaseService {
   factory ExportService() => _instance;
   ExportService._internal();
 
-  /// Export data to CSV format
+  /// Export data to CSV format. When data is empty, writes file with header row only.
   Future<File> exportToCsv({
     required String fileName,
     required List<Map<String, dynamic>> data,
@@ -25,7 +25,7 @@ class ExportService extends BaseService {
     try {
       final csvData = <List<dynamic>>[];
 
-      // Add headers
+      // Add headers (always — never skip when data is empty)
       csvData.add(columns);
 
       // Add data rows
@@ -38,10 +38,10 @@ class ExportService extends BaseService {
         csvData.add(csvRow);
       }
 
-      // Convert to CSV string
+      // Convert to CSV string (header + data, or header only when empty)
       final csvString = const ListToCsvConverter().convert(csvData);
 
-      // Save to file
+      // Save to file — never return null or skip when data is empty
       final file = await _getExportFile(fileName, 'csv');
       await file.writeAsString(csvString);
 
@@ -51,7 +51,7 @@ class ExportService extends BaseService {
     }
   }
 
-  /// Export data to Excel format
+  /// Export data to Excel format. When data is empty, writes file with header row only.
   Future<File> exportToExcel({
     required String fileName,
     required List<Map<String, dynamic>> data,
@@ -63,7 +63,7 @@ class ExportService extends BaseService {
       final excel = Excel.createExcel();
       final sheet = excel[sheetName];
 
-      // Add headers
+      // Add headers (always — never skip when data is empty)
       for (var col = 0; col < columns.length; col++) {
         final headerText = columnHeaders?[columns[col]] ?? columns[col];
         final headerCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: 0));
@@ -71,7 +71,7 @@ class ExportService extends BaseService {
         headerCell.cellStyle = CellStyle(bold: true, fontSize: 12);
       }
 
-      // Add data rows
+      // Add data rows (none when empty — header-only file is valid)
       for (var row = 0; row < data.length; row++) {
         for (var col = 0; col < columns.length; col++) {
           final value = data[row][columns[col]];
@@ -85,7 +85,7 @@ class ExportService extends BaseService {
         sheet.setColumnWidth(col, 15);
       }
 
-      // Save to file
+      // Save to file — never return null or skip when data is empty
       final file = await _getExportFile(fileName, 'xlsx');
       await file.writeAsBytes(excel.encode()!);
 
@@ -95,7 +95,8 @@ class ExportService extends BaseService {
     }
   }
 
-  /// Export data to PDF format
+  /// Export data to PDF format. When data is empty, renders full layout with
+  /// headers and one row: 'No data available for the selected period.'
   Future<File> exportToPdf({
     required String fileName,
     required String title,
@@ -104,9 +105,25 @@ class ExportService extends BaseService {
     Map<String, String>? columnHeaders,
     String? subtitle,
     Map<String, dynamic>? summary,
+    String? businessName,
   }) async {
     try {
+      String resolvedBusinessName = businessName ?? '';
+      if (resolvedBusinessName.isEmpty) {
+        try {
+          final row = await client
+              .from('business_settings')
+              .select('setting_value')
+              .eq('setting_key', 'business_name')
+              .maybeSingle();
+          if (row != null && row['setting_value'] != null) {
+            resolvedBusinessName = row['setting_value'].toString();
+          }
+        } catch (_) {}
+      }
+
       final pdf = pw.Document();
+      final genDate = DateTime.now().toString().split('.')[0];
 
       pdf.addPage(
         pw.MultiPage(
@@ -116,11 +133,18 @@ class ExportService extends BaseService {
             _buildPdfHeader(title, subtitle),
             pw.SizedBox(height: 20),
             _buildPdfTable(data, columns, columnHeaders),
-            if (summary != null) ...[
+            if (summary != null && summary.isNotEmpty) ...[
               pw.SizedBox(height: 20),
               _buildPdfSummary(summary),
             ],
           ],
+          footer: (context) => pw.Container(
+            alignment: pw.Alignment.center,
+            child: pw.Text(
+              '${resolvedBusinessName.isNotEmpty ? '$resolvedBusinessName • ' : ''}Generated: $genDate',
+              style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
+            ),
+          ),
         ),
       );
 
@@ -372,10 +396,15 @@ class ExportService extends BaseService {
 
   pw.Widget _buildPdfTable(List<Map<String, dynamic>> data, List<String> columns, Map<String, String>? headers) {
     final headerTexts = columns.map((col) => headers?[col] ?? col).toList();
+    final tableData = data.isEmpty
+        ? [
+            ['No data available for the selected period.', ...List.generate(columns.length > 1 ? columns.length - 1 : 0, (_) => '')],
+          ]
+        : data.map((row) => columns.map((col) => _formatValueForPdf(row[col])).toList()).toList();
 
     return pw.Table.fromTextArray(
       headers: headerTexts,
-      data: data.map((row) => columns.map((col) => _formatValueForPdf(row[col])).toList()).toList(),
+      data: tableData,
       headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
       cellStyle: const pw.TextStyle(fontSize: 9),
       headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),

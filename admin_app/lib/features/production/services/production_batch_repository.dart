@@ -129,22 +129,21 @@ class ProductionBatchRepository {
     return ProductionBatch.fromJson(response as Map<String, dynamic>);
   }
 
-  /// Complete batch: update actuals, deduct each ingredient stock, add output product stock.
+  /// Complete batch: update actuals, deduct ingredients, add each output product to stock.
+  /// outputs: list of {inventory_item_id, qty_produced, unit, notes?}
   Future<ProductionBatch> completeBatch({
     required String batchId,
     required Map<String, double> actualQuantitiesByIngredientId,
-    required double actualOutputQuantity,
+    required List<Map<String, dynamic>> outputs,
     required String completedBy,
+    num? costTotal,
   }) async {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
     if (batch.status == ProductionBatchStatus.completed) {
       throw StateError('Batch already completed');
     }
-    final outputProductId = batch.outputProductId;
-    if (outputProductId == null || outputProductId.isEmpty) {
-      throw StateError('Batch has no output product');
-    }
+    if (outputs.isEmpty) throw ArgumentError('At least one output product required');
 
     final batchIngredients = await getBatchIngredients(batchId);
     for (final bi in batchIngredients) {
@@ -158,6 +157,7 @@ class ProductionBatchRepository {
           .eq('id', bi.id);
     }
 
+    // Deduct ingredients from inventory
     for (final bi in batchIngredients) {
       final actualQty = actualQuantitiesByIngredientId[bi.ingredientId] ?? bi.plannedQuantity;
       if (actualQty <= 0) continue;
@@ -175,24 +175,45 @@ class ProductionBatchRepository {
       }
     }
 
-    await _inventoryRepo.recordMovement(
-      itemId: outputProductId,
-      movementType: MovementType.production,
-      quantity: actualOutputQuantity,
-      referenceType: 'production',
-      referenceId: batchId,
-      performedBy: completedBy,
-      notes: 'Production batch ${batch.batchNumber}',
-    );
+    double totalQty = 0;
+    for (final out in outputs) {
+      final itemId = out['inventory_item_id'] as String?;
+      final qty = (out['qty_produced'] as num?)?.toDouble();
+      final unit = out['unit'] as String? ?? 'kg';
+      final notes = out['notes'] as String?;
+      if (itemId == null || itemId.isEmpty || qty == null || qty <= 0) continue;
+      totalQty += qty;
+
+      await _client.from('production_batch_outputs').insert({
+        'batch_id': batchId,
+        'inventory_item_id': itemId,
+        'qty_produced': qty,
+        'unit': unit,
+        'notes': notes,
+      });
+
+      await _inventoryRepo.recordMovement(
+        itemId: itemId,
+        movementType: MovementType.production,
+        quantity: qty,
+        referenceType: 'production',
+        referenceId: batchId,
+        performedBy: completedBy,
+        notes: 'Production batch ${batch.batchNumber}',
+      );
+    }
+
+    final updateData = <String, dynamic>{
+      'status': 'completed',
+      'actual_quantity': totalQty.round(),
+      'completed_at': DateTime.now().toIso8601String(),
+      'completed_by': completedBy,
+    };
+    if (costTotal != null) updateData['cost_total'] = costTotal;
 
     final response = await _client
         .from('production_batches')
-        .update({
-          'status': 'completed',
-          'actual_quantity': actualOutputQuantity.round(),
-          'completed_at': DateTime.now().toIso8601String(),
-          'completed_by': completedBy,
-        })
+        .update(updateData)
         .eq('id', batchId)
         .select()
         .single();

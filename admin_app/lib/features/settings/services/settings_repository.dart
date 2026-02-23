@@ -10,27 +10,45 @@ class SettingsRepository {
       : _client = client ?? SupabaseService.client;
 
   // ═════════════════════════════════════════════════════════
-  // 1. BUSINESS SETTINGS
+  // 1. BUSINESS SETTINGS (key-value: setting_key, setting_value)
   // ═════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> getBusinessSettings() async {
     try {
-      final response = await _client
+      final rows = await _client
           .from('business_settings')
-          .select()
-          .limit(1)
-          .maybeSingle();
-      return response ?? {};
+          .select('setting_key, setting_value');
+      final map = <String, dynamic>{};
+      for (final r in rows as List) {
+        final k = r['setting_key']?.toString();
+        if (k != null) map[k] = r['setting_value'];
+      }
+      return map;
     } catch (_) {
       return {};
     }
   }
 
   Future<void> updateBusinessSettings(Map<String, dynamic> data) async {
-    final existing = await getBusinessSettings();
-    if (existing.isEmpty) {
-      await _client.from('business_settings').insert(data);
-    } else {
-      await _client.from('business_settings').update(data).eq('id', existing['id']);
+    const keys = [
+      'business_name',
+      'address',
+      'vat_number',
+      'phone',
+      'bcea_start_time',
+      'bcea_end_time',
+    ];
+    for (final key in keys) {
+      final value = data[key];
+      // JSONB validation: skip null and empty string to avoid garbage rows
+      if (value == null) continue;
+      if (value is String && (value as String).trim().isEmpty) continue;
+      // Temporary debug logging
+      print('Saving key: $key → value: $value');
+      final result = await _client.from('business_settings').upsert(
+        {'setting_key': key, 'setting_value': value},
+        onConflict: 'setting_key',
+      );
+      print('Upsert result: $result');
     }
   }
 

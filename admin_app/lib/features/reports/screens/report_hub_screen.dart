@@ -63,6 +63,8 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
       final start = def.requiresDateRange ? _rangeStart : _singleDate;
       final end = def.requiresDateRange ? _rangeEnd : _singleDate;
       final reportData = await _repo.getReportData(def.key, start, end, singleDate: def.key == 'daily_sales' ? _singleDate : null);
+      final isEmpty = reportData.data.isEmpty;
+
       final safeTitle = def.title.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
       final fileName = '${safeTitle}_${start.toIso8601String().substring(0, 10)}_${end.toIso8601String().substring(0, 10)}';
       File file;
@@ -100,7 +102,11 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
           final shortPath = file.path.startsWith(dir.path) ? file.path.substring(dir.path.length) : file.path;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Exported. Save via dialog or find in: $shortPath'),
+              content: Text(
+                isEmpty
+                    ? 'Report generated — no data for this period. File: $shortPath'
+                    : 'Report generated. Save via dialog or find in: $shortPath',
+              ),
               backgroundColor: AppColors.success,
               duration: const Duration(seconds: 4),
             ),

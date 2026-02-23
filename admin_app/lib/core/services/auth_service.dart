@@ -129,6 +129,84 @@ class AuthService extends BaseService {
     }
   }
 
+  /// Set session from external auth (e.g. PIN screen). Call after PIN verification.
+  void setSession(String staffId, String staffName, String role) {
+    _currentStaffId = staffId;
+    _currentStaffName = staffName;
+    _currentRole = role;
+    _persistSession(staffId, staffName, role);
+  }
+
+  /// Restore session from SharedPreferences with Supabase validation.
+  /// Returns validated staff map (id, full_name, role) if valid, otherwise null.
+  /// Validates: staff exists, is_active, role allowed.
+  Future<Map<String, dynamic>?> restoreSessionFromCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cached = prefs.getString(_activeSessionKey);
+      if (cached == null) return null;
+
+      final map = jsonDecode(cached) as Map<String, dynamic>;
+      final id = map['id']?.toString();
+      if (id == null || id.isEmpty) return null;
+
+      // Validate via Supabase: staff exists and is active
+      final response = await executeQuery(
+        () => client
+            .from('staff_profiles')
+            .select('id, full_name, role, is_active')
+            .eq('id', id)
+            .maybeSingle(),
+        operationName: 'Session restore validation',
+      );
+
+      if (response == null) {
+        await logout();
+        return null;
+      }
+
+      final isActive = response['is_active'];
+      if (isActive != true) {
+        await logout();
+        return null;
+      }
+
+      final role = response['role'] as String? ?? '';
+      if (!AdminConfig.allowedRoles.contains(role.toLowerCase())) {
+        await logout();
+        return null;
+      }
+
+      _setCurrentUser({
+        'id': id,
+        'name': response['full_name'],
+        'role': role,
+      });
+      return {
+        'id': id,
+        'full_name': response['full_name'],
+        'role': role,
+      };
+    } catch (e) {
+      print('Session restore failed: $e');
+      await logout();
+      return null;
+    }
+  }
+
+  Future<void> _persistSession(String staffId, String staffName, String role) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_activeSessionKey, jsonEncode({
+        'id': staffId,
+        'name': staffName,
+        'role': role,
+      }));
+    } catch (e) {
+      print('Failed to persist session: $e');
+    }
+  }
+
   /// Logout current user
   Future<void> logout() async {
     _currentStaffId = null;

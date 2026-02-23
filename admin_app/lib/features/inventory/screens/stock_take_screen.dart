@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
@@ -28,6 +29,10 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   bool _loadingSessions = true;
   bool _loadingEntries = false;
   bool _saving = false;
+  String? _scannedItemId;
+  final ScrollController _countListScrollController = ScrollController();
+  final FocusNode _scanFocusNode = FocusNode();
+  final GlobalKey _scrollToKey = GlobalKey();
 
   String? get _userId => _supabase.auth.currentUser?.id;
 
@@ -40,10 +45,86 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
 
   @override
   void dispose() {
+    _countListScrollController.dispose();
+    _scanFocusNode.dispose();
     for (final c in _actualControllers.values) {
       c.dispose();
     }
     super.dispose();
+  }
+
+  /// Lookup product by barcode: inventory_items WHERE barcode = ? OR plu_code = ?
+  Future<Map<String, dynamic>?> _lookupByBarcode(String barcode) async {
+    final trimmed = barcode.trim();
+    if (trimmed.isEmpty) return null;
+    try {
+      var row = await _supabase
+          .from('inventory_items')
+          .select('id, name, plu_code, barcode')
+          .eq('barcode', trimmed)
+          .eq('is_active', true)
+          .maybeSingle();
+      if (row != null) return row;
+      final pluNum = int.tryParse(trimmed);
+      if (pluNum != null) {
+        row = await _supabase
+            .from('inventory_items')
+            .select('id, name, plu_code, barcode')
+            .eq('plu_code', pluNum)
+            .eq('is_active', true)
+            .maybeSingle();
+      }
+      return row;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _openBarcodeScanner() async {
+    final barcode = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const _BarcodeScannerOverlay(),
+      ),
+    );
+    if (barcode == null || barcode.isEmpty || !mounted) return;
+    final item = await _lookupByBarcode(barcode);
+    if (!mounted) return;
+    if (item == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No product found for barcode $barcode'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    final id = item['id'] as String?;
+    if (id == null) return;
+    final index = _items.indexWhere((e) => e['id'] == id);
+    if (index < 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Product found but not in current count list.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+    setState(() => _scannedItemId = id);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _scannedItemId != id) return;
+      try {
+        final ctx = _scrollToKey.currentContext;
+        if (ctx != null) {
+          Scrollable.ensureVisible(ctx, alignment: 0.3, duration: const Duration(milliseconds: 300));
+        }
+        _scanFocusNode.requestFocus();
+        Future.delayed(const Duration(milliseconds: 2500), () {
+          if (mounted) setState(() => _scannedItemId = null);
+        });
+      } catch (_) {}
+    });
   }
 
   Future<void> _loadLocations() async {
@@ -400,13 +481,23 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Enter counts',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
+            Row(
+              children: [
+                const Text(
+                  'Enter counts',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                IconButton(
+                  onPressed: _openBarcodeScanner,
+                  icon: const Icon(Icons.qr_code_scanner, color: AppColors.primary),
+                  tooltip: 'Scan barcode to locate product',
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             Row(
@@ -435,6 +526,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
               ConstrainedBox(
                 constraints: const BoxConstraints(maxHeight: 400),
                 child: ListView.builder(
+                  controller: _countListScrollController,
                   shrinkWrap: true,
                   itemCount: _items.length,
                   itemBuilder: (context, i) {
@@ -443,37 +535,48 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
                     final name = item['name'] as String? ?? '';
                     final plu = item['plu_code']?.toString() ?? '';
                     final expected = _expectedForItem(item);
+                    final isScanned = _scannedItemId == id;
                     _actualControllers[id] ??= TextEditingController();
                     return Padding(
+                      key: isScanned ? _scrollToKey : null,
                       padding: const EdgeInsets.symmetric(vertical: 4),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 120,
-                            child: Text('$plu', overflow: TextOverflow.ellipsis),
-                          ),
-                          Expanded(
-                            flex: 2,
-                            child: Text(name, overflow: TextOverflow.ellipsis),
-                          ),
-                          SizedBox(
-                            width: 60,
-                            child: Text(expected.toStringAsFixed(2),
-                                style: const TextStyle(color: AppColors.textSecondary)),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 80,
-                            child: TextField(
-                              controller: _actualControllers[id],
-                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                              decoration: const InputDecoration(
-                                labelText: 'Actual',
-                                isDense: true,
+                      child: Container(
+                        decoration: isScanned
+                            ? BoxDecoration(
+                                color: AppColors.primary.withValues(alpha: 0.08),
+                                borderRadius: BorderRadius.circular(6),
+                              )
+                            : null,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 120,
+                              child: Text('$plu', overflow: TextOverflow.ellipsis),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: Text(name, overflow: TextOverflow.ellipsis),
+                            ),
+                            SizedBox(
+                              width: 60,
+                              child: Text(expected.toStringAsFixed(2),
+                                  style: const TextStyle(color: AppColors.textSecondary)),
+                            ),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 80,
+                              child: TextField(
+                                focusNode: isScanned ? _scanFocusNode : null,
+                                controller: _actualControllers[id],
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: const InputDecoration(
+                                  labelText: 'Actual',
+                                  isDense: true,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     );
                   },
@@ -573,5 +676,48 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   String _formatDate(DateTime d) {
     return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')} '
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+  }
+}
+
+/// Full-screen barcode scanner overlay. On detect, pops with barcode raw value.
+class _BarcodeScannerOverlay extends StatefulWidget {
+  const _BarcodeScannerOverlay();
+
+  @override
+  State<_BarcodeScannerOverlay> createState() => _BarcodeScannerOverlayState();
+}
+
+class _BarcodeScannerOverlayState extends State<_BarcodeScannerOverlay> {
+  bool _alreadyPopped = false;
+
+  void _onDetect(BarcodeCapture capture) {
+    if (_alreadyPopped) return;
+    final barcodes = capture.barcodes;
+    if (barcodes.isEmpty) return;
+    final raw = barcodes.first.rawValue;
+    if (raw == null || raw.isEmpty) return;
+    _alreadyPopped = true;
+    Navigator.of(context).pop(raw);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        title: const Text('Scan barcode'),
+        backgroundColor: Colors.black87,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+        ],
+      ),
+      body: MobileScanner(
+        onDetect: _onDetect,
+      ),
+    );
   }
 }

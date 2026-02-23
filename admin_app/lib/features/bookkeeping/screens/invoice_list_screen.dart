@@ -11,6 +11,8 @@ import 'package:admin_app/features/bookkeeping/screens/ledger_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/pl_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/vat_report_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/cash_flow_screen.dart';
+import 'package:admin_app/features/bookkeeping/screens/equipment_register_screen.dart';
+import 'package:admin_app/features/bookkeeping/screens/pty_conversion_screen.dart';
 import 'package:admin_app/features/inventory/services/supplier_repository.dart';
 
 class InvoiceListScreen extends StatefulWidget {
@@ -27,7 +29,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
   }
 
   @override
@@ -54,6 +56,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Ledger'),
                 Tab(icon: Icon(Icons.account_balance_wallet, size: 18), text: 'Chart of Accounts'),
                 Tab(icon: Icon(Icons.bar_chart, size: 18), text: 'P&L / Reports'),
+                Tab(icon: Icon(Icons.build, size: 18), text: 'Equipment'),
                 Tab(icon: Icon(Icons.business, size: 18), text: 'PTY Conversion'),
               ],
             ),
@@ -67,7 +70,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 LedgerScreen(embedded: true),
                 ChartOfAccountsScreen(embedded: true),
                 _ReportsHubTab(),
-                _PtyConversionTab(),
+                EquipmentRegisterScreen(embedded: true),
+                PtyConversionScreen(embedded: true),
               ],
             ),
           ),
@@ -255,17 +259,19 @@ class _InvoicesTabState extends State<_InvoicesTab> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           color: AppColors.surfaceBg,
-          child: const Row(children: [
-            Expanded(flex: 2, child: Text('SUPPLIER', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 120, child: Text('INVOICE #', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('DATE', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('TOTAL', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 120, child: Text('STATUS', style: _h)),
-          ]),
+          child: Row(
+            children: [
+              const Expanded(flex: 2, child: Text('SUPPLIER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              const SizedBox(width: 16),
+              const SizedBox(width: 120, child: Text('INVOICE #', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              const SizedBox(width: 16),
+              const SizedBox(width: 100, child: Text('DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              const SizedBox(width: 16),
+              const SizedBox(width: 100, child: Text('TOTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              const SizedBox(width: 16),
+              const SizedBox(width: 120, child: Text('STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+            ],
+          ),
         ),
         const Divider(height: 1, color: AppColors.border),
         Expanded(
@@ -372,109 +378,3 @@ class _ReportsHubTabState extends State<_ReportsHubTab>
   }
 }
 
-// ══════════════════════════════════════════════════════════════════
-// TAB 4: PTY CONVERSION & EQUIPMENT
-// ══════════════════════════════════════════════════════════════════
-
-class _PtyConversionTab extends StatefulWidget {
-  const _PtyConversionTab();
-  @override
-  State<_PtyConversionTab> createState() => _PtyConversionTabState();
-}
-
-class _PtyConversionTabState extends State<_PtyConversionTab> {
-  final _supabase = SupabaseService.client;
-  List<Map<String, dynamic>> _equipment = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
-    try {
-      final data = await _supabase.from('equipment_register').select('*');
-      setState(() => _equipment = List<Map<String, dynamic>>.from(data));
-    } catch (e) {
-      debugPrint('Equipment load: $e');
-    }
-    setState(() => _isLoading = false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          color: AppColors.cardBg,
-          child: Row(
-            children: [
-              const Text('Equipment Register (PTY Conversion)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Equipment'),
-              ),
-            ],
-          ),
-        ),
-        const Divider(height: 1, color: AppColors.border),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          color: AppColors.surfaceBg,
-          child: const Row(children: [
-            Expanded(flex: 2, child: Text('NAME', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 120, child: Text('SERIAL NO', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('ORIG COST', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('XFER VALUE', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 80, child: Text('LIFE (YRS)', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('BOOK VALUE', style: _h)),
-          ]),
-        ),
-        const Divider(height: 1, color: AppColors.border),
-        Expanded(
-          child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _equipment.isEmpty
-                  ? const Center(child: Text('No equipment registered'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-                      itemCount: _equipment.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
-                      itemBuilder: (_, i) {
-                        final eq = _equipment[i];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(children: [
-                            Expanded(flex: 2, child: Text(eq['name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 120, child: Text(eq['serial_number'] ?? '—')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${(eq['original_cost'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${(eq['transfer_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(color: AppColors.primary))),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 80, child: Text('${eq['useful_life_years'] ?? '0'}')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${(eq['current_book_value'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                          ]),
-                        );
-                      },
-                    ),
-        ),
-      ],
-    );
-  }
-}
-
-const _h = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5);

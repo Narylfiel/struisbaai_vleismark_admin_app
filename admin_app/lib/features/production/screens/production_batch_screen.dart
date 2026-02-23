@@ -318,6 +318,13 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
   }
 }
 
+class _OutputRow {
+  String? inventoryItemId;
+  final TextEditingController qtyController = TextEditingController();
+  String unit = 'kg';
+  final TextEditingController notesController = TextEditingController();
+}
+
 class _CompleteBatchScreen extends StatefulWidget {
   final ProductionBatch batch;
   final ProductionBatchRepository batchRepo;
@@ -335,11 +342,12 @@ class _CompleteBatchScreen extends StatefulWidget {
 
 class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
   final _client = SupabaseService.client;
-  final _outputQtyController = TextEditingController();
+  final _costTotalController = TextEditingController();
+  List<_OutputRow> _outputRows = [];
   Map<String, TextEditingController> _actualControllers = {};
   List<ProductionBatchIngredient> _batchIngredients = [];
   Map<String, RecipeIngredient> _ingredientById = {};
-  /// C1: current_stock per inventory_item_id for ingredient list (single source of truth).
+  List<Map<String, dynamic>> _inventoryItems = [];
   Map<String, double> _availableStockByItemId = {};
   bool _loading = true;
   bool _saving = false;
@@ -359,7 +367,6 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         if (ri != null) _ingredientById[bi.ingredientId] = ri;
         _actualControllers[bi.ingredientId] = TextEditingController(text: bi.plannedQuantity.toString());
       }
-      // C1: Load current_stock for each linked inventory item so ingredient list shows accurate available stock.
       final itemIds = _ingredientById.values
           .map((ri) => ri.inventoryItemId)
           .where((id) => id != null && id.isNotEmpty)
@@ -380,9 +387,19 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         }
         if (mounted) _availableStockByItemId = map;
       }
+      final inv = await _client
+          .from('inventory_items')
+          .select('id, name, unit_type')
+          .eq('is_active', true)
+          .order('name');
+      final invList = List<Map<String, dynamic>>.from(inv as List);
       if (mounted) {
         setState(() {
           _batchIngredients = batchIng;
+          _inventoryItems = invList;
+          if (_outputRows.isEmpty) {
+            _outputRows.add(_OutputRow());
+          }
           _loading = false;
         });
       }
@@ -398,18 +415,139 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
 
   @override
   void dispose() {
-    _outputQtyController.dispose();
+    _costTotalController.dispose();
+    for (final row in _outputRows) {
+      row.qtyController.dispose();
+      row.notesController.dispose();
+    }
     for (final c in _actualControllers.values) {
       c.dispose();
     }
     super.dispose();
   }
 
+  void _addOutputRow() {
+    setState(() => _outputRows.add(_OutputRow()));
+  }
+
+  void _removeOutputRow(int index) {
+    if (_outputRows.length <= 1) return;
+    setState(() {
+      _outputRows[index].qtyController.dispose();
+      _outputRows[index].notesController.dispose();
+      _outputRows.removeAt(index);
+    });
+  }
+
+  Widget _buildOutputRow(int index) {
+    final row = _outputRows[index];
+    Map<String, dynamic>? selectedItem;
+    if (row.inventoryItemId != null) {
+      try {
+        selectedItem = _inventoryItems.firstWhere((m) => m['id']?.toString() == row.inventoryItemId);
+      } catch (_) {}
+    }
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<Map<String, dynamic>>(
+                      value: selectedItem,
+                      decoration: const InputDecoration(
+                        labelText: 'Product',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: [
+                        const DropdownMenuItem<Map<String, dynamic>>(
+                          value: null,
+                          child: Text('— Select product —'),
+                        ),
+                        ..._inventoryItems.map((m) => DropdownMenuItem<Map<String, dynamic>>(
+                              value: m,
+                              child: Text(m['name']?.toString() ?? ''),
+                            )),
+                      ],
+                      onChanged: (v) {
+                        setState(() {
+                          row.inventoryItemId = v?['id']?.toString();
+                          row.unit = v?['unit_type']?.toString() ?? 'kg';
+                        });
+                      },
+                    ),
+                  ),
+                  if (_outputRows.length > 1)
+                    IconButton(
+                      onPressed: () => _removeOutputRow(index),
+                      icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger, size: 22),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: TextFormField(
+                      controller: row.qtyController,
+                      decoration: const InputDecoration(
+                        labelText: 'Qty produced',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(row.unit, style: const TextStyle(fontSize: 14)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: row.notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _complete() async {
-    final outputQty = double.tryParse(_outputQtyController.text);
-    if (outputQty == null || outputQty <= 0) {
+    final outputs = <Map<String, dynamic>>[];
+    for (final row in _outputRows) {
+      if (row.inventoryItemId == null || row.inventoryItemId!.isEmpty) continue;
+      final qty = double.tryParse(row.qtyController.text);
+      if (qty == null || qty <= 0) continue;
+      outputs.add({
+        'inventory_item_id': row.inventoryItemId,
+        'qty_produced': qty,
+        'unit': row.unit,
+        'notes': row.notesController.text.trim().isEmpty ? null : row.notesController.text.trim(),
+      });
+    }
+    if (outputs.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter actual output quantity'), backgroundColor: AppColors.danger),
+        const SnackBar(content: Text('Add at least one output product with quantity'), backgroundColor: AppColors.danger),
       );
       return;
     }
@@ -418,13 +556,15 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
       final v = double.tryParse(entry.value.text);
       if (v != null && v >= 0) actuals[entry.key] = v;
     }
+    final costTotal = double.tryParse(_costTotalController.text);
     setState(() => _saving = true);
     try {
       await widget.batchRepo.completeBatch(
         batchId: widget.batch.id,
         actualQuantitiesByIngredientId: actuals,
-        actualOutputQuantity: outputQty,
+        outputs: outputs,
         completedBy: '', // TODO: from auth
+        costTotal: costTotal,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -495,12 +635,25 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
               );
             }),
             const SizedBox(height: 16),
-            const Text('Actual output quantity (kg)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            Row(
+              children: [
+                const Text('Outputs', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                const SizedBox(width: 16),
+                IconButton(
+                  onPressed: _addOutputRow,
+                  icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+                  tooltip: 'Add output row',
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
+            ...List.generate(_outputRows.length, (i) => _buildOutputRow(i)),
+            const SizedBox(height: 16),
             TextFormField(
-              controller: _outputQtyController,
+              controller: _costTotalController,
               decoration: const InputDecoration(
-                hintText: 'e.g. 49.4',
+                labelText: 'Total cost (optional)',
+                hintText: 'e.g. 1250.00',
                 border: OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),

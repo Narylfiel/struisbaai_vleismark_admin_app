@@ -97,12 +97,12 @@ class _BusinessTabState extends State<_BusinessTab> {
     final data = await _repo.getBusinessSettings();
     if (mounted) {
       setState(() {
-        _nameController.text = data['business_name'] ?? '';
-        _addressController.text = data['address'] ?? '';
-        _vatController.text = data['vat_number'] ?? '';
-        _phoneController.text = data['phone'] ?? '';
-        _startTimeController.text = data['bcea_start_time'] ?? '07:00';
-        _endTimeController.text = data['bcea_end_time'] ?? '17:00';
+        _nameController.text = data['business_name']?.toString() ?? '';
+        _addressController.text = data['address']?.toString() ?? '';
+        _vatController.text = data['vat_number']?.toString() ?? '';
+        _phoneController.text = data['phone']?.toString() ?? '';
+        _startTimeController.text = data['bcea_start_time']?.toString() ?? '07:00';
+        _endTimeController.text = data['bcea_end_time']?.toString() ?? '17:00';
         _isLoading = false;
       });
     }
@@ -110,17 +110,26 @@ class _BusinessTabState extends State<_BusinessTab> {
 
   Future<void> _save() async {
     setState(() => _isLoading = true);
-    await _repo.updateBusinessSettings({
-      'business_name': _nameController.text,
-      'address': _addressController.text,
-      'vat_number': _vatController.text,
-      'phone': _phoneController.text,
-      'bcea_start_time': _startTimeController.text,
-      'bcea_end_time': _endTimeController.text,
-    });
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Business Settings Saved')));
-      setState(() => _isLoading = false);
+    try {
+      await _repo.updateBusinessSettings({
+        'business_name': _nameController.text,
+        'address': _addressController.text,
+        'vat_number': _vatController.text,
+        'phone': _phoneController.text,
+        'bcea_start_time': _startTimeController.text,
+        'bcea_end_time': _endTimeController.text,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Business Settings Saved')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
