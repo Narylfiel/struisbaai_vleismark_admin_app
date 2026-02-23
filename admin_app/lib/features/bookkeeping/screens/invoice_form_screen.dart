@@ -11,10 +11,13 @@ import '../models/invoice_line_item.dart';
 import '../services/invoice_repository.dart';
 
 /// Blueprint §9.1: Manual invoice entry — supplier, dates, line items; save as draft.
+/// When opened from Account Detail "New Invoice", [initialAccountId] pre-fills the invoice's account.
 class InvoiceFormScreen extends StatefulWidget {
   final Invoice? invoice;
+  /// If set (e.g. from Account Detail), new invoice will be created with this account_id.
+  final String? initialAccountId;
 
-  const InvoiceFormScreen({super.key, this.invoice});
+  const InvoiceFormScreen({super.key, this.invoice, this.initialAccountId});
 
   @override
   State<InvoiceFormScreen> createState() => _InvoiceFormScreenState();
@@ -183,7 +186,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
         await _invoiceRepository.create(
           invoiceNumber: _invoiceNumberController.text.trim(),
           supplierId: _selectedSupplierId,
-          accountId: null,
+          accountId: widget.initialAccountId,
           invoiceDate: _invoiceDate,
           dueDate: _dueDate,
           subtotal: subtotal,

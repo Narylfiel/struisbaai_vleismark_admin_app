@@ -264,11 +264,8 @@ class ProductListScreenState extends State<ProductListScreen> {
                           final gp = sell > 0
                               ? ((sell - cost) / sell * 100)
                               : 0.0;
-                          final cur = p['current_stock'];
-                          final onHand = (cur != null && cur is num)
-                              ? (cur as num).toDouble()
-                              : ((p['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0) +
-                                    ((p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0);
+                          // C1: Single source of truth — POS trigger updates current_stock; UI uses it only.
+                          final onHand = (p['current_stock'] as num?)?.toDouble() ?? 0;
                           final isActive = p['is_active'] as bool? ?? true;
                           final reorder =
                               (p['reorder_level'] as num?)?.toDouble() ?? 0;

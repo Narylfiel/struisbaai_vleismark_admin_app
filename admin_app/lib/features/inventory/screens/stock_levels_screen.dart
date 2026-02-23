@@ -4,7 +4,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Blueprint §4.4: Stock Levels — table view of all products across locations.
-/// Real data from inventory_items (stock_on_hand_fresh, stock_on_hand_frozen, reorder_level).
+/// C1: Single source of truth — display uses current_stock (updated by POS trigger).
 class StockLevelsScreen extends StatefulWidget {
   const StockLevelsScreen({super.key});
 
@@ -39,16 +39,9 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
     setState(() => _isLoading = false);
   }
 
-  /// Single source: prefer current_stock (updated by POS trigger), else fresh+frozen.
+  /// C1: Single source of truth — current_stock only (POS trigger updates it).
   double _onHand(Map<String, dynamic> p) {
-    final cur = p['current_stock'];
-    if (cur != null) {
-      final v = (cur as num?)?.toDouble();
-      if (v != null) return v;
-    }
-    final fresh = (p['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-    final frozen = (p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-    return fresh + frozen;
+    return (p['current_stock'] as num?)?.toDouble() ?? 0;
   }
 
   double _reorderLevel(Map<String, dynamic> p) {
@@ -139,7 +132,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                       itemBuilder: (_, i) {
                         final p = _filtered[i];
-                        final onHand = _onHand(p);
+                        final onHand = _onHand(p); // C1: current_stock only
                         final fresh = (p['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
                         final frozen = (p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
                         final reorder = _reorderLevel(p);

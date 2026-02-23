@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/accounts/screens/account_detail_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 
 class AccountListScreen extends StatefulWidget {
@@ -145,6 +146,16 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
     );
   }
 
+  void _openDetail(Map<String, dynamic> a) {
+    final id = a['id']?.toString();
+    if (id == null || id.isEmpty) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AccountDetailScreen(accountId: id),
+      ),
+    );
+  }
+
   void _recordPayment(Map<String, dynamic> acc) {
     // C4: Block when not logged in (ledger requires recordedBy)
     if (AuthService().currentStaffId == null || AuthService().currentStaffId!.isEmpty) {
@@ -269,7 +280,7 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
           SizedBox(width: 12),
           SizedBox(width: 60,  child: Text('TERMS', style: _hS)),
           SizedBox(width: 12),
-          SizedBox(width: 140, child: Text('ACTIONS', style: _hS)),
+          SizedBox(width: 160, child: Text('ACTIONS', style: _hS)),
         ]),
       ),
       const Divider(height: 1, color: AppColors.border),
@@ -296,11 +307,13 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
                       final statusColor = _statusColor(a);
                       final suspended = a['suspended'] as bool? ?? false;
 
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(children: [
-                          // Business name + type
-                          Expanded(
+                      return InkWell(
+                        onTap: () => _openDetail(a),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(children: [
+                            // Business name + type
+                            Expanded(
                             flex: 3,
                             child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -429,8 +442,16 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
                           const SizedBox(width: 12),
                           // Actions
                           SizedBox(
-                            width: 140,
+                            width: 160,
                             child: Row(children: [
+                              // View detail
+                              _actionBtn(
+                                icon: Icons.visibility,
+                                color: AppColors.primary,
+                                tooltip: 'View Account',
+                                onTap: () => _openDetail(a),
+                              ),
+                              const SizedBox(width: 4),
                               // Record payment
                               if (balance > 0)
                                 _actionBtn(
@@ -464,6 +485,7 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
                             ]),
                           ),
                         ]),
+                        ),
                       );
                     },
                   ),
@@ -1786,20 +1808,61 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   DateTime _date   = DateTime.now();
   bool _isSaving   = false;
 
+  /// C3: Resolve staff id for ledger recorded_by when currentStaffId is null (session edge case).
+  Future<String?> _getFallbackStaffId() async {
+    final user = SupabaseService.client.auth.currentUser;
+    if (user == null) return null;
+    // profiles.id often equals auth.users.id in Supabase
+    try {
+      final fromProfiles = await _supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+      if (fromProfiles != null && fromProfiles['id'] != null) {
+        return fromProfiles['id'] as String?;
+      }
+    } catch (_) {}
+    // staff_profiles may link via auth_user_id (adjust column name if different)
+    try {
+      final fromStaff = await _supabase
+          .from('staff_profiles')
+          .select('id')
+          .eq('auth_user_id', user.id)
+          .maybeSingle();
+      if (fromStaff != null && fromStaff['id'] != null) {
+        return fromStaff['id'] as String?;
+      }
+    } catch (_) {
+      try {
+        final fromStaff = await _supabase
+            .from('staff_profiles')
+            .select('id')
+            .eq('id', user.id)
+            .maybeSingle();
+        return fromStaff?['id'] as String?;
+      } catch (_) {}
+    }
+    return null;
+  }
+
   Future<void> _save() async {
-    // C4: Ledger requires recordedBy; block payment when not logged in.
-    final staffId = AuthService().currentStaffId;
+    // C3: Resolve staff id before any insert; ledger requires non-null recorded_by (FK).
+    String? staffId = AuthService().currentStaffId;
+    staffId ??= SupabaseService.client.auth.currentUser?.id;
+    staffId ??= await _getFallbackStaffId();
     if (staffId == null || staffId.isEmpty) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Sign in with PIN to record payments (required for ledger)'),
+            content: Text('Cannot record payment: no active session. Please log in again.'),
             backgroundColor: AppColors.warning,
           ),
         );
       }
       return;
     }
+    final recordedBy = staffId;
     final amt = double.tryParse(_amtCtrl.text);
     if (amt == null || amt <= 0) return;
     setState(() => _isSaving = true);
@@ -1834,30 +1897,27 @@ class _PaymentDialogState extends State<_PaymentDialog> {
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', accId);
 
-      // Blueprint §9: post payment to ledger (DR Cash/Bank, CR Accounts Receivable)
-      final recordedBy = AuthService().currentStaffId;
-      if (recordedBy != null && recordedBy.isNotEmpty) {
-        try {
-          final drCode = _method.toUpperCase() == 'CASH' ? '1000' : '1100';
-          final drName = _method.toUpperCase() == 'CASH' ? 'Cash on Hand' : 'Bank Account';
-          await LedgerRepository().createDoubleEntry(
-            date: DateTime(_date.year, _date.month, _date.day),
-            debitAccountCode: drCode,
-            debitAccountName: drName,
-            creditAccountCode: '1200',
-            creditAccountName: 'Accounts Receivable (Business Accounts)',
-            amount: amt,
-            description: _notesCtrl.text.trim().isEmpty ? 'Payment received' : _notesCtrl.text.trim(),
-            referenceId: accId,
-            source: 'payment_received',
-            recordedBy: recordedBy,
+      // C3: recordedBy already resolved above; do not insert ledger with null (FK violation).
+      try {
+        final drCode = _method.toUpperCase() == 'CASH' ? '1000' : '1100';
+        final drName = _method.toUpperCase() == 'CASH' ? 'Cash on Hand' : 'Bank Account';
+        await LedgerRepository().createDoubleEntry(
+          date: DateTime(_date.year, _date.month, _date.day),
+          debitAccountCode: drCode,
+          debitAccountName: drName,
+          creditAccountCode: '1200',
+          creditAccountName: 'Accounts Receivable (Business Accounts)',
+          amount: amt,
+          description: _notesCtrl.text.trim().isEmpty ? 'Payment received' : _notesCtrl.text.trim(),
+          referenceId: accId,
+          source: 'payment_received',
+          recordedBy: recordedBy,
+        );
+      } catch (ledgerErr) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Payment saved; ledger update failed: $ledgerErr'), backgroundColor: AppColors.warning),
           );
-        } catch (ledgerErr) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Payment saved; ledger update failed: $ledgerErr'), backgroundColor: AppColors.warning),
-            );
-          }
         }
       }
 

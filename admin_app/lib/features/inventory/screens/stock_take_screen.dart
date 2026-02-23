@@ -121,12 +121,9 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     }
   }
 
+  /// C1: Single source of truth — current_stock only.
   double _expectedForItem(Map<String, dynamic> item) {
-    final cur = item['current_stock'];
-    if (cur != null) return (cur as num).toDouble();
-    final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-    final frozen = (item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-    return fresh + frozen;
+    return (item['current_stock'] as num?)?.toDouble() ?? 0;
   }
 
   Future<void> _startStockTake() async {

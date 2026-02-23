@@ -219,4 +219,42 @@ class LedgerRepository {
     }
     return (cashIn: cashIn, cashOut: cashOut, bankIn: bankIn, bankOut: bankOut);
   }
+
+  /// Monthly cash flow for chart: returns list of {month, label, cashIn, cashOut, bankIn, bankOut, totalIn, totalOut, net}.
+  Future<List<Map<String, dynamic>>> getCashFlowByMonth(int monthCount) async {
+    final now = DateTime.now();
+    final months = <Map<String, dynamic>>[];
+    for (var i = monthCount - 1; i >= 0; i--) {
+      final y = now.year;
+      final m = now.month - i;
+      int year = y;
+      int month = m;
+      if (m < 1) {
+        year = y - 1;
+        month = m + 12;
+      }
+      final start = DateTime(year, month, 1);
+      final end = DateTime(year, month + 1, 0);
+      final cf = await getCashFlowSummary(start, end);
+      final totalIn = cf.cashIn + cf.bankIn;
+      final totalOut = cf.cashOut + cf.bankOut;
+      months.add({
+        'month': '$year-${month.toString().padLeft(2, '0')}',
+        'label': _monthLabel(month),
+        'cashIn': cf.cashIn,
+        'cashOut': cf.cashOut,
+        'bankIn': cf.bankIn,
+        'bankOut': cf.bankOut,
+        'totalIn': totalIn,
+        'totalOut': totalOut,
+        'net': totalIn - totalOut,
+      });
+    }
+    return months;
+  }
+
+  static String _monthLabel(int m) {
+    const names = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    return names[m - 1];
+  }
 }

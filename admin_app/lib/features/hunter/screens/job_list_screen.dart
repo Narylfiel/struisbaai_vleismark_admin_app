@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/hunter/screens/job_intake_screen.dart';
+import 'package:admin_app/features/hunter/screens/job_process_screen.dart';
+import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
 import 'dart:math';
 
 class JobListScreen extends StatefulWidget {
@@ -114,18 +117,34 @@ class _JobsTabState extends State<_JobsTab> {
     }
   }
 
+  /// H1: FAB → job_intake_screen (new job).
   void _openJobForm() {
-    showDialog(
-      context: context,
-      builder: (_) => _JobFormDialog(onSaved: _load),
-    );
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const JobIntakeScreen()),
+    ).then((_) => _load());
   }
 
+  /// H1: Tap row → job_process_screen (intake/processing) or job_summary_screen (ready/collected).
   void _openJobDetails(Map<String, dynamic> job) {
-    showDialog(
-      context: context,
-      builder: (_) => _JobDetailsDialog(job: job, onSaved: _load),
-    );
+    final status = (job['status'] as String?)?.toLowerCase() ?? '';
+    final isProcess = status == 'intake' || status == 'processing' ||
+        job['status'] == 'Intake' || job['status'] == 'Processing';
+    final isSummary = status == 'ready' || status == 'collected' ||
+        job['status'] == 'Ready for Collection' || job['status'] == 'Completed';
+    if (isProcess) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => JobProcessScreen(job: job)),
+      ).then((_) => _load());
+    } else if (isSummary) {
+      Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => JobSummaryScreen(job: job)),
+      ).then((_) => _load());
+    } else {
+      showDialog(
+        context: context,
+        builder: (_) => _JobDetailsDialog(job: job, onSaved: _load),
+      );
+    }
   }
 
   @override
@@ -195,17 +214,17 @@ class _JobsTabState extends State<_JobsTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(job['customer_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                  Text(job['customer_phone'] ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                  Text(job['customer_name'] ?? job['client_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  Text(job['customer_phone'] ?? job['client_contact'] ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 ],
                               )
                             ),
                             const SizedBox(width: 16),
                             Expanded(
-                              child: Text('${job['animal_type'] ?? 'Unknown'} - ${(job['estimated_weight'] as num?)?.toStringAsFixed(1) ?? '0.0'} kg')
+                              child: Text('${job['animal_type'] ?? 'Unknown'} - ${(job['estimated_weight'] as num?)?.toStringAsFixed(1) ?? (job['estimated_weight_kg'] as num?)?.toStringAsFixed(1) ?? '0.0'} kg')
                             ),
                             const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${(job['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                            SizedBox(width: 100, child: Text('R ${((job['total_amount'] ?? job['quoted_price'] ?? job['final_price']) as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                             const SizedBox(width: 16),
                             SizedBox(
                               width: 120, 
@@ -464,11 +483,11 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
           children: [
             Row(
               children: [
-                Expanded(child: Text('Customer: ${widget.job['customer_name']}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                Expanded(child: Text('Customer: ${widget.job['customer_name'] ?? widget.job['client_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.bold))),
                 Text('Status: $_status', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
               ],
             ),
-            Text('Animal: ${widget.job['animal_type']} (${widget.job['estimated_weight']} kg)'),
+            Text('Animal: ${widget.job['animal_type'] ?? '—'} (${(widget.job['estimated_weight'] ?? widget.job['estimated_weight_kg']) ?? '—'} kg)'),
             const SizedBox(height: 16),
             const Text('Processing Steps', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const Divider(),

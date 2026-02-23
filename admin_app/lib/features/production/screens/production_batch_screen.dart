@@ -35,19 +35,9 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     try {
       final batches = await _batchRepo.getBatches();
       final recipes = await _recipeRepo.getRecipes(activeOnly: true);
-      List<Map<String, dynamic>> invList;
-      try {
-        final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
-        invList = List<Map<String, dynamic>>.from(inv as List);
-      } catch (_) {
-        final inv = await _client.from('inventory_items').select('id, name, stock_on_hand_fresh, stock_on_hand_frozen').eq('is_active', true).order('name');
-        invList = List<Map<String, dynamic>>.from(inv as List);
-        for (final item in invList) {
-          final f = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-          final z = (item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-          item['current_stock'] = f + z;
-        }
-      }
+      // C1: Single source of truth — current_stock only (POS trigger updates it).
+      final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
+      final invList = List<Map<String, dynamic>>.from(inv as List);
       if (mounted) {
         setState(() {
           _batches = batches;
@@ -344,10 +334,13 @@ class _CompleteBatchScreen extends StatefulWidget {
 }
 
 class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
+  final _client = SupabaseService.client;
   final _outputQtyController = TextEditingController();
   Map<String, TextEditingController> _actualControllers = {};
   List<ProductionBatchIngredient> _batchIngredients = [];
   Map<String, RecipeIngredient> _ingredientById = {};
+  /// C1: current_stock per inventory_item_id for ingredient list (single source of truth).
+  Map<String, double> _availableStockByItemId = {};
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -365,6 +358,27 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         final ri = await widget.recipeRepo.getIngredient(bi.ingredientId);
         if (ri != null) _ingredientById[bi.ingredientId] = ri;
         _actualControllers[bi.ingredientId] = TextEditingController(text: bi.plannedQuantity.toString());
+      }
+      // C1: Load current_stock for each linked inventory item so ingredient list shows accurate available stock.
+      final itemIds = _ingredientById.values
+          .map((ri) => ri.inventoryItemId)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+      if (itemIds.isNotEmpty) {
+        final rows = await _client
+            .from('inventory_items')
+            .select('id, current_stock')
+            .inFilter('id', itemIds);
+        final map = <String, double>{};
+        for (final row in rows as List) {
+          final id = (row as Map)['id']?.toString();
+          if (id != null) {
+            map[id] = (row['current_stock'] as num?)?.toDouble() ?? 0;
+          }
+        }
+        if (mounted) _availableStockByItemId = map;
       }
       if (mounted) {
         setState(() {
@@ -452,6 +466,13 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
               final ri = _ingredientById[bi.ingredientId];
               final name = ri?.ingredientName ?? bi.ingredientId.substring(0, 8);
               final ctrl = _actualControllers[bi.ingredientId];
+              // C1: Show current_stock available for linked inventory item (single source of truth).
+              final available = ri?.inventoryItemId != null
+                  ? _availableStockByItemId[ri!.inventoryItemId]
+                  : null;
+              final availableStr = available != null
+                  ? '${available.toStringAsFixed(1)} kg available'
+                  : '—';
               return Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Row(
@@ -467,6 +488,8 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
                     ),
                     const SizedBox(width: 8),
                     Text('(${bi.plannedQuantity.toStringAsFixed(1)} planned)', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(width: 8),
+                    Text(availableStr, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                   ],
                 ),
               );

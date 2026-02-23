@@ -4,6 +4,10 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
 import 'package:admin_app/features/analytics/services/analytics_repository.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ShrinkageScreen extends StatefulWidget {
   const ShrinkageScreen({super.key});
@@ -313,7 +317,7 @@ class _ReorderTabState extends State<_ReorderTab> {
   void _openCreatePODialog() {
     showDialog(
       context: context,
-      builder: (_) => _CreatePODialog(recs: _recs, onSaved: _load),
+      builder: (_) => _CreatePODialog(onSaved: _load),
     );
   }
 
@@ -557,45 +561,63 @@ class _EventTabState extends State<_EventTab> {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// CREATE PURCHASE ORDER DIALOG (H7 / C9)
+// CREATE PURCHASE ORDER DIALOG (C4: supplier-first, products by supplier only)
 // ══════════════════════════════════════════════════════════════════
 class _CreatePODialog extends StatefulWidget {
-  final List<Map<String, dynamic>> recs;
   final VoidCallback onSaved;
 
-  const _CreatePODialog({required this.recs, required this.onSaved});
+  const _CreatePODialog({required this.onSaved});
 
   @override
   State<_CreatePODialog> createState() => _CreatePODialogState();
+}
+
+class _POLineRow {
+  final String id;
+  final String name;
+  final String? supplierCode;
+  final double currentStock;
+  final double reorderLevel;
+  final double unitPrice;
+  final String unit;
+  final TextEditingController qtyController;
+
+  _POLineRow({
+    required this.id,
+    required this.name,
+    this.supplierCode,
+    required this.currentStock,
+    required this.reorderLevel,
+    required this.unitPrice,
+    this.unit = 'kg',
+    required this.qtyController,
+  });
 }
 
 class _CreatePODialogState extends State<_CreatePODialog> {
   final _client = SupabaseService.client;
   List<Map<String, dynamic>> _suppliers = [];
   String? _selectedSupplierId;
-  final Map<String, TextEditingController> _qtyControllers = {};
-  bool _loading = true;
+  List<_POLineRow> _productRows = [];
+  bool _loadingSuppliers = true;
+  bool _loadingProducts = false;
   bool _saving = false;
+  String? _savedPoNumber;
+  Map<String, dynamic>? _savedSupplier;
+  List<Map<String, dynamic>>? _savedLines;
+  double? _savedGrandTotal;
 
   @override
   void initState() {
     super.initState();
     _loadSuppliers();
-    for (final r in widget.recs) {
-      final id = r['inventory_item_id']?.toString();
-      if (id != null) {
-        final rec = r;
-        final suggested = (rec['current_stock'] != null && rec['reorder_point'] != null)
-            ? ((rec['reorder_point'] as num).toDouble() - (rec['current_stock'] as num).toDouble()).clamp(0.0, double.infinity)
-            : null;
-        _qtyControllers[id] = TextEditingController(text: suggested != null && suggested > 0 ? suggested.toStringAsFixed(0) : '');
-      }
-    }
   }
 
   @override
   void dispose() {
-    for (final c in _qtyControllers.values) c.dispose();
+    for (final row in _productRows) {
+      row.qtyController.dispose();
+    }
     super.dispose();
   }
 
@@ -603,39 +625,112 @@ class _CreatePODialogState extends State<_CreatePODialog> {
     try {
       final data = await _client
           .from('suppliers')
-          .select('id, name')
+          .select('id, name, phone')
           .eq('is_active', true)
           .order('name');
       if (mounted) {
         setState(() {
           _suppliers = List<Map<String, dynamic>>.from(data as List);
-          _loading = false;
-          if (_suppliers.isNotEmpty && _selectedSupplierId == null) {
-            _selectedSupplierId = _suppliers.first['id'] as String?;
-          }
+          _loadingSuppliers = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _loadingSuppliers = false);
     }
+  }
+
+  /// C4: Load ONLY that supplier's products (inventory_items JOIN product_suppliers).
+  Future<void> _loadProductsForSupplier(String supplierId) async {
+    setState(() {
+      for (final row in _productRows) row.qtyController.dispose();
+      _productRows = [];
+      _loadingProducts = true;
+    });
+    try {
+      final psRows = await _client
+          .from('product_suppliers')
+          .select('inventory_item_id, supplier_product_code, unit_price')
+          .eq('supplier_id', supplierId);
+      final itemIds = (psRows as List)
+          .map((r) => (r as Map)['inventory_item_id']?.toString())
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+      if (itemIds.isEmpty) {
+        if (mounted) setState(() => _loadingProducts = false);
+        return;
+      }
+      final iiRows = await _client
+          .from('inventory_items')
+          .select('id, name, plu_code, unit_type, current_stock, reorder_level, reorder_point')
+          .inFilter('id', itemIds)
+          .eq('is_active', true)
+          .order('name');
+      final psByItem = <String, Map<String, dynamic>>{};
+      for (final r in psRows as List) {
+        final id = (r as Map)['inventory_item_id']?.toString();
+        if (id != null) psByItem[id] = Map<String, dynamic>.from(r as Map);
+      }
+      final rows = <_POLineRow>[];
+      for (final r in iiRows as List) {
+        final map = r as Map<String, dynamic>;
+        final id = map['id']?.toString();
+        if (id == null) continue;
+        final ps = psByItem[id];
+        final currentStock = (map['current_stock'] as num?)?.toDouble() ?? 0;
+        final reorderLevel = (map['reorder_level'] as num?)?.toDouble() ?? (map['reorder_point'] as num?)?.toDouble() ?? 0;
+        final unitPrice = (ps?['unit_price'] as num?)?.toDouble() ?? 0;
+        final unit = map['unit_type']?.toString() ?? 'kg';
+        final suggested = reorderLevel > 0 && currentStock < reorderLevel
+            ? ((reorderLevel - currentStock).clamp(1.0, double.infinity))
+            : 0.0;
+        final ctrl = TextEditingController(text: suggested > 0 ? suggested.toStringAsFixed(0) : '');
+        rows.add(_POLineRow(
+          id: id,
+          name: map['name']?.toString() ?? '—',
+          supplierCode: ps?['supplier_product_code']?.toString(),
+          currentStock: currentStock,
+          reorderLevel: reorderLevel,
+          unitPrice: unitPrice,
+          unit: unit,
+          qtyController: ctrl,
+        ));
+      }
+      if (mounted) setState(() {
+        _productRows = rows;
+        _loadingProducts = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingProducts = false);
+    }
+  }
+
+  double _grandTotal() {
+    double t = 0;
+    for (final row in _productRows) {
+      final qty = double.tryParse(row.qtyController.text.trim()) ?? 0;
+      if (qty > 0) t += qty * row.unitPrice;
+    }
+    return t;
   }
 
   Future<void> _save() async {
     if (_selectedSupplierId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a supplier.')));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a supplier first.')));
       return;
     }
     final lines = <Map<String, dynamic>>[];
-    for (final r in widget.recs) {
-      final id = r['inventory_item_id']?.toString();
-      if (id == null) continue;
-      final c = _qtyControllers[id];
-      final qty = double.tryParse(c?.text.trim() ?? '') ?? 0;
+    for (final row in _productRows) {
+      final qty = double.tryParse(row.qtyController.text.trim()) ?? 0;
       if (qty <= 0) continue;
+      final lineTotal = qty * row.unitPrice;
       lines.add({
-        'inventory_item_id': id,
+        'inventory_item_id': row.id,
         'quantity': qty,
-        'unit': 'kg',
+        'unit': row.unit,
+        'unit_price': row.unitPrice,
+        'line_total': lineTotal,
       });
     }
     if (lines.isEmpty) {
@@ -670,38 +765,129 @@ class _CreatePODialogState extends State<_CreatePODialog> {
           'purchase_order_id': poId,
         });
       }
+
+      final supplier = _suppliers.firstWhere((s) => s['id']?.toString() == _selectedSupplierId, orElse: () => <String, dynamic>{});
+      final savedLines = lines.map((l) {
+        final row = _productRows.firstWhere((r) => r.id == l['inventory_item_id']);
+        return {
+          'name': row.name,
+          'supplier_code': row.supplierCode,
+          'qty': l['quantity'],
+          'unit_price': row.unitPrice,
+          'line_total': l['line_total'],
+        };
+      }).toList();
+      final grandTotal = savedLines.fold<double>(0, (s, l) => s + ((l['line_total'] as num?)?.toDouble() ?? 0));
+
       if (mounted) {
-        Navigator.of(context).pop();
+        setState(() {
+          _saving = false;
+          _savedPoNumber = poNumber;
+          _savedSupplier = supplier.isNotEmpty ? supplier : null;
+          _savedLines = savedLines;
+          _savedGrandTotal = grandTotal;
+        });
         widget.onSaved();
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Purchase order $poNumber created.')));
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
       }
-    } finally {
-      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _generatePdf() async {
+    if (_savedPoNumber == null || _savedSupplier == null || _savedLines == null || _savedGrandTotal == null) return;
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.MultiPage(
+        build: (context) => [
+          pw.Header(level: 0, child: pw.Text('Purchase Order $_savedPoNumber', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold))),
+          pw.Paragraph(text: 'Supplier: ${_savedSupplier!['name'] ?? '—'}'),
+          pw.Paragraph(text: 'Phone: ${_savedSupplier!['phone'] ?? '—'}'),
+          pw.Paragraph(text: 'Date: ${DateTime.now().toIso8601String().substring(0, 10)}'),
+          pw.Table(
+            border: pw.TableBorder.all(width: 0.5),
+            children: [
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                children: [
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Product', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Code', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Qty', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Unit price', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Total', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                ],
+              ),
+              ..._savedLines!.map((l) => pw.TableRow(
+                children: [
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(l['name']?.toString() ?? '—')),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(l['supplier_code']?.toString() ?? '—')),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('${l['qty']}')),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('R ${(l['unit_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('R ${(l['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                ],
+              )),
+            ],
+          ),
+          pw.Paragraph(text: 'Grand total: R ${_savedGrandTotal!.toStringAsFixed(2)}'),
+        ],
+      ),
+    );
+    await Printing.layoutPdf(onLayout: (_) async => pdf.save());
+  }
+
+  Future<void> _sendWhatsApp() async {
+    if (_savedSupplier == null || _savedLines == null || _savedGrandTotal == null) return;
+    final phone = _savedSupplier!['phone']?.toString()?.replaceAll(RegExp(r'[^\d+]'), '') ?? '';
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No phone number for supplier.')));
+      return;
+    }
+    final buffer = StringBuffer('Purchase Order $_savedPoNumber\n\n');
+    for (final l in _savedLines!) {
+      buffer.writeln('${l['name']} x ${l['qty']} = R ${(l['line_total'] as num?)?.toStringAsFixed(2)}');
+    }
+    buffer.writeln('\nTotal: R ${_savedGrandTotal!.toStringAsFixed(2)}');
+    final text = Uri.encodeComponent(buffer.toString());
+    final url = Uri.parse('https://wa.me/$phone?text=$text');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not open WhatsApp.')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final recsWithId = widget.recs.where((r) => r['inventory_item_id'] != null).toList();
+    if (_savedPoNumber != null) {
+      return AlertDialog(
+        title: const Text('PO created'),
+        content: Text('Purchase order $_savedPoNumber has been saved.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Done')),
+          TextButton.icon(onPressed: _generatePdf, icon: const Icon(Icons.picture_as_pdf, size: 18), label: const Text('Generate PDF')),
+          TextButton.icon(onPressed: _sendWhatsApp, icon: const Icon(Icons.chat, size: 18), label: const Text('Send WhatsApp')),
+        ],
+      );
+    }
     return AlertDialog(
       title: const Text('Create Purchase Order'),
       content: SizedBox(
-        width: 400,
-        child: _loading
+        width: 720,
+        child: _loadingSuppliers
             ? const Center(child: CircularProgressIndicator())
             : SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text('Supplier', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const Text('Step 1: Select supplier', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
                       value: _selectedSupplierId,
+                      isExpanded: true,
                       decoration: const InputDecoration(border: OutlineInputBorder()),
                       items: _suppliers
                           .map((s) => DropdownMenuItem<String>(
@@ -709,34 +895,69 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                                 child: Text(s['name']?.toString() ?? '—'),
                               ))
                           .toList(),
-                      onChanged: (v) => setState(() => _selectedSupplierId = v),
+                      onChanged: (v) {
+                        setState(() => _selectedSupplierId = v);
+                        if (v != null) _loadProductsForSupplier(v);
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    const Text('Products & quantities', style: TextStyle(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 8),
-                    ...recsWithId.map((r) {
-                      final id = r['inventory_item_id']?.toString();
-                      if (id == null) return const SizedBox.shrink();
-                      final c = _qtyControllers[id];
-                      if (c == null) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: Row(
+                    if (_selectedSupplierId != null) ...[
+                      const SizedBox(height: 16),
+                      const Text('Step 2: Products (this supplier only) — edit order qty', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      if (_loadingProducts)
+                        const Padding(padding: EdgeInsets.all(24), child: Center(child: CircularProgressIndicator())),
+                      if (!_loadingProducts && _productRows.isEmpty)
+                        const Padding(padding: EdgeInsets.all(16), child: Text('No products linked to this supplier. Add product-supplier links in Inventory.')),
+                      if (!_loadingProducts && _productRows.isNotEmpty) ...[
+                        Table(
+                          columnWidths: const {
+                            0: FlexColumnWidth(2),
+                            1: FlexColumnWidth(1),
+                            2: FlexColumnWidth(0.8),
+                            3: FlexColumnWidth(0.8),
+                            4: FlexColumnWidth(0.8),
+                            5: FlexColumnWidth(0.8),
+                          },
                           children: [
-                            Expanded(flex: 2, child: Text(r['product_name']?.toString() ?? '—', overflow: TextOverflow.ellipsis)),
-                            const SizedBox(width: 8),
-                            SizedBox(
-                              width: 80,
-                              child: TextField(
-                                controller: c,
-                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder(), isDense: true),
-                              ),
+                            TableRow(
+                              decoration: BoxDecoration(color: AppColors.border.withOpacity(0.3)),
+                              children: const [
+                                Padding(padding: EdgeInsets.all(6), child: Text('Name', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Supplier Code', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Stock', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Reorder', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Unit price', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Order Qty', style: TextStyle(fontWeight: FontWeight.w600))),
+                              ],
                             ),
+                            ..._productRows.map((row) {
+                              final qty = double.tryParse(row.qtyController.text.trim()) ?? 0;
+                              final lineTotal = qty > 0 ? qty * row.unitPrice : 0.0;
+                              return TableRow(
+                                children: [
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.name, overflow: TextOverflow.ellipsis)),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.supplierCode ?? '—')),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text('${row.currentStock.toStringAsFixed(1)} ${row.unit}')),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text('${row.reorderLevel.toStringAsFixed(1)}')),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text('R ${row.unitPrice.toStringAsFixed(2)}')),
+                                  Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: TextField(
+                                      controller: row.qtyController,
+                                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                      decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
+                                      onChanged: (_) => setState(() {}),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }),
                           ],
                         ),
-                      );
-                    }),
+                        const SizedBox(height: 12),
+                        Text('Grand total: R ${_grandTotal().toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                      ],
+                    ],
                   ],
                 ),
               ),

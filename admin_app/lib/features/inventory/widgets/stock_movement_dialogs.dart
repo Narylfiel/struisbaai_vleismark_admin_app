@@ -1030,15 +1030,8 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
   @override
   void initState() {
     super.initState();
-    final cur = widget.product['current_stock'];
-    double onHand;
-    if (cur != null && cur is num) {
-      onHand = (cur as num).toDouble();
-    } else {
-      final fresh = (widget.product['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-      final frozen = (widget.product['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-      onHand = fresh + frozen;
-    }
+    // C1: Single source of truth — current_stock only.
+    final onHand = (widget.product['current_stock'] as num?)?.toDouble() ?? 0;
     _quantityController.text = onHand.toStringAsFixed(3);
   }
 

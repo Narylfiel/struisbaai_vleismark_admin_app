@@ -140,9 +140,8 @@ class InventoryRepository {
         .select('id, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
         .eq('id', itemId)
         .single();
-    final cur = (item['current_stock'] as num?)?.toDouble() ??
-        ((item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0) +
-            ((item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0);
+    // C1: Single source of truth — use current_stock only for previous value.
+    final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
     final variance = actualQuantity - cur;
     if (variance == 0) {
       // Still record zero-quantity adjustment for audit
@@ -169,14 +168,10 @@ class InventoryRepository {
         .select()
         .single();
 
+    // C1: Adjustment updates current_stock only (never fresh/frozen).
     if (item.containsKey('current_stock')) {
       await _client.from('inventory_items').update({
         'current_stock': actualQuantity,
-      }).eq('id', itemId);
-    } else if (item.containsKey('stock_on_hand_fresh')) {
-      await _client.from('inventory_items').update({
-        'stock_on_hand_fresh': actualQuantity,
-        'stock_on_hand_frozen': 0,
       }).eq('id', itemId);
     }
 

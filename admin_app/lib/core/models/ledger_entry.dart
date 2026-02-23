@@ -68,7 +68,7 @@ class LedgerEntry extends BaseModel {
       referenceId: json['reference_id'] as String?,
       source: json['source'] as String?,
       metadata: json['metadata'] as Map<String, dynamic>?,
-      recordedBy: json['recorded_by'] as String? ?? '',
+      recordedBy: (json['recorded_by'] ?? json['created_by'])?.toString() ?? '',
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

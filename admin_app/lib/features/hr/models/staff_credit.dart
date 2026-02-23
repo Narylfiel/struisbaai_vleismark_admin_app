@@ -5,6 +5,9 @@ enum StaffCreditType {
   meatPurchase,
   salaryAdvance,
   loan,
+  deduction,
+  repayment,
+  other,
 }
 
 extension StaffCreditTypeExt on StaffCreditType {
@@ -16,6 +19,12 @@ extension StaffCreditTypeExt on StaffCreditType {
         return 'salary_advance';
       case StaffCreditType.loan:
         return 'loan';
+      case StaffCreditType.deduction:
+        return 'deduction';
+      case StaffCreditType.repayment:
+        return 'repayment';
+      case StaffCreditType.other:
+        return 'other';
     }
   }
 
@@ -25,6 +34,12 @@ extension StaffCreditTypeExt on StaffCreditType {
         return StaffCreditType.salaryAdvance;
       case 'loan':
         return StaffCreditType.loan;
+      case 'deduction':
+        return StaffCreditType.deduction;
+      case 'repayment':
+        return StaffCreditType.repayment;
+      case 'other':
+        return StaffCreditType.other;
       default:
         return StaffCreditType.meatPurchase;
     }
@@ -178,13 +193,13 @@ class StaffCredit extends BaseModel {
   }
 
   @override
-  bool validate() => staffId.isNotEmpty && amount >= 0 && reason.isNotEmpty && grantedBy.isNotEmpty;
+  bool validate() => staffId.isNotEmpty && amount != 0 && reason.isNotEmpty && grantedBy.isNotEmpty;
 
   @override
   List<String> getValidationErrors() {
     final e = <String>[];
     if (staffId.isEmpty) e.add('Staff is required');
-    if (amount < 0) e.add('Amount cannot be negative');
+    if (amount == 0) e.add('Amount is required');
     if (reason.isEmpty) e.add('Reason is required');
     if (grantedBy.isEmpty) e.add('Granted by is required');
     return e;

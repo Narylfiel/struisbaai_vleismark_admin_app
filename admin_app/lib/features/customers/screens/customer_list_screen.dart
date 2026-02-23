@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/features/customers/services/customer_repository.dart';
+import 'package:admin_app/features/customers/screens/announcement_screen.dart';
+import 'package:admin_app/features/customers/screens/recipe_library_screen.dart';
 
 class CustomerListScreen extends StatefulWidget {
   const CustomerListScreen({super.key});
@@ -51,8 +53,8 @@ class _CustomerListScreenState extends State<CustomerListScreen>
               controller: _tabController,
               children: [
                 _CustomersTab(),
-                _AnnouncementsTab(),
-                _RecipesTab(),
+                const AnnouncementScreen(embedded: true),
+                const RecipeLibraryScreen(embedded: true),
               ],
             ),
           ),
@@ -230,157 +232,3 @@ class _CustomersTabState extends State<_CustomersTab> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════
-// TAB 2: ANNOUNCEMENTS
-// ══════════════════════════════════════════════════════════════════
-class _AnnouncementsTab extends StatefulWidget {
-  @override
-  State<_AnnouncementsTab> createState() => _AnnouncementsTabState();
-}
-
-class _AnnouncementsTabState extends State<_AnnouncementsTab> {
-  final _repo = CustomerRepository();
-  List<Map<String, dynamic>> _announcements = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
-    final res = await _repo.getAnnouncements();
-    if (mounted) {
-      setState(() {
-        _announcements = res;
-        _isLoading = false;
-      });
-    }
-  }
-
-  void _createPush() {
-    // Scaffold UI form would go here mapping specifically to target_tier inserts
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Push UI ready. Awaiting Supabase triggers.')));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('Push Announcements', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              ElevatedButton.icon(onPressed: _createPush, icon: const Icon(Icons.campaign), label: const Text('CREATE PUSH MESSAGE')),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _isLoading 
-            ? const Center(child: CircularProgressIndicator())
-            : _announcements.isEmpty
-              ? const Center(child: Text('No active announcements targeting loyalty apps. Build one to reach customers.'))
-              : ListView.builder(
-                  itemCount: _announcements.length,
-                  itemBuilder: (_, i) {
-                    final item = _announcements[i];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: const Icon(Icons.notifications_active, color: AppColors.primary),
-                        title: Text(item['title'] ?? 'Untitled', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text(item['body'] ?? ''),
-                        trailing: Text('Target: ${item['target_tier'] ?? 'All'}'),
-                      ),
-                    );
-                  },
-              ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════
-// TAB 3: RECIPES
-// ══════════════════════════════════════════════════════════════════
-class _RecipesTab extends StatefulWidget {
-  @override
-  State<_RecipesTab> createState() => _RecipesTabState();
-}
-
-class _RecipesTabState extends State<_RecipesTab> {
-  final _repo = CustomerRepository();
-  List<Map<String, dynamic>> _recipes = [];
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    setState(() => _isLoading = true);
-    final res = await _repo.getRecipes();
-    if (mounted) {
-      setState(() {
-        _recipes = res;
-        _isLoading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Text('Recipe Library (Customer Facing App Feeds)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              ElevatedButton.icon(onPressed: () {}, icon: const Icon(Icons.add), label: const Text('UPLOAD RECIPE')),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: _isLoading 
-            ? const Center(child: CircularProgressIndicator())
-            : _recipes.isEmpty
-              ? const Center(child: Text('Add recipes here. Tag them with "Braai", "Game Meat", or "Sunday Roast" to show on customer feeds.'))
-              : ListView.builder(
-                  itemCount: _recipes.length,
-                  itemBuilder: (_, i) {
-                    final item = _recipes[i];
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        leading: const Icon(Icons.fastfood, color: AppColors.accent),
-                        title: Text(item['title'] ?? 'Unknown Recipe', style: const TextStyle(fontWeight: FontWeight.bold)),
-                        subtitle: Text('Tags: ${item['tags'] ?? 'None'}'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete, color: AppColors.error),
-                          onPressed: () async {
-                            await _repo.deleteRecipe(item['id']?.toString() ?? '');
-                            _load();
-                          },
-                        ),
-                      ),
-                    );
-                  },
-              ),
-          ),
-        ],
-      ),
-    );
-  }
-}

@@ -7,6 +7,8 @@ import 'package:admin_app/features/inventory/screens/inventory_navigation_screen
 import 'package:admin_app/features/production/screens/carcass_intake_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_list_screen.dart';
 import 'package:admin_app/features/hr/screens/staff_list_screen.dart';
+import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
+import 'package:admin_app/features/hr/screens/compliance_screen.dart';
 import 'package:admin_app/features/accounts/screens/account_list_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/invoice_list_screen.dart';
 import 'package:admin_app/features/analytics/screens/shrinkage_screen.dart';
@@ -42,6 +44,8 @@ class _MainShellState extends State<MainShell> {
       _NavItem(icon: Icons.cut,           label: 'Production',  screen: const CarcassIntakeScreen()),
       _NavItem(icon: Icons.forest,        label: 'Hunter',      screen: const JobListScreen()),
       _NavItem(icon: Icons.people,        label: 'HR / Staff',  screen: const StaffListScreen()),
+      _NavItem(icon: Icons.account_balance_wallet, label: 'Staff Credits', screen: const StaffCreditScreen()),
+      _NavItem(icon: Icons.fact_check,    label: 'Compliance', screen: const ComplianceScreen()),
       _NavItem(icon: Icons.credit_card,   label: 'Accounts',    screen: const AccountListScreen()),
       if (isOwner)
         _NavItem(icon: Icons.book,        label: 'Bookkeeping', screen: const InvoiceListScreen()),
