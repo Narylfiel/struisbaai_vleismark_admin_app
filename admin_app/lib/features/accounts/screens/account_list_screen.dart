@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 
 class AccountListScreen extends StatefulWidget {
   const AccountListScreen({super.key});
@@ -72,7 +75,7 @@ class _BusinessAccountsTab extends StatefulWidget {
 }
 
 class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _accounts = [];
   bool _isLoading = true;
   bool _showInactive = false;
@@ -143,6 +146,16 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
   }
 
   void _recordPayment(Map<String, dynamic> acc) {
+    // C4: Block when not logged in (ledger requires recordedBy)
+    if (AuthService().currentStaffId == null || AuthService().currentStaffId!.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Sign in with PIN to record payments'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
     showDialog(
       context: context,
       builder: (_) => _PaymentDialog(account: acc, onSaved: _load),
@@ -546,7 +559,7 @@ class _AccountStatementsTab extends StatefulWidget {
 }
 
 class _AccountStatementsTabState extends State<_AccountStatementsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _accounts = [];
   Map<String, dynamic>? _selectedAccount;
   List<Map<String, dynamic>> _transactions = [];
@@ -1043,7 +1056,7 @@ class _OverdueTab extends StatefulWidget {
 }
 
 class _OverdueTabState extends State<_OverdueTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _accounts = [];
   bool _isLoading = true;
 
@@ -1421,7 +1434,7 @@ class _AccountFormDialog extends StatefulWidget {
 }
 
 class _AccountFormDialogState extends State<_AccountFormDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   bool _isSaving = false;
 
   final _nameCtrl        = TextEditingController();
@@ -1766,7 +1779,7 @@ class _PaymentDialog extends StatefulWidget {
 }
 
 class _PaymentDialogState extends State<_PaymentDialog> {
-  final _supabase  = Supabase.instance.client;
+  final _supabase  = SupabaseService.client;
   final _amtCtrl   = TextEditingController();
   final _notesCtrl = TextEditingController();
   String _method   = 'EFT';
@@ -1774,6 +1787,19 @@ class _PaymentDialogState extends State<_PaymentDialog> {
   bool _isSaving   = false;
 
   Future<void> _save() async {
+    // C4: Ledger requires recordedBy; block payment when not logged in.
+    final staffId = AuthService().currentStaffId;
+    if (staffId == null || staffId.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sign in with PIN to record payments (required for ledger)'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
     final amt = double.tryParse(_amtCtrl.text);
     if (amt == null || amt <= 0) return;
     setState(() => _isSaving = true);
@@ -1807,6 +1833,33 @@ class _PaymentDialogState extends State<_PaymentDialog> {
         'balance':    newBalance,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', accId);
+
+      // Blueprint §9: post payment to ledger (DR Cash/Bank, CR Accounts Receivable)
+      final recordedBy = AuthService().currentStaffId;
+      if (recordedBy != null && recordedBy.isNotEmpty) {
+        try {
+          final drCode = _method.toUpperCase() == 'CASH' ? '1000' : '1100';
+          final drName = _method.toUpperCase() == 'CASH' ? 'Cash on Hand' : 'Bank Account';
+          await LedgerRepository().createDoubleEntry(
+            date: DateTime(_date.year, _date.month, _date.day),
+            debitAccountCode: drCode,
+            debitAccountName: drName,
+            creditAccountCode: '1200',
+            creditAccountName: 'Accounts Receivable (Business Accounts)',
+            amount: amt,
+            description: _notesCtrl.text.trim().isEmpty ? 'Payment received' : _notesCtrl.text.trim(),
+            referenceId: accId,
+            source: 'payment_received',
+            recordedBy: recordedBy,
+          );
+        } catch (ledgerErr) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Payment saved; ledger update failed: $ledgerErr'), backgroundColor: AppColors.warning),
+            );
+          }
+        }
+      }
 
       widget.onSaved();
       if (mounted) Navigator.pop(context);

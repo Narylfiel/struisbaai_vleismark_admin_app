@@ -35,7 +35,8 @@ class AnalyticsRepository {
   }
 
   Future<void> updateShrinkageStatus(String alertId, String newStatus) async {
-    await _client.from('shrinkage_alerts').update({'status': newStatus}).eq('id', alertId);
+    final resolved = newStatus == 'Accepted' || newStatus == 'Resolved' || newStatus == 'Acknowledged';
+    await _client.from('shrinkage_alerts').update({'status': newStatus, 'resolved': resolved}).eq('id', alertId);
   }
 
   Future<void> triggerMassBalance() async {
@@ -100,6 +101,7 @@ class AnalyticsRepository {
 
   // ═════════════════════════════════════════════════════════
   // 3. PREDICTIVE REORDER (reorder_recommendations or inventory + velocity)
+  // Phase 4: Fallback uses same source as Stock Levels (inventory_items: current_stock, reorder_point/reorder_level).
   // ═════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> getReorderRecommendations() async {
     try {
@@ -143,11 +145,14 @@ class AnalyticsRepository {
       if (txnIdList.isEmpty) {
         for (final r in invRows as List) {
           final map = Map<String, dynamic>.from(r as Map<String, dynamic>);
+          final id = map['id']?.toString();
+          if (id == null) continue;
           final stock = (map['current_stock'] as num?)?.toDouble() ?? 0;
           final reorder = (map['reorder_point'] as num?)?.toDouble() ?? (map['reorder_level'] as num?)?.toDouble() ?? 0;
           if (reorder <= 0) continue;
           if (stock > reorder) continue;
           recs.add({
+            'inventory_item_id': id,
             'product_name': map['name'],
             'days_remaining': stock <= 0 ? '0' : '—',
             'recommendation_text': stock <= 0 ? 'Order NOW' : 'Below reorder point',
@@ -181,6 +186,7 @@ class AnalyticsRepository {
         if (stock <= reorder || daysRemaining < 2) status = 'URGENT';
         else if (daysRemaining < 5) status = 'WARNING';
         recs.add({
+          'inventory_item_id': id,
           'product_name': map['name'],
           'days_remaining': daysRemaining.toStringAsFixed(1),
           'recommendation_text': _reorderRecommendationText(daysRemaining, status),

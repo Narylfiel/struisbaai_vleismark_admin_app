@@ -1,6 +1,11 @@
 # admin_app
 
-A new Flutter project.
+Struisbaai Vleismark — Admin & Back-Office (Blueprint §1–14). Owner/Manager only; manages inventory, production, HR, bookkeeping, analytics.
+
+## Architecture & offline
+
+- **Supabase:** Single backend; use `SupabaseService.client` only (see `lib/core/services/supabase_service.dart`). Multi-app ecosystem: Admin, POS, and future apps share the same project (see `docs/CORE_ARCHITECTURE.md`).
+- **Isar (L1):** In pubspec for production workflows that need offline. Current app is online-preferred; Isar cache for yield templates, carcass intake, breakdown is documented as a **future phase** when offline-capable flows are in scope.
 
 ## Getting Started
 

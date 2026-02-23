@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/models/ledger_entry.dart';
 import 'package:admin_app/core/services/ocr_service.dart';
 import 'package:admin_app/features/bookkeeping/models/invoice.dart';
 import 'package:admin_app/features/bookkeeping/screens/invoice_form_screen.dart';
@@ -22,7 +24,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -46,6 +48,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               indicatorColor: AppColors.primary,
               tabs: const [
                 Tab(icon: Icon(Icons.receipt, size: 18), text: 'Invoices'),
+                Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Ledger'),
                 Tab(icon: Icon(Icons.account_balance_wallet, size: 18), text: 'Chart of Accounts'),
                 Tab(icon: Icon(Icons.bar_chart, size: 18), text: 'P&L / Reports'),
                 Tab(icon: Icon(Icons.business, size: 18), text: 'PTY Conversion'),
@@ -58,6 +61,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
               controller: _tabController,
               children: const [
                 _InvoicesTab(),
+                _LedgerTab(),
                 _ChartOfAccountsTab(),
                 _ReportsTab(),
                 _PtyConversionTab(),
@@ -144,7 +148,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
 
   /// OCR pipeline: photo/gallery → OcrService → InvoiceRepository.createFromOcrResult → invoice with status pending_review.
   Future<void> _addFromPhoto({bool fromGallery = false}) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign in to add from photo'), backgroundColor: AppColors.warning),
@@ -189,7 +193,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
   }
 
   Future<void> _approve(Invoice inv) async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
+    final userId = SupabaseService.client.auth.currentUser?.id;
     if (userId == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign in to approve'), backgroundColor: AppColors.warning),
@@ -306,7 +310,134 @@ class _InvoicesTabState extends State<_InvoicesTab> {
 }
 
 // ══════════════════════════════════════════════════════════════════
-// TAB 2: CHART OF ACCOUNTS
+// TAB 2: LEDGER (Blueprint §9 — single source of truth)
+// ══════════════════════════════════════════════════════════════════
+
+class _LedgerTab extends StatefulWidget {
+  const _LedgerTab();
+  @override
+  State<_LedgerTab> createState() => _LedgerTabState();
+}
+
+class _LedgerTabState extends State<_LedgerTab> {
+  final _ledger = LedgerRepository();
+  List<LedgerEntry> _entries = [];
+  bool _isLoading = true;
+  late DateTime _start;
+  late DateTime _end;
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _start = DateTime(now.year, now.month, 1);
+    _end = DateTime(now.year, now.month + 1, 0);
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() => _isLoading = true);
+    try {
+      final list = await _ledger.getEntriesByDate(_start, _end);
+      setState(() => _entries = list);
+    } catch (e) {
+      debugPrint('Ledger load: $e');
+    }
+    setState(() => _isLoading = false);
+  }
+
+  Future<void> _pickPeriod() async {
+    final range = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(start: _start, end: _end),
+    );
+    if (range != null) {
+      setState(() {
+        _start = range.start;
+        _end = range.end;
+      });
+      _load();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final startStr = '${_start.day.toString().padLeft(2, '0')}/${_start.month.toString().padLeft(2, '0')}/${_start.year}';
+    final endStr = '${_end.day.toString().padLeft(2, '0')}/${_end.month.toString().padLeft(2, '0')}/${_end.year}';
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(16),
+          color: AppColors.cardBg,
+          child: Row(
+            children: [
+              const Text('Ledger (single source of truth)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Spacer(),
+              TextButton.icon(
+                onPressed: _isLoading ? null : _pickPeriod,
+                icon: const Icon(Icons.calendar_month, size: 18),
+                label: Text('$startStr – $endStr'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+          color: AppColors.surfaceBg,
+          child: const Row(children: [
+            SizedBox(width: 90, child: Text('DATE', style: _h)),
+            SizedBox(width: 16),
+            SizedBox(width: 70, child: Text('ACCOUNT', style: _h)),
+            SizedBox(width: 16),
+            Expanded(flex: 2, child: Text('DESCRIPTION', style: _h)),
+            SizedBox(width: 16),
+            SizedBox(width: 90, child: Text('DEBIT', style: _h)),
+            SizedBox(width: 16),
+            SizedBox(width: 90, child: Text('CREDIT', style: _h)),
+          ]),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : _entries.isEmpty
+                  ? const Center(child: Text('No ledger entries in this period'))
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                      itemCount: _entries.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+                      itemBuilder: (_, i) {
+                        final e = _entries[i];
+                        final dateStr = '${e.entryDate.day.toString().padLeft(2, '0')}/${e.entryDate.month.toString().padLeft(2, '0')}/${e.entryDate.year}';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              SizedBox(width: 90, child: Text(dateStr, style: const TextStyle(fontSize: 12))),
+                              const SizedBox(width: 16),
+                              SizedBox(width: 70, child: Text(e.accountCode, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                              const SizedBox(width: 16),
+                              Expanded(flex: 2, child: Text(e.description, style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                              const SizedBox(width: 16),
+                              SizedBox(width: 90, child: Text(e.debit > 0 ? 'R ${e.debit.toStringAsFixed(2)}' : '—', style: const TextStyle(fontSize: 12))),
+                              const SizedBox(width: 16),
+                              SizedBox(width: 90, child: Text(e.credit > 0 ? 'R ${e.credit.toStringAsFixed(2)}' : '—', style: const TextStyle(fontSize: 12))),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 3: CHART OF ACCOUNTS (Blueprint §9.2 — editable)
 // ══════════════════════════════════════════════════════════════════
 
 class _ChartOfAccountsTab extends StatefulWidget {
@@ -316,7 +447,7 @@ class _ChartOfAccountsTab extends StatefulWidget {
 }
 
 class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _accounts = [];
   bool _isLoading = true;
 
@@ -329,12 +460,85 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final res = await _supabase.from('chart_of_accounts').select('*').order('account_number');
+      final res = await _supabase.from('chart_of_accounts').select('*').order('account_code');
       setState(() => _accounts = List<Map<String, dynamic>>.from(res));
     } catch (e) {
-      debugPrint('Accounts: $e');
+      debugPrint('Chart of accounts: $e');
     }
     setState(() => _isLoading = false);
+  }
+
+  void _addOrEditAccount([Map<String, dynamic>? existing]) {
+    final codeController = TextEditingController(text: existing?['account_code']?.toString());
+    final nameController = TextEditingController(text: existing?['account_name']?.toString());
+    var type = existing?['account_type']?.toString() ?? 'expense';
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: Text(existing == null ? 'Add Account' : 'Edit Account'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: codeController,
+                  decoration: const InputDecoration(labelText: 'Account code (e.g. 6000)'),
+                  enabled: existing == null,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: nameController,
+                  decoration: const InputDecoration(labelText: 'Account name'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: type,
+                  decoration: const InputDecoration(labelText: 'Type'),
+                  items: ['asset', 'liability', 'equity', 'income', 'expense']
+                      .map((t) => DropdownMenuItem(value: t, child: Text(t))).toList(),
+                  onChanged: (v) => setDialog(() => type = v ?? type),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                final code = codeController.text.trim();
+                final name = nameController.text.trim();
+                if (code.isEmpty || name.isEmpty) return;
+                try {
+                  if (existing != null) {
+                    await _supabase.from('chart_of_accounts').update({
+                      'account_name': name,
+                      'account_type': type,
+                    }).eq('id', existing['id']);
+                  } else {
+                    await _supabase.from('chart_of_accounts').insert({
+                      'account_code': code,
+                      'account_name': name,
+                      'account_type': type,
+                      'is_active': true,
+                      'sort_order': _accounts.length,
+                    });
+                  }
+                  if (context.mounted) {
+                    Navigator.pop(ctx);
+                    _load();
+                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success));
+                  }
+                } catch (e) {
+                  if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -346,10 +550,10 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
           color: AppColors.cardBg,
           child: Row(
             children: [
-              const Text('Chart of Accounts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Text('Chart of Accounts (editable)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const Spacer(),
               ElevatedButton.icon(
-                onPressed: () {},
+                onPressed: () => _addOrEditAccount(),
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Account'),
               ),
@@ -365,9 +569,9 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
             SizedBox(width: 16),
             Expanded(flex: 2, child: Text('ACCOUNT NAME', style: _h)),
             SizedBox(width: 16),
-            SizedBox(width: 150, child: Text('TYPE', style: _h)),
+            SizedBox(width: 120, child: Text('TYPE', style: _h)),
             SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('BALANCE', style: _h)),
+            SizedBox(width: 80, child: Text('ACTIVE', style: _h)),
           ]),
         ),
         const Divider(height: 1, color: AppColors.border),
@@ -375,24 +579,31 @@ class _ChartOfAccountsTabState extends State<_ChartOfAccountsTab> {
           child: _isLoading
             ? const Center(child: CircularProgressIndicator())
             : _accounts.isEmpty
-                ? const Center(child: Text('Chart of accounts empty'))
+                ? const Center(child: Text('Chart of accounts empty. Add accounts for ledger posting.'))
                 : ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                     itemCount: _accounts.length,
                     separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (_, i) {
                       final acc = _accounts[i];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Row(children: [
-                          SizedBox(width: 80, child: Text('${acc['account_number']}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                          const SizedBox(width: 16),
-                          Expanded(flex: 2, child: Text(acc['name'] ?? '—')),
-                          const SizedBox(width: 16),
-                          SizedBox(width: 150, child: Text(acc['type'] ?? '—')),
-                          const SizedBox(width: 16),
-                          SizedBox(width: 100, child: Text('R ${(acc['balance'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                        ]),
+                      final code = acc['account_code'] ?? acc['account_number'] ?? '—';
+                      final name = acc['account_name'] ?? acc['name'] ?? '—';
+                      final isActive = acc['is_active'] != false;
+                      return InkWell(
+                        onTap: () => _addOrEditAccount(acc),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(children: [
+                            SizedBox(width: 80, child: Text('$code', style: const TextStyle(fontWeight: FontWeight.bold))),
+                            const SizedBox(width: 16),
+                            Expanded(flex: 2, child: Text(name)),
+                            const SizedBox(width: 16),
+                            SizedBox(width: 120, child: Text(acc['account_type']?.toString() ?? '—')),
+                            const SizedBox(width: 16),
+                            SizedBox(width: 80, child: Text(isActive ? 'Yes' : 'No', style: TextStyle(color: isActive ? AppColors.success : AppColors.textSecondary))),
+                            IconButton(icon: const Icon(Icons.edit, size: 18), onPressed: () => _addOrEditAccount(acc), padding: EdgeInsets.zero),
+                          ]),
+                        ),
                       );
                     },
                   ),
@@ -675,7 +886,7 @@ class _PtyConversionTab extends StatefulWidget {
 }
 
 class _PtyConversionTabState extends State<_PtyConversionTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _equipment = [];
   bool _isLoading = true;
 

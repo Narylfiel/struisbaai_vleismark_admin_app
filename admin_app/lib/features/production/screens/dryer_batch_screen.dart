@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../models/dryer_batch.dart';
 import '../services/dryer_batch_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Blueprint §5.6: Dryer batches — Biltong/Droewors/Chilli Bites; weight loss tracking; deduct raw, add output.
 class DryerBatchScreen extends StatefulWidget {
@@ -14,7 +15,7 @@ class DryerBatchScreen extends StatefulWidget {
 
 class _DryerBatchScreenState extends State<DryerBatchScreen> {
   final _repo = DryerBatchRepository();
-  final _client = Supabase.instance.client;
+  final _client = SupabaseService.client;
   List<DryerBatch> _batches = [];
   List<Map<String, dynamic>> _inventoryItems = [];
   bool _loading = true;

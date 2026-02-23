@@ -1,24 +1,29 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key});
 
   @override
-  State<ProductListScreen> createState() => _ProductListScreenState();
+  State<ProductListScreen> createState() => ProductListScreenState();
 }
 
-class _ProductListScreenState extends State<ProductListScreen> {
-  final _supabase = Supabase.instance.client;
+/// Public state so parent (Inventory nav) can call openAddProduct() when + is pressed.
+class ProductListScreenState extends State<ProductListScreen> {
+  /// Call from parent (e.g. Inventory + button) to open Add Product form.
+  void openAddProduct() => _openProduct(null);
+  final _supabase = SupabaseService.client;
   final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
-  List<Map<String, dynamic>> _categories = [];
+  List<Map<String, dynamic>> _categories = []; // includes {id, name}; first item is All (id: null)
   bool _isLoading = true;
-  String _selectedCategory = 'All';
+  String? _selectedCategoryFilterId; // null = All
   bool _showInactive = false;
 
   @override
@@ -39,10 +44,13 @@ class _ProductListScreenState extends State<ProductListScreen> {
     try {
       final cats = await _supabase
           .from('categories')
-          .select('name')
+          .select('id, name')
           .eq('active', true)
           .order('sort_order');
-      _categories = [{'name': 'All'}, ...List<Map<String, dynamic>>.from(cats)];
+      _categories = [
+        {'id': null, 'name': 'All'},
+        ...List<Map<String, dynamic>>.from(cats),
+      ];
 
       final products = await _supabase
           .from('inventory_items')
@@ -65,12 +73,22 @@ class _ProductListScreenState extends State<ProductListScreen> {
             (p['plu_code']?.toString() ?? '').contains(query) ||
             (p['barcode'] ?? '').toLowerCase().contains(query) ||
             (p['text_lookup_code'] ?? '').toLowerCase().contains(query);
-        final matchCat = _selectedCategory == 'All' ||
-            p['category'] == _selectedCategory;
+        final matchCat = _selectedCategoryFilterId == null ||
+            p['category_id']?.toString() == _selectedCategoryFilterId;
         final matchActive = _showInactive || (p['is_active'] == true);
         return matchSearch && matchCat && matchActive;
       }).toList();
     });
+  }
+
+  /// Resolve category_id to display name from _categories.
+  String? _categoryNameById(dynamic categoryId) {
+    if (categoryId == null) return null;
+    final idStr = categoryId.toString();
+    for (final c in _categories) {
+      if (c['id']?.toString() == idStr) return c['name'] as String?;
+    }
+    return null;
   }
 
   Color _categoryColor(String? category) {
@@ -92,7 +110,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       context: context,
       builder: (_) => _ProductFormDialog(
         product: product,
-        categories: _categories.where((c) => c['name'] != 'All').toList(),
+        categories: _categories.where((c) => c['id'] != null).toList(),
         onSaved: _loadData,
       ),
     );
@@ -140,17 +158,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 const SizedBox(width: 12),
 
                 // Category filter
-                DropdownButton<String>(
-                  value: _selectedCategory,
+                DropdownButton<String?>(
+                  value: _selectedCategoryFilterId,
                   underline: const SizedBox(),
+                  hint: const Text('All'),
                   items: _categories
-                      .map((c) => DropdownMenuItem(
-                            value: c['name'] as String,
+                      .map((c) => DropdownMenuItem<String?>(
+                            value: c['id']?.toString(),
                             child: Text(c['name'] as String),
                           ))
                       .toList(),
                   onChanged: (v) {
-                    setState(() => _selectedCategory = v!);
+                    setState(() => _selectedCategoryFilterId = v);
                     _filterProducts();
                   },
                 ),
@@ -245,12 +264,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           final gp = sell > 0
                               ? ((sell - cost) / sell * 100)
                               : 0.0;
-                          final onHand =
-                              ((p['stock_on_hand_fresh'] as num?)?.toDouble() ??
-                                      0) +
-                                  ((p['stock_on_hand_frozen'] as num?)
-                                          ?.toDouble() ??
-                                      0);
+                          final cur = p['current_stock'];
+                          final onHand = (cur != null && cur is num)
+                              ? (cur as num).toDouble()
+                              : ((p['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0) +
+                                    ((p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0);
                           final isActive = p['is_active'] as bool? ?? true;
                           final reorder =
                               (p['reorder_level'] as num?)?.toDouble() ?? 0;
@@ -318,14 +336,14 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                           height: 10,
                                           decoration: BoxDecoration(
                                             color: _categoryColor(
-                                                p['category']),
+                                                _categoryNameById(p['category_id'])),
                                             shape: BoxShape.circle,
                                           ),
                                         ),
                                         const SizedBox(width: 6),
                                         Expanded(
                                           child: Text(
-                                            p['category'] ?? '—',
+                                            _categoryNameById(p['category_id']) ?? '—',
                                             style: const TextStyle(
                                                 fontSize: 13,
                                                 color: AppColors.textPrimary),
@@ -386,7 +404,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                                   SizedBox(
                                     width: 80,
                                     child: Text(
-                                      '${onHand.toStringAsFixed(2)} ${p['unit_type'] ?? 'kg'}',
+                                      '${onHand.toStringAsFixed(AdminConfig.stockKgDecimals)} ${p['unit_type'] ?? 'kg'}',
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: onHand <= reorder
@@ -514,7 +532,7 @@ class _ProductFormDialog extends StatefulWidget {
 
 class _ProductFormDialogState extends State<_ProductFormDialog>
     with SingleTickerProviderStateMixin {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _formKey = GlobalKey<FormState>();
   late TabController _tabController;
   bool _isSaving = false;
@@ -526,9 +544,11 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _scaleLabelController = TextEditingController();
   final _barcodeController = TextEditingController();
   final _lookupController = TextEditingController();
-  String? _selectedCategory;
+  String? _selectedCategoryId;
   String? _subCategory;
   String _itemType = 'own_cut';
+  /// H9: Raw (no processing), Portioned, Manufactured (recipe-based)
+  String _productType = 'raw';
   bool _scaleItem = false;
   bool _ishidaSync = false;
   bool _isActive = true;
@@ -562,6 +582,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   List<String> _modifierGroupIds = [];
   List<Map<String, dynamic>> _allModifierGroups = [];
 
+  // H6: Supplier product mapping (product_suppliers)
+  List<Map<String, dynamic>> _productSupplierRows = [];
+
   // Section F
   String? _recipeId;
   String? _dryerProductType;
@@ -581,10 +604,27 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   void initState() {
     super.initState();
     _tabController = TabController(length: 8, vsync: this);
-    if (widget.product != null) _populateForm(widget.product!);
+    if (widget.product != null) {
+      _populateForm(widget.product!);
+      _loadProductSuppliers();
+    }
     _loadModifierGroups();
     _loadRecipes();
     _loadSuppliers();
+  }
+
+  Future<void> _loadProductSuppliers() async {
+    if (widget.product == null) return;
+    try {
+      final rows = await _supabase
+          .from('product_suppliers')
+          .select('*, suppliers(name)')
+          .eq('inventory_item_id', widget.product!['id'])
+          .order('supplier_id');
+      setState(() => _productSupplierRows = List<Map<String, dynamic>>.from(rows));
+    } catch (_) {
+      setState(() => _productSupplierRows = []);
+    }
   }
 
   Future<void> _loadSuppliers() async {
@@ -615,9 +655,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _scaleLabelController.text = p['scale_label_name'] ?? '';
     _barcodeController.text = p['barcode'] ?? '';
     _lookupController.text = p['text_lookup_code'] ?? '';
-    _selectedCategory = p['category'];
+    _selectedCategoryId = p['category_id']?.toString();
     _subCategory = p['sub_category'] as String?;
     _itemType = p['item_type'] ?? 'own_cut';
+    _productType = p['product_type'] ?? 'raw';
     _scaleItem = p['scale_item'] ?? false;
     _ishidaSync = p['ishida_sync'] ?? false;
     _isActive = p['is_active'] ?? true;
@@ -667,9 +708,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           : _scaleLabelController.text.trim(),
       'barcode': _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
       'text_lookup_code': _lookupController.text.trim().toLowerCase().isEmpty ? null : _lookupController.text.trim().toLowerCase(),
-      'category': _selectedCategory,
+      'category_id': _selectedCategoryId,
       'sub_category': _subCategory,
       'item_type': _itemType,
+      'product_type': _productType,
       'scale_item': _scaleItem,
       'ishida_sync': _ishidaSync,
       'is_active': _isActive,
@@ -941,18 +983,19 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             fontWeight: FontWeight.w600,
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: _selectedCategory,
+                    DropdownButtonFormField<String?>(
+                      value: _selectedCategoryId,
+                      isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       hint: const Text('Select category'),
                       items: widget.categories
-                          .map((c) => DropdownMenuItem(
-                                value: c['name'] as String,
-                                child: Text(c['name'] as String),
+                          .map((c) => DropdownMenuItem<String?>(
+                                value: c['id']?.toString(),
+                                child: Text((c['name'] as String? ?? ''), overflow: TextOverflow.ellipsis),
                               ))
                           .toList(),
                       onChanged: (v) =>
-                          setState(() => _selectedCategory = v),
+                          setState(() => _selectedCategoryId = v),
                     ),
                   ],
                 ),
@@ -970,6 +1013,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       value: _subCategory,
+                      isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       hint: const Text('Optional'),
                       items: const [
@@ -998,6 +1042,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
                       value: _itemType,
+                      isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       items: const [
                         DropdownMenuItem(
@@ -1016,6 +1061,31 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             value: 'internal', child: Text('Internal')),
                       ],
                       onChanged: (v) => setState(() => _itemType = v!),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Product Type (H9)',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      value: _productType,
+                      isExpanded: true,
+                      decoration: const InputDecoration(isDense: true),
+                      items: const [
+                        DropdownMenuItem(value: 'raw', child: Text('Raw (no processing)')),
+                        DropdownMenuItem(value: 'portioned', child: Text('Portioned')),
+                        DropdownMenuItem(value: 'manufactured', child: Text('Manufactured (recipe-based)')),
+                      ],
+                      onChanged: (v) => setState(() => _productType = v ?? 'raw'),
                     ),
                   ],
                 ),
@@ -1048,9 +1118,79 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               );
             }).toList(),
           ),
+          // H6: Supplier product mapping (product_suppliers) — only when editing
+          const SizedBox(height: 20),
+          const Text('Supplier product mapping (H6)',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+          const SizedBox(height: 6),
+          if (widget.product == null)
+            const Text(
+              'Save the product first to add supplier-specific codes and pricing.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            )
+          else ...[
+            ..._productSupplierRows.map((row) {
+              final supplierName = row['suppliers'] is Map
+                  ? (row['suppliers'] as Map)['name'] as String?
+                  : null;
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  title: Text(supplierName ?? row['supplier_product_name']?.toString() ?? 'Supplier'),
+                  subtitle: Text(
+                    '${row['supplier_product_code'] ?? ''} • R ${row['unit_price'] ?? '—'}${row['is_preferred'] == true ? ' • Preferred' : ''}',
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.edit, size: 18),
+                        onPressed: () => _openProductSupplierDialog(row),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                        onPressed: () => _deleteProductSupplier(row),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            OutlinedButton.icon(
+              onPressed: () => _openProductSupplierDialog(null),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add supplier mapping'),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  Future<void> _openProductSupplierDialog(Map<String, dynamic>? existing) async {
+    await showDialog(
+      context: context,
+      builder: (_) => _ProductSupplierMappingDialog(
+        inventoryItemId: widget.product!['id'] as String,
+        existing: existing,
+        suppliers: _allSuppliers,
+        onSaved: _loadProductSuppliers,
+      ),
+    );
+  }
+
+  Future<void> _deleteProductSupplier(Map<String, dynamic> row) async {
+    final id = row['id'] as String?;
+    if (id == null) return;
+    try {
+      await _supabase.from('product_suppliers').delete().eq('id', id);
+      _loadProductSuppliers();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
   }
 
   Widget _buildTabB() {
@@ -1806,6 +1946,198 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 color: color)),
+      ],
+    );
+  }
+}
+
+// ── H6: Supplier product mapping dialog (product_suppliers) ─────────────
+class _ProductSupplierMappingDialog extends StatefulWidget {
+  final String inventoryItemId;
+  final Map<String, dynamic>? existing;
+  final List<Map<String, dynamic>> suppliers;
+  final VoidCallback onSaved;
+
+  const _ProductSupplierMappingDialog({
+    required this.inventoryItemId,
+    required this.existing,
+    required this.suppliers,
+    required this.onSaved,
+  });
+
+  @override
+  State<_ProductSupplierMappingDialog> createState() => _ProductSupplierMappingDialogState();
+}
+
+class _ProductSupplierMappingDialogState extends State<_ProductSupplierMappingDialog> {
+  final _supabase = SupabaseService.client;
+  late String? _selectedSupplierId;
+  final _codeController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _unitPriceController = TextEditingController();
+  final _leadTimeController = TextEditingController();
+  final _notesController = TextEditingController();
+  bool _isPreferred = false;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final e = widget.existing;
+    _selectedSupplierId = e?['supplier_id']?.toString();
+    _codeController.text = e?['supplier_product_code']?.toString() ?? '';
+    _nameController.text = e?['supplier_product_name']?.toString() ?? '';
+    _unitPriceController.text = e?['unit_price']?.toString() ?? '';
+    _leadTimeController.text = e?['lead_time_days']?.toString() ?? '';
+    _notesController.text = e?['notes']?.toString() ?? '';
+    _isPreferred = e?['is_preferred'] == true;
+  }
+
+  @override
+  void dispose() {
+    _codeController.dispose();
+    _nameController.dispose();
+    _unitPriceController.dispose();
+    _leadTimeController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_selectedSupplierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a supplier.')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final data = {
+        'inventory_item_id': widget.inventoryItemId,
+        'supplier_id': _selectedSupplierId,
+        'supplier_product_code': _codeController.text.trim().isEmpty ? null : _codeController.text.trim(),
+        'supplier_product_name': _nameController.text.trim().isEmpty ? null : _nameController.text.trim(),
+        'unit_price': double.tryParse(_unitPriceController.text),
+        'lead_time_days': int.tryParse(_leadTimeController.text),
+        'is_preferred': _isPreferred,
+        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (widget.existing == null) {
+        await _supabase.from('product_suppliers').insert(data);
+      } else {
+        await _supabase
+            .from('product_suppliers')
+            .update(data)
+            .eq('id', widget.existing!['id']);
+      }
+      widget.onSaved();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.existing == null ? 'Add supplier mapping' : 'Edit supplier mapping'),
+      content: SizedBox(
+        width: 400,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const Text('Supplier', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String?>(
+                value: _selectedSupplierId,
+                decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
+                items: widget.suppliers
+                    .map((s) => DropdownMenuItem<String?>(
+                          value: s['id']?.toString(),
+                          child: Text(s['name']?.toString() ?? '—'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _selectedSupplierId = v),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _codeController,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier product code',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier product name',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _unitPriceController,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Unit price (R)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _leadTimeController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Lead time (days)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Checkbox(
+                    value: _isPreferred,
+                    onChanged: (v) => setState(() => _isPreferred = v ?? false),
+                    activeColor: AppColors.primary,
+                  ),
+                  const Text('Preferred supplier for this product'),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _notesController,
+                maxLines: 2,
+                decoration: const InputDecoration(
+                  labelText: 'Notes',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          child: _saving
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Save'),
+        ),
       ],
     );
   }

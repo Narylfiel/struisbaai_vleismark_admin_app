@@ -61,6 +61,33 @@ class DashboardRepository {
       salesChangePct,
     );
   }
+
+  /// Last 7 days daily totals for sales chart (blueprint §3.2).
+  Future<List<Map<String, dynamic>>> getLast7DaysSales() async {
+    final now = DateTime.now();
+    final list = <Map<String, dynamic>>[];
+    for (var i = 6; i >= 0; i--) {
+      final d = DateTime(now.year, now.month, now.day).subtract(Duration(days: i));
+      final start = d;
+      final end = d.add(const Duration(hours: 23, minutes: 59, seconds: 59));
+      final txns = await getTransactionsForDateRange(start, end);
+      final total = txns.fold<double>(0, (s, t) => s + t.totalAmount);
+      list.add({
+        'date': d,
+        'label': _dayLabel(d, now),
+        'total': total,
+      });
+    }
+    return list;
+  }
+
+  static String _dayLabel(DateTime d, DateTime today) {
+    if (d.year == today.year && d.month == today.month && d.day == today.day) return 'Today';
+    final diff = today.difference(d).inDays;
+    if (diff == 1) return 'Yesterday';
+    const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    return weekdays[d.weekday - 1];
+  }
 }
 
 /// Stats derived from transactions (blueprint §3.2).

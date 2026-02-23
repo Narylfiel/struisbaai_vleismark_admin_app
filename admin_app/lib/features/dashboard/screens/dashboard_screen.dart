@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import '../services/dashboard_repository.dart';
@@ -33,10 +35,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _clockedIn = [];
   List<Map<String, dynamic>> _notClockedIn = [];
 
+  // H5: 7-day sales chart
+  List<Map<String, dynamic>> _sevenDaySales = [];
+  RealtimeChannel? _transactionsChannel;
+
   @override
   void initState() {
     super.initState();
     _loadDashboard();
+    _subscribeTransactions();
+  }
+
+  @override
+  void dispose() {
+    _transactionsChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _subscribeTransactions() {
+    _transactionsChannel = _supabase.channel('dashboard-transactions').onPostgresChanges(
+      event: PostgresChangeEvent.insert,
+      schema: 'public',
+      table: 'transactions',
+      callback: (_) {
+        if (mounted) _loadDashboard();
+      },
+    ).subscribe();
   }
 
   Future<void> _loadDashboard() async {
@@ -44,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     try {
       await Future.wait([
         _loadSalesStats(),
+        _load7DaySales(),
         _loadAlerts(),
         _loadClockInStatus(),
       ]);
@@ -51,6 +76,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
       debugPrint('Dashboard error: $e');
     }
     setState(() => _isLoading = false);
+  }
+
+  Future<void> _load7DaySales() async {
+    try {
+      final data = await _dashboardRepo.getLast7DaysSales();
+      setState(() => _sevenDaySales = data);
+    } catch (e) {
+      debugPrint('7-day sales: $e');
+    }
   }
 
   Future<void> _loadSalesStats() async {
@@ -71,15 +105,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadAlerts() async {
     try {
+      // Blueprint §10.1: unresolved alerts; schema has resolved (boolean) and item_name for display
       final shrinkage = await _supabase
           .from('shrinkage_alerts')
-          .select('*')
-          .eq('resolved', false)
+          .select('id, item_name, gap_percentage, shrinkage_percentage, status, resolved, created_at')
+          .or('resolved.eq.false,resolved.is.null')
           .order('created_at', ascending: false)
           .limit(5);
       _shrinkageAlerts = List<Map<String, dynamic>>.from(shrinkage);
     } catch (e) {
       debugPrint('Shrinkage alerts: $e');
+      try {
+        final fallback = await _supabase
+            .from('shrinkage_alerts')
+            .select()
+            .eq('resolved', false)
+            .order('created_at', ascending: false)
+            .limit(5);
+        _shrinkageAlerts = List<Map<String, dynamic>>.from(fallback);
+      } catch (_) {}
     }
 
     try {
@@ -175,6 +219,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _buildStatsRow(),
                     const SizedBox(height: 24),
 
+                    // H5: 7-day sales chart
+                    _build7DayChart(),
+                    const SizedBox(height: 24),
+
                     // Alerts + Clock-in
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -188,6 +236,74 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
               ),
             ),
+    );
+  }
+
+  Widget _build7DayChart() {
+    if (_sevenDaySales.isEmpty) return const SizedBox.shrink();
+    final data = _sevenDaySales.map((e) => _DaySalesPoint(
+      e['label'] as String? ?? '',
+      (e['total'] as num?)?.toDouble() ?? 0,
+    )).toList();
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.show_chart, color: AppColors.primary, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'SALES (LAST 7 DAYS)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: SfCartesianChart(
+              primaryXAxis: CategoryAxis(
+                labelStyle: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                majorGridLines: const MajorGridLines(width: 0),
+              ),
+              primaryYAxis: NumericAxis(
+                labelFormat: 'R {value}',
+                labelStyle: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                axisLine: const AxisLine(width: 0),
+                majorTickLines: const MajorTickLines(size: 0),
+              ),
+              tooltipBehavior: TooltipBehavior(enable: true),
+              series: <CartesianSeries<_DaySalesPoint, String>>[
+                ColumnSeries<_DaySalesPoint, String>(
+                  dataSource: data,
+                  xValueMapper: (_DaySalesPoint p, _) => p.label,
+                  yValueMapper: (_DaySalesPoint p, _) => p.total,
+                  color: AppColors.primary,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -253,11 +369,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: hasAlerts
           ? Column(
               children: [
-                ..._shrinkageAlerts.map((a) => _AlertRow(
-                      color: AppColors.dashAlertRed,
-                      icon: Icons.warning,
-                      text: 'Shrinkage: ${a['item_name'] ?? 'Unknown item'}',
-                    )),
+                ..._shrinkageAlerts.map((a) {
+                      final name = a['item_name']?.toString().trim();
+                      final gapPct = a['gap_percentage'] ?? a['shrinkage_percentage'];
+                      final label = name != null && name.isNotEmpty
+                          ? name
+                          : (gapPct != null ? 'Gap ${(gapPct is num ? gapPct : double.tryParse(gapPct.toString()) ?? 0).toStringAsFixed(1)}%' : 'Shrinkage alert');
+                      return _AlertRow(
+                        color: AppColors.dashAlertRed,
+                        icon: Icons.warning,
+                        text: 'Shrinkage: $label',
+                      );
+                    }),
                 ..._reorderAlerts.map((a) => _AlertRow(
                       color: AppColors.warning,
                       icon: Icons.inventory,
@@ -323,6 +446,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
 }
 
 // ── Reusable widgets ──────────────────────────────────────────
+
+class _DaySalesPoint {
+  final String label;
+  final double total;
+  _DaySalesPoint(this.label, this.total);
+}
 
 class _StatCard extends StatelessWidget {
   final String title;

@@ -4,7 +4,12 @@ class AdminConfig {
   static const String appSubtitle = 'Admin & Back-Office';
   static const String appVersion = '1.0.0';
 
-  // Supabase — replace these with your actual values
+  /// Phase 5 L6: Layout breakpoints (width in logical pixels). Primary: Windows desktop; adapt for smaller screens.
+  static const double breakpointMobile = 600;
+  static const double breakpointTablet = 900;
+  static const double breakpointDesktop = 1200;
+
+  // Supabase — project nasfakcqzmpfcpqttmti (URL and anon key must match)
   static const String supabaseUrl = 'https://nasfakcqzmpfcpqttmti.supabase.co';
   static const String supabaseAnonKey =
       'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5hc2Zha2Nxem1wZmNwcXR0bXRpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzE2MDcxNTEsImV4cCI6MjA4NzE4MzE1MX0.p5YyyIGZZmnKzIcv-UlK8G05Yy3UDNZwT1FodihfVaM';
@@ -17,6 +22,10 @@ class AdminConfig {
   // Roles allowed in Admin App (from blueprint Section 2)
   static const List<String> allowedRoles = ['owner', 'manager'];
   static const List<String> rejectedRoles = ['cashier', 'blockman'];
+
+  /// Stock measurement precision: grams 1g, kg 3 decimal places (C6)
+  static const int stockGramPrecision = 1;
+  static const int stockKgDecimals = 3;
 
   // Stock thresholds
   static const double defaultShrinkageTolerance = 2.0;   // 2% before alert

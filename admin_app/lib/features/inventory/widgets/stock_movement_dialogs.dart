@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/models/stock_movement.dart';
 import '../services/inventory_repository.dart';
 import '../../../core/services/auth_service.dart';
@@ -285,10 +287,13 @@ class _WasteDialogState extends State<_WasteDialog> {
             controller: _quantityController,
             decoration: const InputDecoration(
               labelText: 'Quantity',
-              hintText: '0.00',
+              hintText: '0.000',
               border: OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
@@ -355,7 +360,7 @@ class _TransferDialogState extends State<_TransferDialog> {
 
   Future<void> _loadLocations() async {
     try {
-      final r = await Supabase.instance.client
+      final r = await SupabaseService.client
           .from('stock_locations')
           .select('id, name')
           .eq('is_active', true)
@@ -435,9 +440,13 @@ class _TransferDialogState extends State<_TransferDialog> {
                   controller: _quantityController,
                   decoration: const InputDecoration(
                     labelText: 'Quantity',
+                    hintText: '0.000',
                     border: OutlineInputBorder(),
                   ),
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [
+                    FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+                  ],
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -579,10 +588,13 @@ class _FreezerDialogState extends State<_FreezerDialog> {
             controller: _quantityController,
             decoration: const InputDecoration(
               labelText: 'Quantity to move',
-              hintText: '0.00',
+              hintText: '0.000',
               border: OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(
@@ -729,9 +741,13 @@ class _DonationDialogState extends State<_DonationDialog> {
               controller: _quantityController,
               decoration: const InputDecoration(
                 labelText: 'Quantity',
+                hintText: '0.000',
                 border: OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+              ],
             ),
             const SizedBox(height: 12),
             TextField(
@@ -910,9 +926,13 @@ class _SponsorshipDialogState extends State<_SponsorshipDialog> {
               controller: _quantityController,
               decoration: const InputDecoration(
                 labelText: 'Quantity',
+                hintText: '0.000',
                 border: OutlineInputBorder(),
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+              ],
             ),
             const SizedBox(height: 12),
             TextField(
@@ -1010,11 +1030,16 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
   @override
   void initState() {
     super.initState();
-    final onHand =
-        ((widget.product['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0) +
-            ((widget.product['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0);
-    final cur = (widget.product['current_stock'] as num?)?.toDouble();
-    _quantityController.text = (cur ?? onHand).toString();
+    final cur = widget.product['current_stock'];
+    double onHand;
+    if (cur != null && cur is num) {
+      onHand = (cur as num).toDouble();
+    } else {
+      final fresh = (widget.product['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+      final frozen = (widget.product['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
+      onHand = fresh + frozen;
+    }
+    _quantityController.text = onHand.toStringAsFixed(3);
   }
 
   @override
@@ -1077,9 +1102,13 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
             controller: _quantityController,
             decoration: const InputDecoration(
               labelText: 'Actual count',
+              hintText: '0.000',
               border: OutlineInputBorder(),
             ),
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,3}$')),
+            ],
           ),
           const SizedBox(height: 12),
           TextField(

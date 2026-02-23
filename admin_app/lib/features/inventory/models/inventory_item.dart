@@ -10,6 +10,9 @@ class InventoryItem extends BaseModel {
   final String? scaleLabelName;
   final String? barcode;
   final String itemType;
+  /// UUID reference to categories.id (canonical for save/insert).
+  final String? categoryId;
+  /// Display name when loaded with join; not sent on insert/update.
   final String? category;
   final String? subCategory;
   final List<String>? supplierIds;
@@ -71,6 +74,7 @@ class InventoryItem extends BaseModel {
     this.scaleLabelName,
     this.barcode,
     this.itemType = 'own_cut',
+    this.categoryId,
     this.category,
     this.subCategory,
     this.supplierIds,
@@ -139,7 +143,7 @@ class InventoryItem extends BaseModel {
       'scale_label_name': scaleLabelName,
       'barcode': barcode,
       'item_type': itemType,
-      'category': category,
+      'category_id': categoryId,
       'sub_category': subCategory,
       'supplier_ids': supplierIds,
       'is_active': isActive,
@@ -208,6 +212,7 @@ class InventoryItem extends BaseModel {
       scaleLabelName: json['scale_label_name'] as String?,
       barcode: json['barcode'] as String?,
       itemType: json['item_type'] as String? ?? 'own_cut',
+      categoryId: json['category_id']?.toString(),
       category: json['category'] as String?,
       subCategory: json['sub_category'] as String?,
       supplierIds: _toStringList(json['supplier_ids']),

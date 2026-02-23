@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
 import 'package:admin_app/features/analytics/services/analytics_repository.dart';
 
@@ -308,6 +310,13 @@ class _ReorderTabState extends State<_ReorderTab> {
     }
   }
 
+  void _openCreatePODialog() {
+    showDialog(
+      context: context,
+      builder: (_) => _CreatePODialog(recs: _recs, onSaved: _load),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -320,11 +329,9 @@ class _ReorderTabState extends State<_ReorderTab> {
               const Text('Predictive Reorder Insights', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
               const Spacer(),
               ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Purchase order: use Inventory → Suppliers or Bookkeeping → Invoices to create orders.')),
-                  );
-                },
+                onPressed: _recs.isEmpty
+                    ? null
+                    : () => _openCreatePODialog(),
                 icon: const Icon(Icons.add_shopping_cart, size: 18),
                 label: const Text('Create Purchase Order'),
               ),
@@ -543,6 +550,202 @@ class _EventTabState extends State<_EventTab> {
               ],
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// CREATE PURCHASE ORDER DIALOG (H7 / C9)
+// ══════════════════════════════════════════════════════════════════
+class _CreatePODialog extends StatefulWidget {
+  final List<Map<String, dynamic>> recs;
+  final VoidCallback onSaved;
+
+  const _CreatePODialog({required this.recs, required this.onSaved});
+
+  @override
+  State<_CreatePODialog> createState() => _CreatePODialogState();
+}
+
+class _CreatePODialogState extends State<_CreatePODialog> {
+  final _client = SupabaseService.client;
+  List<Map<String, dynamic>> _suppliers = [];
+  String? _selectedSupplierId;
+  final Map<String, TextEditingController> _qtyControllers = {};
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSuppliers();
+    for (final r in widget.recs) {
+      final id = r['inventory_item_id']?.toString();
+      if (id != null) {
+        final rec = r;
+        final suggested = (rec['current_stock'] != null && rec['reorder_point'] != null)
+            ? ((rec['reorder_point'] as num).toDouble() - (rec['current_stock'] as num).toDouble()).clamp(0.0, double.infinity)
+            : null;
+        _qtyControllers[id] = TextEditingController(text: suggested != null && suggested > 0 ? suggested.toStringAsFixed(0) : '');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    for (final c in _qtyControllers.values) c.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadSuppliers() async {
+    try {
+      final data = await _client
+          .from('suppliers')
+          .select('id, name')
+          .eq('is_active', true)
+          .order('name');
+      if (mounted) {
+        setState(() {
+          _suppliers = List<Map<String, dynamic>>.from(data as List);
+          _loading = false;
+          if (_suppliers.isNotEmpty && _selectedSupplierId == null) {
+            _selectedSupplierId = _suppliers.first['id'] as String?;
+          }
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _save() async {
+    if (_selectedSupplierId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Select a supplier.')));
+      return;
+    }
+    final lines = <Map<String, dynamic>>[];
+    for (final r in widget.recs) {
+      final id = r['inventory_item_id']?.toString();
+      if (id == null) continue;
+      final c = _qtyControllers[id];
+      final qty = double.tryParse(c?.text.trim() ?? '') ?? 0;
+      if (qty <= 0) continue;
+      lines.add({
+        'inventory_item_id': id,
+        'quantity': qty,
+        'unit': 'kg',
+      });
+    }
+    if (lines.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Enter at least one quantity.')));
+      return;
+    }
+    setState(() => _saving = true);
+    try {
+      final prefix = 'PO-${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}-';
+      final existing = await _client
+          .from('purchase_orders')
+          .select('po_number')
+          .like('po_number', '$prefix%');
+      final count = (existing as List).length;
+      final poNumber = '${prefix}${(count + 1).toString().padLeft(3, '0')}';
+
+      final poRow = await _client
+          .from('purchase_orders')
+          .insert({
+            'po_number': poNumber,
+            'supplier_id': _selectedSupplierId,
+            'status': 'draft',
+            'order_date': DateTime.now().toIso8601String().split('T').first,
+          })
+          .select('id')
+          .single();
+      final poId = (poRow as Map<String, dynamic>)['id'] as String;
+
+      for (final line in lines) {
+        await _client.from('purchase_order_lines').insert({
+          ...line,
+          'purchase_order_id': poId,
+        });
+      }
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onSaved();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Purchase order $poNumber created.')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final recsWithId = widget.recs.where((r) => r['inventory_item_id'] != null).toList();
+    return AlertDialog(
+      title: const Text('Create Purchase Order'),
+      content: SizedBox(
+        width: 400,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Supplier', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _selectedSupplierId,
+                      decoration: const InputDecoration(border: OutlineInputBorder()),
+                      items: _suppliers
+                          .map((s) => DropdownMenuItem<String>(
+                                value: s['id'] as String?,
+                                child: Text(s['name']?.toString() ?? '—'),
+                              ))
+                          .toList(),
+                      onChanged: (v) => setState(() => _selectedSupplierId = v),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('Products & quantities', style: TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    ...recsWithId.map((r) {
+                      final id = r['inventory_item_id']?.toString();
+                      if (id == null) return const SizedBox.shrink();
+                      final c = _qtyControllers[id];
+                      if (c == null) return const SizedBox.shrink();
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8),
+                        child: Row(
+                          children: [
+                            Expanded(flex: 2, child: Text(r['product_name']?.toString() ?? '—', overflow: TextOverflow.ellipsis)),
+                            const SizedBox(width: 8),
+                            SizedBox(
+                              width: 80,
+                              child: TextField(
+                                controller: c,
+                                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                decoration: const InputDecoration(labelText: 'Qty', border: OutlineInputBorder(), isDense: true),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }),
+                  ],
+                ),
+              ),
+      ),
+      actions: [
+        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _saving ? null : _save,
+          child: _saving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save PO'),
         ),
       ],
     );

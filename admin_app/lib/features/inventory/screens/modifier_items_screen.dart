@@ -6,7 +6,7 @@ import '../../../shared/widgets/form_widgets.dart';
 import '../models/modifier_group.dart';
 import '../models/modifier_item.dart';
 import '../services/modifier_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Blueprint §4.3: Modifier items for one group. List items, Add/Edit (name, price adjustment, track inventory, linked item).
 class ModifierItemsScreen extends StatefulWidget {
@@ -233,7 +233,7 @@ class _ModifierItemFormScreenState extends State<_ModifierItemFormScreen> {
   bool _loadingInventory = true;
   bool _saving = false;
   final _repo = ModifierRepository();
-  final _client = Supabase.instance.client;
+  final _client = SupabaseService.client;
 
   @override
   void initState() {

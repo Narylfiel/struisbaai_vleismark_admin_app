@@ -183,6 +183,24 @@ class LedgerRepository {
     return (outputVat: outputVat, inputVat: inputVat, payable: payable);
   }
 
+  /// CoA balances derived from ledger_entries (Phase 4: single source of truth).
+  /// Returns map: account_code -> balance (debit - credit; positive = asset/debit balance).
+  Future<Map<String, double>> getAccountBalancesToDate(DateTime asOfDate) async {
+    final endStr = asOfDate.toIso8601String().substring(0, 10);
+    final response = await _client
+        .from('ledger_entries')
+        .select('account_code, debit, credit')
+        .lte('entry_date', endStr);
+    final map = <String, double>{};
+    for (final row in response as List) {
+      final code = row['account_code'] as String? ?? '';
+      final debit = (row['debit'] as num?)?.toDouble() ?? 0;
+      final credit = (row['credit'] as num?)?.toDouble() ?? 0;
+      map[code] = (map[code] ?? 0) + debit - credit;
+    }
+    return map;
+  }
+
   /// Cash flow summary: movements on 1000 (Cash) and 1100 (Bank) in period.
   Future<({double cashIn, double cashOut, double bankIn, double bankOut})> getCashFlowSummary(
     DateTime start,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../../inventory/models/supplier.dart';
 import '../../inventory/services/supplier_repository.dart';
@@ -127,7 +128,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
 
   Future<void> _saveDraft() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
-    final createdBy = Supabase.instance.client.auth.currentUser?.id ?? '';
+    final createdBy = SupabaseService.client.auth.currentUser?.id ?? '';
     if (createdBy.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You must be signed in to save'), backgroundColor: AppColors.error),

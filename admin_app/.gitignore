@@ -43,3 +43,6 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Temp DB password for migrations — delete when project is finished
+supabase/.temp/db-password.txt

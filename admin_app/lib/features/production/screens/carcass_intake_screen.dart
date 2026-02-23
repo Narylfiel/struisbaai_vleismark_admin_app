@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'recipe_list_screen.dart';
 import 'production_batch_screen.dart';
 import 'dryer_batch_screen.dart';
@@ -84,7 +85,7 @@ class _YieldTemplatesTab extends StatefulWidget {
 }
 
 class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _templates = [];
   bool _isLoading = true;
 
@@ -321,7 +322,7 @@ class _CarcassIntakeTab extends StatefulWidget {
 }
 
 class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _intakes = [];
   bool _isLoading = true;
 
@@ -548,7 +549,7 @@ class _PendingBreakdownsTab extends StatefulWidget {
 }
 
 class _PendingBreakdownsTabState extends State<_PendingBreakdownsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _pending = [];
   bool _isLoading = true;
 
@@ -792,7 +793,7 @@ class _TemplateFormDialog extends StatefulWidget {
 }
 
 class _TemplateFormDialogState extends State<_TemplateFormDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _nameController = TextEditingController();
   bool _isSaving = false;
   String _carcassType = 'Beef Side';
@@ -1182,7 +1183,7 @@ class _IntakeFormDialog extends StatefulWidget {
 }
 
 class _IntakeFormDialogState extends State<_IntakeFormDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _invoiceNumController = TextEditingController();
   final _invoiceWeightController = TextEditingController();
   final _actualWeightController = TextEditingController();
@@ -1679,7 +1680,7 @@ class _BreakdownDialog extends StatefulWidget {
 }
 
 class _BreakdownDialogState extends State<_BreakdownDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _cuts = [];
   List<TextEditingController> _controllers = [];
   bool _isLoading = true;

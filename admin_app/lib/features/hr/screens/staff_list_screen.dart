@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
@@ -89,7 +91,7 @@ class _StaffProfilesTab extends StatefulWidget {
 }
 
 class _StaffProfilesTabState extends State<_StaffProfilesTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _staff = [];
   bool _isLoading = true;
   bool _showInactive = false;
@@ -354,7 +356,7 @@ class _TimecardsTab extends StatefulWidget {
 }
 
 class _TimecardsTabState extends State<_TimecardsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _timecards = [];
   List<Map<String, dynamic>> _staff = [];
   bool _isLoading = true;
@@ -883,7 +885,7 @@ class _LeaveTab extends StatefulWidget {
 }
 
 class _LeaveTabState extends State<_LeaveTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _requests = [];
   List<Map<String, dynamic>> _balances = [];
   bool _isLoading = true;
@@ -1143,7 +1145,7 @@ class _PayrollTab extends StatefulWidget {
 }
 
 class _PayrollTabState extends State<_PayrollTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final List<Map<String, dynamic>> _periods = [];
   Map<String, dynamic>? _selectedPeriod;
   List<Map<String, dynamic>> _entries = [];
@@ -1440,7 +1442,7 @@ class _AwolTabState extends State<_AwolTab> {
 
   Future<void> _loadStaff() async {
     try {
-      final data = await Supabase.instance.client
+      final data = await SupabaseService.client
           .from('staff_profiles')
           .select('id, full_name')
           .eq('is_active', true)
@@ -1461,10 +1463,11 @@ class _AwolTabState extends State<_AwolTab> {
   }
 
   void _openRecordAwol() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) {
+    // C8: Use AuthService (PIN login), not Supabase Auth — Owner logged in via PIN has currentStaffId set
+    final userId = AuthService().currentStaffId;
+    if (userId == null || userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in to record AWOL'), backgroundColor: AppColors.warning),
+        const SnackBar(content: Text('Sign in with PIN to record AWOL'), backgroundColor: AppColors.warning),
       );
       return;
     }
@@ -1654,7 +1657,7 @@ class _StaffCreditTabState extends State<_StaffCreditTab> {
 
   Future<void> _loadStaff() async {
     try {
-      final data = await Supabase.instance.client
+      final data = await SupabaseService.client
           .from('staff_profiles')
           .select('id, full_name')
           .eq('is_active', true)
@@ -1681,10 +1684,11 @@ class _StaffCreditTabState extends State<_StaffCreditTab> {
   }
 
   void _openAddCredit() async {
-    final userId = Supabase.instance.client.auth.currentUser?.id;
-    if (userId == null) {
+    // C8: Use AuthService (PIN login), not Supabase Auth
+    final userId = AuthService().currentStaffId;
+    if (userId == null || userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in to add credit'), backgroundColor: AppColors.warning),
+        const SnackBar(content: Text('Sign in with PIN to add credit'), backgroundColor: AppColors.warning),
       );
       return;
     }
@@ -2010,7 +2014,7 @@ class _StaffFormDialog extends StatefulWidget {
 
 class _StaffFormDialogState extends State<_StaffFormDialog>
     with SingleTickerProviderStateMixin {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   late TabController _tabController;
   bool _isSaving = false;
 

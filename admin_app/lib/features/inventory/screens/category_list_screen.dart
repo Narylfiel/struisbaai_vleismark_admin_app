@@ -36,53 +36,63 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Categories'),
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _navigateToForm(),
-            tooltip: 'Add Category',
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.scaffoldBg,
       body: Column(
         children: [
-          // Search and Filter Bar
-          Padding(
-            padding: const EdgeInsets.all(16),
+          // Toolbar: search, filter, Add (no AppBar — matches module pattern)
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            color: AppColors.cardBg,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SearchBarWidget(
-                  hintText: 'Search categories...',
-                  onSearch: (value) {
-                    _searchController.text = value;
-                    setState(() {});
-                    _applyFilters();
-                  },
-                ),
-                const SizedBox(height: 16),
-                FilterBarWidget(
-                  filters: const [
-                    FilterOption(
-                      key: 'isActive',
-                      label: 'Status',
-                      type: FilterType.dropdown,
-                      options: ['Active', 'Inactive'],
+                Row(
+                  children: [
+                    Expanded(
+                      child: SearchBarWidget(
+                        hintText: 'Search categories...',
+                        onSearch: (value) {
+                          _searchController.text = value;
+                          setState(() {});
+                          _applyFilters();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: FilterBarWidget(
+                        filters: const [
+                          FilterOption(
+                            key: 'isActive',
+                            label: 'Status',
+                            type: FilterType.dropdown,
+                            options: ['Active', 'Inactive'],
+                          ),
+                        ],
+                        onFiltersChanged: (filters) {
+                          setState(() {
+                            _filters = filters;
+                          });
+                          _applyFilters();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => _navigateToForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add Category'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                      ),
                     ),
                   ],
-                  onFiltersChanged: (filters) {
-                    setState(() {
-                      _filters = filters;
-                    });
-                    _applyFilters();
-                  },
                 ),
               ],
             ),
           ),
+          const Divider(height: 1, color: AppColors.border),
 
           // Categories List
           Expanded(

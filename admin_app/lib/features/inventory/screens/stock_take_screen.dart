@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../models/stock_take_entry.dart';
 import '../models/stock_take_session.dart';
 import '../services/stock_take_repository.dart';
@@ -15,7 +16,7 @@ class StockTakeScreen extends StatefulWidget {
 
 class _StockTakeScreenState extends State<StockTakeScreen> {
   final _repo = StockTakeRepository();
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
 
   List<StockTakeSession> _sessions = [];
   StockTakeSession? _currentSession;

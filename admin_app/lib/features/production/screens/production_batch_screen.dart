@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../models/production_batch.dart';
 import '../models/recipe.dart';
 import '../models/recipe_ingredient.dart';
 import '../models/production_batch_ingredient.dart';
 import '../services/recipe_repository.dart';
 import '../services/production_batch_repository.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Blueprint §5.5: Production batches — Select recipe → Start Batch → Enter actuals → Complete (deduct ingredients, add output).
 class ProductionBatchScreen extends StatefulWidget {
@@ -19,7 +20,7 @@ class ProductionBatchScreen extends StatefulWidget {
 class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
   final _batchRepo = ProductionBatchRepository();
   final _recipeRepo = RecipeRepository();
-  final _client = Supabase.instance.client;
+  final _client = SupabaseService.client;
   List<ProductionBatch> _batches = [];
   List<Recipe> _recipes = [];
   List<Map<String, dynamic>> _inventoryItems = [];

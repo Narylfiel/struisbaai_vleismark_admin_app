@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'dart:math';
 
 class JobListScreen extends StatefulWidget {
@@ -76,7 +77,7 @@ class _JobsTab extends StatefulWidget {
 }
 
 class _JobsTabState extends State<_JobsTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _jobs = [];
   bool _isLoading = true;
 
@@ -245,7 +246,7 @@ class _JobFormDialog extends StatefulWidget {
 }
 
 class _JobFormDialogState extends State<_JobFormDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _formKey = GlobalKey<FormState>();
 
   final _nameCtrl = TextEditingController();
@@ -414,7 +415,7 @@ class _JobDetailsDialog extends StatefulWidget {
 }
 
 class _JobDetailsDialogState extends State<_JobDetailsDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _processes = [];
   bool _isLoading = true;
   late String _status;
@@ -516,7 +517,7 @@ class _ServicesTab extends StatefulWidget {
 }
 
 class _ServicesTabState extends State<_ServicesTab> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _services = [];
   bool _isLoading = true;
 
@@ -627,7 +628,7 @@ class _ServiceFormDialog extends StatefulWidget {
 }
 
 class _ServiceFormDialogState extends State<_ServiceFormDialog> {
-  final _supabase = Supabase.instance.client;
+  final _supabase = SupabaseService.client;
   final _formKey = GlobalKey<FormState>();
 
   final _nameCtrl = TextEditingController();

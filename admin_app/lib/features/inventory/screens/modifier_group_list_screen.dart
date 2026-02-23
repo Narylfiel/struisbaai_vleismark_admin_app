@@ -161,10 +161,41 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
         ),
       );
     }
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: SingleChildScrollView(
-        child: DataTable(
+    // Toolbar + table (Add inside screen — matches module pattern)
+    return Column(
+      children: [
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          color: AppColors.cardBg,
+          child: Row(
+            children: [
+              const Text(
+                'Modifier groups',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              ElevatedButton.icon(
+                onPressed: () => _navigateToForm(),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add modifier group'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SingleChildScrollView(
+              child: DataTable(
           columns: const [
             DataColumn(label: Text('Name')),
             DataColumn(label: Text('Description')),
@@ -229,8 +260,11 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
               ],
             );
           }).toList(),
+              ),
+            ),
+          ),
         ),
-      ),
+      ],
     );
   }
 }
