@@ -34,7 +34,9 @@ class SupplierRepository {
     final data = Map<String, dynamic>.from(supplier.toJson())
       ..remove('id')
       ..remove('created_at')
-      ..remove('updated_at');
+      ..remove('updated_at')
+      ..remove('contact_person')
+      ..remove('active');
     final response = await _client
         .from('suppliers')
         .insert(data)
@@ -46,7 +48,9 @@ class SupplierRepository {
   Future<Supplier> updateSupplier(Supplier supplier) async {
     final data = Map<String, dynamic>.from(supplier.toJson())
       ..remove('id')
-      ..remove('created_at');
+      ..remove('created_at')
+      ..remove('contact_person')
+      ..remove('active');
     final response = await _client
         .from('suppliers')
         .update(data)

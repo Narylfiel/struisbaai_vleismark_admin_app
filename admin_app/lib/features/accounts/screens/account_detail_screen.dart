@@ -558,6 +558,26 @@ class _AgreementsTabState extends State<_AgreementsTab> {
     }
   }
 
+  /// DB: purchase, sale
+  static String _agreementTypeLabel(String? v) {
+    switch (v) {
+      case 'purchase': return 'Purchase';
+      case 'sale': return 'Sale';
+      default: return v ?? '—';
+    }
+  }
+
+  /// DB: draft, signed, completed, cancelled
+  static String _agreementStatusLabel(String? v) {
+    switch (v) {
+      case 'draft': return 'Draft';
+      case 'signed': return 'Signed';
+      case 'completed': return 'Completed';
+      case 'cancelled': return 'Cancelled';
+      default: return v ?? '—';
+    }
+  }
+
   double _paidForAgreement(String agreementId) {
     return _payments
         .where((p) => p['agreement_id']?.toString() == agreementId)
@@ -595,16 +615,18 @@ class _AgreementsTabState extends State<_AgreementsTab> {
                     final amount = (a['agreed_price'] as num?)?.toDouble() ?? 0;
                     final paid = id != null ? _paidForAgreement(id) : 0;
                     final balanceDue = amount - paid;
+                    final agreementType = a['agreement_type']?.toString();
+                    final agreementStatus = a['status']?.toString();
                     return Padding(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       child: Row(
                         children: [
-                          SizedBox(width: 80, child: Text(a['agreement_type']?.toString() ?? '—')),
+                          SizedBox(width: 80, child: Text(_agreementTypeLabel(agreementType))),
                           Expanded(child: Text(a['asset_description']?.toString() ?? '—', overflow: TextOverflow.ellipsis)),
                           SizedBox(width: 80, child: Text('R ${amount.toStringAsFixed(2)}')),
                           SizedBox(width: 80, child: Text('R ${paid.toStringAsFixed(2)}')),
                           SizedBox(width: 90, child: Text('R ${balanceDue.toStringAsFixed(2)}')),
-                          SizedBox(width: 90, child: Text(a['status']?.toString() ?? '—')),
+                          SizedBox(width: 90, child: Text(_agreementStatusLabel(agreementStatus))),
                         ],
                       ),
                     );

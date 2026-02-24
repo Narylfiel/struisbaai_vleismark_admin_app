@@ -232,7 +232,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                               referenceId: null,
                               source: 'manual_journal',
                               metadata: null,
-                              recordedBy: staffId,
+                              recordedBy: AuthService().getCurrentStaffId(),
                             );
                             if (context.mounted) {
                               Navigator.pop(ctx);
@@ -313,9 +313,10 @@ class _LedgerScreenState extends State<LedgerScreen> {
             width: 220,
             child: DropdownButtonFormField<String>(
               value: _selectedAccountCode,
+              isExpanded: true,
               decoration: const InputDecoration(labelText: 'Account', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
               items: [
-                const DropdownMenuItem(value: null, child: Text('All')),
+                const DropdownMenuItem(value: null, child: Text('All', overflow: TextOverflow.ellipsis)),
                 ..._accounts.map((a) => DropdownMenuItem<String>(
                       value: _accCode(a),
                       child: Text('${_accCode(a)} ${_accName(a)}', maxLines: 1, overflow: TextOverflow.ellipsis),

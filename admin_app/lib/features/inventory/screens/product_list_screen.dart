@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
 class ProductListScreen extends StatefulWidget {
@@ -42,6 +43,7 @@ class ProductListScreenState extends State<ProductListScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
+      // Category dropdown: id + name, active only, order by sort_order. Display name, value = id.
       final cats = await _supabase
           .from('categories')
           .select('id, name')
@@ -81,14 +83,14 @@ class ProductListScreenState extends State<ProductListScreen> {
     });
   }
 
-  /// Resolve category_id to display name from _categories.
+  /// Resolve category_id to display name. Prefer loaded _categories; fallback to valid mappings.
   String? _categoryNameById(dynamic categoryId) {
     if (categoryId == null) return null;
     final idStr = categoryId.toString();
     for (final c in _categories) {
       if (c['id']?.toString() == idStr) return c['name'] as String?;
     }
-    return null;
+    return kCategoryIdToName[idStr];
   }
 
   Color _categoryColor(String? category) {
@@ -542,6 +544,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _barcodeController = TextEditingController();
   final _lookupController = TextEditingController();
   String? _selectedCategoryId;
+  String? _selectedCategoryName; // display name; kept in sync with _selectedCategoryId for DB category column
   String? _subCategory;
   String _itemType = 'own_cut';
   /// H9: Raw (no processing), Portioned, Manufactured (recipe-based)
@@ -653,6 +656,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _barcodeController.text = p['barcode'] ?? '';
     _lookupController.text = p['text_lookup_code'] ?? '';
     _selectedCategoryId = p['category_id']?.toString();
+    _selectedCategoryName = p['category'] as String? ?? (_selectedCategoryId != null ? kCategoryIdToName[_selectedCategoryId] : null);
     _subCategory = p['sub_category'] as String?;
     _itemType = p['item_type'] ?? 'own_cut';
     _productType = p['product_type'] ?? 'raw';
@@ -706,6 +710,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'barcode': _barcodeController.text.trim().isEmpty ? null : _barcodeController.text.trim(),
       'text_lookup_code': _lookupController.text.trim().toLowerCase().isEmpty ? null : _lookupController.text.trim().toLowerCase(),
       'category_id': _selectedCategoryId,
+      'category': _selectedCategoryName ?? (_selectedCategoryId != null ? kCategoryIdToName[_selectedCategoryId] : null),
       'sub_category': _subCategory,
       'item_type': _itemType,
       'product_type': _productType,
@@ -991,8 +996,23 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                                 child: Text((c['name'] as String? ?? ''), overflow: TextOverflow.ellipsis),
                               ))
                           .toList(),
-                      onChanged: (v) =>
-                          setState(() => _selectedCategoryId = v),
+                      onChanged: (v) {
+                        setState(() {
+                          _selectedCategoryId = v;
+                          if (v == null) {
+                            _selectedCategoryName = null;
+                          } else {
+                            String? name;
+                            for (final c in widget.categories) {
+                              if (c['id']?.toString() == v) {
+                                name = c['name'] as String?;
+                                break;
+                              }
+                            }
+                            _selectedCategoryName = name ?? kCategoryIdToName[v];
+                          }
+                        });
+                      },
                     ),
                   ],
                 ),

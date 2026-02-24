@@ -81,17 +81,16 @@ class DryerBatchRepository {
     String? performedBy,
   }) async {
     final batchNum = (batchNumber == null || batchNumber.isEmpty) ? await _nextBatchNumber() : batchNumber;
+    // DB columns: start_date, end_date, items, weight_in, weight_out, status, notes, input_product_id, output_product_id, recipe_id, started_at, batch_number
+    // UUID columns must be null not empty string.
     final data = {
       'batch_number': batchNum,
-      'product_name': productName,
-      'input_weight_kg': inputWeightKg,
-      'dryer_type': dryerType,
+      'weight_in': inputWeightKg,
       'status': 'drying',
       'started_at': DateTime.now().toIso8601String(),
-      'input_product_id': inputProductId,
-      'output_product_id': outputProductId,
-      'recipe_id': recipeId,
-      'processed_by': processedBy,
+      'input_product_id': inputProductId?.isEmpty == true ? null : inputProductId,
+      'output_product_id': outputProductId?.isEmpty == true ? null : outputProductId,
+      'recipe_id': recipeId?.isEmpty == true ? null : recipeId,
       'notes': notes,
     };
     final row = await _client
@@ -159,7 +158,7 @@ class DryerBatchRepository {
   }) async {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
-    if (batch.status == DryerBatchStatus.completed) {
+    if (batch.status == DryerBatchStatus.complete) {
       throw StateError('Batch already completed');
     }
     final outputProductId = batch.outputProductId;
@@ -174,13 +173,12 @@ class DryerBatchRepository {
         notes: 'Dryer batch ${batch.batchNumber} weigh out',
       );
     }
+    // DB columns: weight_out, status (CHECK: loading, drying, complete)
     final response = await _client
         .from('dryer_batches')
         .update({
-          'output_weight_kg': outputWeightKg,
-          'status': 'completed',
-          'completed_at': DateTime.now().toIso8601String(),
-          'processed_by': completedBy,
+          'weight_out': outputWeightKg,
+          'status': 'complete',
         })
         .eq('id', batchId)
         .select()
@@ -189,12 +187,9 @@ class DryerBatchRepository {
   }
 
   Future<DryerBatch> cancelBatch(String batchId) async {
-    final response = await _client
-        .from('dryer_batches')
-        .update({'status': 'cancelled'})
-        .eq('id', batchId)
-        .select()
-        .single();
-    return DryerBatch.fromJson(response as Map<String, dynamic>);
+    // DB status CHECK allows only: loading, drying, complete — no 'cancelled'. Leave batch status unchanged.
+    final batch = await getBatch(batchId);
+    if (batch == null) throw ArgumentError('Batch not found: $batchId');
+    return batch;
   }
 }

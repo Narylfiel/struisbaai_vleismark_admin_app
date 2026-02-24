@@ -221,7 +221,7 @@ class _RecipeDetailScreenState extends State<_RecipeDetailScreen> {
     }
     buf.writeln('');
     buf.writeln('Instructions:');
-    buf.writeln(r.description ?? 'See recipe for instructions.');
+    buf.writeln(r.instructions ?? 'See recipe for instructions.');
     final msg = buf.toString();
     final uri = Uri.parse('https://wa.me/?text=${Uri.encodeComponent(msg)}');
     if (await canLaunchUrl(uri)) {
@@ -278,7 +278,7 @@ class _RecipeDetailScreenState extends State<_RecipeDetailScreen> {
             const SizedBox(height: 24),
             const Text('Instructions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text(r.description ?? 'No instructions.', style: const TextStyle(height: 1.5)),
+            Text(r.instructions ?? 'No instructions.', style: const TextStyle(height: 1.5)),
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,

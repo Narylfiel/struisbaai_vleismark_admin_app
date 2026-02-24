@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
@@ -33,8 +34,13 @@ class CustomerRepository {
   /// Toggle Customer suspension / activation state
   Future<void> updateCustomerStatus(String id, bool isActive) async {
     try {
-      await _client.from('loyalty_customers').update({'is_active': isActive}).eq('id', id);
-    } catch (_) {}
+      await _client.from('loyalty_customers').update({'active': isActive}).eq('id', id);
+    } catch (e, stack) {
+      debugPrint('DATABASE WRITE FAILED: loyalty_customers update status');
+      debugPrint(e.toString());
+      debugPrint(stack.toString());
+      rethrow;
+    }
   }
 
   // ═════════════════════════════════════════════════════════
@@ -55,15 +61,24 @@ class CustomerRepository {
     }
   }
 
+  /// target_audience DB CHECK: 'all', 'customers', 'staff'
   Future<void> createAnnouncement(String title, String body, String targetTier) async {
     try {
+      final audience = ['all', 'customers', 'staff'].contains(targetTier) ? targetTier : 'all';
+      final currentUserId = _client.auth.currentUser?.id;
       await _client.from('announcements').insert({
         'title': title,
-        'body': body,
-        'target_tier': targetTier,
+        'content': body,
+        'target_audience': audience,
+        'created_by': currentUserId,
         'created_at': DateTime.now().toIso8601String(),
       });
-    } catch (_) {}
+    } catch (e, stack) {
+      debugPrint('DATABASE WRITE FAILED: announcements insert');
+      debugPrint(e.toString());
+      debugPrint(stack.toString());
+      rethrow;
+    }
   }
 
   // ═════════════════════════════════════════════════════════

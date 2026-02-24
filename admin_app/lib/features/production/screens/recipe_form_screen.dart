@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/form_widgets.dart';
+import '../../inventory/constants/category_mappings.dart';
 import '../models/recipe.dart';
 import '../models/recipe_ingredient.dart';
 import '../services/recipe_repository.dart';
@@ -42,7 +44,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     super.initState();
     if (widget.recipe != null) {
       _nameController.text = widget.recipe!.name;
-      _descriptionController.text = widget.recipe!.description ?? '';
+      _descriptionController.text = widget.recipe!.instructions ?? '';
       _categoryController.text = widget.recipe!.category ?? '';
       _expectedYieldController.text = widget.recipe!.expectedYieldPct.toString();
       _batchSizeController.text = widget.recipe!.batchSizeKg.toString();
@@ -62,7 +64,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     try {
       final r = await _client
           .from('inventory_items')
-          .select('id, name')
+          .select('id, name, plu_code, barcode')
           .eq('is_active', true)
           .order('name');
       if (mounted) {
@@ -76,9 +78,105 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     }
   }
 
+  /// Filter inventory items by search (name, PLU, barcode).
+  List<Map<String, dynamic>> _filterProducts(String search) {
+    if (search.trim().isEmpty) return _inventoryItems;
+    final lower = search.trim().toLowerCase();
+    return _inventoryItems.where((e) {
+      final name = (e['name'] as String? ?? '').toLowerCase();
+      final plu = (e['plu_code']?.toString() ?? '').toLowerCase();
+      final barcode = (e['barcode']?.toString() ?? '').toLowerCase();
+      return name.contains(lower) || plu.contains(lower) || barcode.contains(lower);
+    }).toList();
+  }
+
+  /// Display label for product: "PLU123 — Beef Fillet"
+  String _productLabel(Map<String, dynamic> e) {
+    final plu = e['plu_code']?.toString() ?? '—';
+    final name = e['name'] as String? ?? '';
+    return '$plu — $name';
+  }
+
+  /// Show searchable product picker dialog; returns selected product id or null.
+  Future<String?> _showProductPicker({String? currentValue}) async {
+    final searchController = TextEditingController();
+    List<Map<String, dynamic>> filtered = List.from(_inventoryItems);
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialog) {
+            return AlertDialog(
+              title: const Text('Select product'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search by name, PLU or barcode',
+                        hintText: 'Type to filter...',
+                        prefixIcon: Icon(Icons.search),
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (_) {
+                        setDialog(() {
+                          filtered = _filterProducts(searchController.text);
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: filtered.isEmpty
+                          ? const Center(child: Text('No products match'))
+                          : ListView.builder(
+                              shrinkWrap: true,
+                              itemCount: filtered.length,
+                              itemBuilder: (_, i) {
+                                final e = filtered[i];
+                                final id = e['id'] as String?;
+                                final selected = id == currentValue;
+                                return ListTile(
+                                  title: Text(_productLabel(e), style: const TextStyle(fontSize: 14)),
+                                  selected: selected,
+                                  onTap: () => Navigator.pop(ctx, id),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, ''),
+                  child: const Text('Clear'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Cancel'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    ).then((v) {
+      searchController.dispose();
+      return v;
+    });
+  }
+
   Future<void> _loadCategories() async {
     try {
-      final r = await _client.from('categories').select('id, name').order('name');
+      final r = await _client
+          .from('categories')
+          .select('id, name')
+          .eq('active', true)
+          .order('sort_order');
       if (mounted) setState(() => _categories = List<Map<String, dynamic>>.from(r as List));
     } catch (_) {}
   }
@@ -150,10 +248,21 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       );
       if (result != 'create' || !mounted) return null;
       final name = nameController.text.trim();
+      String? categoryName;
+      if (categoryId != null) {
+        for (final c in _categories) {
+          if (c['id']?.toString() == categoryId) {
+            categoryName = c['name'] as String?;
+            break;
+          }
+        }
+        categoryName ??= kCategoryIdToName[categoryId!];
+      }
       final data = <String, dynamic>{
         'name': name,
         'pos_display_name': name,
         'category_id': categoryId,
+        'category': categoryName,
         'is_active': true,
         'unit_type': 'kg',
         'sell_price': 0,
@@ -256,7 +365,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         final updated = Recipe(
           id: widget.recipe!.id,
           name: _nameController.text.trim(),
-          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+          instructions: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? null : _categoryController.text.trim(),
           servings: widget.recipe!.servings,
           prepTimeMinutes: widget.recipe!.prepTimeMinutes,
@@ -297,16 +406,18 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           }
         }
       } else {
+        final staffId = AuthService().getCurrentStaffId();
         final created = Recipe(
           id: '',
           name: _nameController.text.trim(),
-          description: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
+          instructions: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? null : _categoryController.text.trim(),
           servings: 1,
           isActive: _isActive,
           outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
+          createdBy: staffId.isEmpty ? null : staffId,
         );
         final saved = await _repo.createRecipe(created);
         for (final row in _ingredients) {
@@ -364,8 +475,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
               const SizedBox(height: 16),
               FormWidgets.textFormField(
                 controller: _descriptionController,
-                label: 'Description (optional)',
-                hint: 'Short description',
+                label: 'Instructions (optional)',
+                hint: 'Method / steps',
                 maxLines: 2,
                 prefixIcon: const Icon(Icons.description_outlined),
               ),
@@ -409,22 +520,31 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 if (_loadingInventory)
                   const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
                 else
-                  DropdownButtonFormField<String>(
-                    value: _outputProductId,
-                    decoration: const InputDecoration(
-                      labelText: 'Select product',
-                      border: OutlineInputBorder(),
-                      filled: true,
+                  InkWell(
+                    onTap: () async {
+                      final id = await _showProductPicker(currentValue: _outputProductId);
+                      if (id == null || !mounted) return;
+                      setState(() => _outputProductId = id.isEmpty ? null : id);
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Select product',
+                        border: OutlineInputBorder(),
+                        filled: true,
+                        suffixIcon: Icon(Icons.arrow_drop_down),
+                      ),
+                      child: Text(
+                        _outputProductId == null
+                            ? '— Select —'
+                            : _productLabel(_inventoryItems.firstWhere(
+                                (e) => e['id'] == _outputProductId,
+                                orElse: () => {'plu_code': '—', 'name': _outputProductId ?? ''},
+                              )),
+                        style: TextStyle(
+                          color: _outputProductId == null ? AppColors.textSecondary : null,
+                        ),
+                      ),
                     ),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('— Select —')),
-                      ..._inventoryItems.map((e) {
-                        final id = e['id'] as String?;
-                        final name = e['name'] as String? ?? '';
-                        return DropdownMenuItem(value: id, child: Text(name));
-                      }),
-                    ],
-                    onChanged: (v) => setState(() => _outputProductId = v),
                   ),
               ] else ...[
                 if (_outputProductId != null)
@@ -547,18 +667,31 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: DropdownButtonFormField<String>(
-                value: row.inventoryItemId,
-                decoration: const InputDecoration(labelText: 'Linked item', isDense: true),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('—')),
-                  ..._inventoryItems.map((e) {
-                    final id = e['id'] as String?;
-                    final name = e['name'] as String? ?? '';
-                    return DropdownMenuItem(value: id, child: Text(name.length > 15 ? '${name.substring(0, 15)}…' : name));
-                  }),
-                ],
-                onChanged: (v) => row.inventoryItemId = v,
+              child: InkWell(
+                onTap: () async {
+                  final id = await _showProductPicker(currentValue: row.inventoryItemId);
+                  if (id == null || !mounted) return;
+                  setState(() => row.inventoryItemId = id.isEmpty ? null : id);
+                },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    labelText: 'Linked item',
+                    isDense: true,
+                    suffixIcon: Icon(Icons.arrow_drop_down, size: 20),
+                  ),
+                  child: Text(
+                    row.inventoryItemId == null || row.inventoryItemId!.isEmpty
+                        ? '—'
+                        : _productLabel(_inventoryItems.firstWhere(
+                            (e) => e['id'] == row.inventoryItemId,
+                            orElse: () => {'plu_code': '—', 'name': row.inventoryItemId ?? ''},
+                          )),
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: (row.inventoryItemId == null || row.inventoryItemId!.isEmpty) ? AppColors.textSecondary : null,
+                    ),
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 8),

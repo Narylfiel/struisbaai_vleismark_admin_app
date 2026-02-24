@@ -25,18 +25,20 @@ class ModifierItem extends BaseModel {
     super.updatedAt,
   });
 
+  /// DB columns: id, modifier_group_id, name, price_adjustment, track_inventory, linked_item_id, sort_order, active, created_at, inventory_item_id, updated_at.
   @override
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'group_id': groupId,
+      'modifier_group_id': groupId,
       'name': name,
       'price_adjustment': priceAdjustment,
-      'is_active': isActive,
-      'sort_order': sortOrder,
       'track_inventory': trackInventory,
-      'inventory_item_id': linkedInventoryItemId,
+      'linked_item_id': linkedInventoryItemId,
+      'sort_order': sortOrder,
+      'active': isActive,
       'created_at': createdAt?.toIso8601String(),
+      'inventory_item_id': linkedInventoryItemId,
       'updated_at': updatedAt?.toIso8601String(),
     };
   }
@@ -44,13 +46,13 @@ class ModifierItem extends BaseModel {
   factory ModifierItem.fromJson(Map<String, dynamic> json) {
     return ModifierItem(
       id: json['id'] as String,
-      groupId: json['group_id'] as String? ?? '',
+      groupId: json['modifier_group_id'] as String? ?? json['group_id'] as String? ?? '',
       name: json['name'] as String? ?? '',
       priceAdjustment: (json['price_adjustment'] as num?)?.toDouble() ?? 0,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: json['active'] as bool? ?? json['is_active'] as bool? ?? true,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       trackInventory: json['track_inventory'] as bool? ?? false,
-      linkedInventoryItemId: json['inventory_item_id'] as String?,
+      linkedInventoryItemId: json['inventory_item_id'] as String? ?? json['linked_item_id'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

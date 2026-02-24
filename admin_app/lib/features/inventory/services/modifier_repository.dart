@@ -16,7 +16,7 @@ class ModifierRepository {
   Future<List<ModifierGroup>> getGroups({bool activeOnly = false}) async {
     var q = _client.from('modifier_groups').select();
     if (activeOnly) {
-      q = q.eq('is_active', true);
+      q = q.eq('active', true);
     }
     final list = await q.order('sort_order', ascending: true).order('name');
     return (list as List)
@@ -38,7 +38,8 @@ class ModifierRepository {
     final data = Map<String, dynamic>.from(group.toJson())
       ..remove('id')
       ..remove('created_at')
-      ..remove('updated_at');
+      ..remove('updated_at')
+      ..remove('description');
     final response = await _client
         .from('modifier_groups')
         .insert(data)
@@ -50,7 +51,8 @@ class ModifierRepository {
   Future<ModifierGroup> updateGroup(ModifierGroup group) async {
     final data = Map<String, dynamic>.from(group.toJson())
       ..remove('id')
-      ..remove('created_at');
+      ..remove('created_at')
+      ..remove('description');
     final response = await _client
         .from('modifier_groups')
         .update(data)
@@ -70,7 +72,7 @@ class ModifierRepository {
     final list = await _client
         .from('modifier_items')
         .select()
-        .eq('group_id', groupId)
+        .eq('modifier_group_id', groupId)
         .order('sort_order', ascending: true)
         .order('name');
     return (list as List)

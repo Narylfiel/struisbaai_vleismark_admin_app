@@ -25,12 +25,13 @@ class Supplier extends BaseModel {
     super.updatedAt,
   });
 
+  /// DB columns: id, name, contact_name, phone, email, account_number, notes, is_active, created_at, updated_at, vat_number, address, city, postal_code, payment_terms, bank_name, bank_account, bank_branch_code, bbbee_level.
   @override
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
-      'contact_person': contactPerson,
+      'contact_name': contactPerson,
       'phone': phone,
       'email': email,
       'address': address,
@@ -46,13 +47,13 @@ class Supplier extends BaseModel {
     return Supplier(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
-      contactPerson: json['contact_person'] as String?,
+      contactPerson: json['contact_name'] as String? ?? json['contact_person'] as String?,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
       address: json['address'] as String?,
       paymentTerms: json['payment_terms'] as String?,
       bbbeeLevel: json['bbbee_level'] as String?,
-      isActive: json['is_active'] as bool? ?? true,
+      isActive: json['is_active'] as bool? ?? json['active'] as bool? ?? true,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

@@ -4,30 +4,45 @@ DateTime? _parseDateTime(dynamic v) =>
     v == null ? null : DateTime.tryParse(v.toString());
 
 /// Blueprint §5.6: Dryer batch — Biltong/Droewors/Chilli Bites; input → output; weight loss tracking.
+/// DB CHECK: loading, drying, complete (no cancelled).
 enum DryerBatchStatus {
+  loading,
   drying,
-  completed,
-  cancelled,
+  complete,
 }
 
 extension DryerBatchStatusExt on DryerBatchStatus {
   String get dbValue {
     switch (this) {
+      case DryerBatchStatus.loading:
+        return 'loading';
       case DryerBatchStatus.drying:
         return 'drying';
-      case DryerBatchStatus.completed:
-        return 'completed';
-      case DryerBatchStatus.cancelled:
-        return 'cancelled';
+      case DryerBatchStatus.complete:
+        return 'complete';
+    }
+  }
+
+  /// User-friendly label for UI (DB value is lowercase).
+  String get displayLabel {
+    switch (this) {
+      case DryerBatchStatus.loading:
+        return 'Loading';
+      case DryerBatchStatus.drying:
+        return 'In Dryer';
+      case DryerBatchStatus.complete:
+        return 'Complete';
     }
   }
 
   static DryerBatchStatus fromDb(String? value) {
     switch (value) {
-      case 'completed':
-        return DryerBatchStatus.completed;
-      case 'cancelled':
-        return DryerBatchStatus.cancelled;
+      case 'loading':
+        return DryerBatchStatus.loading;
+      case 'drying':
+        return DryerBatchStatus.drying;
+      case 'complete':
+        return DryerBatchStatus.complete;
       default:
         return DryerBatchStatus.drying;
     }
@@ -99,7 +114,7 @@ class DryerBatch extends BaseModel {
     required this.inputWeightKg,
     this.outputWeightKg,
     this.dryerType = DryerType.biltong,
-    this.status = DryerBatchStatus.drying,
+    this.status = DryerBatchStatus.drying, // default; DB allows loading, drying, complete
     this.startedAt,
     this.completedAt,
     this.processedBy,
@@ -148,8 +163,8 @@ class DryerBatch extends BaseModel {
       id: json['id'] as String,
       batchNumber: json['batch_number'] as String? ?? '',
       productName: json['product_name'] as String? ?? '',
-      inputWeightKg: (json['input_weight_kg'] as num?)?.toDouble() ?? 0,
-      outputWeightKg: (json['output_weight_kg'] as num?)?.toDouble(),
+      inputWeightKg: ((json['input_weight_kg'] ?? json['weight_in']) as num?)?.toDouble() ?? 0,
+      outputWeightKg: ((json['output_weight_kg'] ?? json['weight_out']) as num?)?.toDouble(),
       dryerType: DryerTypeExt.fromDb(json['dryer_type'] as String?),
       status: DryerBatchStatusExt.fromDb(json['status'] as String?),
       startedAt: _parseDateTime(json['started_at']) ?? _parseDateTime(json['start_date']),

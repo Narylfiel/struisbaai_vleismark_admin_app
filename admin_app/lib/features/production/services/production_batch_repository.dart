@@ -43,24 +43,8 @@ class ProductionBatchRepository {
     return ProductionBatch.fromJson(row as Map<String, dynamic>);
   }
 
-  /// Generate batch number: PB-YYYYMMDD-XXX (3-digit same-day sequence).
-  Future<String> _nextBatchNumber() async {
-    final prefix = 'PB-${DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '')}-';
-    final list = await _client
-        .from('production_batches')
-        .select('batch_number')
-        .like('batch_number', '$prefix%')
-        .order('batch_number', ascending: false)
-        .limit(1);
-    if (list.isEmpty) return '${prefix}001';
-    final last = list.first['batch_number'] as String? ?? '';
-    final numPart = last.length > prefix.length
-        ? int.tryParse(last.substring(prefix.length)) ?? 0
-        : 0;
-    return '$prefix${(numPart + 1).toString().padLeft(3, '0')}';
-  }
-
   /// Start a batch: create batch + batch_ingredients from recipe (scaled by planned qty / batch_size_kg).
+  /// DB has no batch_number column; do not include it in insert.
   Future<ProductionBatch> createBatch({
     required String recipeId,
     required int plannedQuantity,
@@ -74,16 +58,15 @@ class ProductionBatchRepository {
       throw ArgumentError('Recipe has no output product; set output_product_id');
     }
     final ingredients = await _recipeRepo.getIngredientsByRecipe(recipeId);
-    final batchNumber = await _nextBatchNumber();
     final scale = plannedQuantity / (recipe.batchSizeKg > 0 ? recipe.batchSizeKg : 1);
 
+    // DB columns: batch_date (NOT NULL), recipe_id, qty_produced, unit, cost_total, notes, status, output_product_id. No batch_number.
     final batchData = {
-      'batch_number': batchNumber,
+      'batch_date': DateTime.now().toIso8601String().substring(0, 10),
       'recipe_id': recipeId,
-      'planned_quantity': plannedQuantity,
+      'qty_produced': plannedQuantity,
       'output_product_id': outProductId,
-      'status': 'planned',
-      'started_by': performedBy,
+      'status': 'pending',
       'notes': null,
     };
     final batchRow = await _client
@@ -116,13 +99,10 @@ class ProductionBatchRepository {
   }
 
   Future<ProductionBatch> startBatch(String batchId, String startedBy) async {
+    // DB has no started_at, started_by — only status
     final response = await _client
         .from('production_batches')
-        .update({
-          'status': 'in_progress',
-          'started_at': DateTime.now().toIso8601String(),
-          'started_by': startedBy,
-        })
+        .update({'status': 'in_progress'})
         .eq('id', batchId)
         .select()
         .single();
@@ -140,7 +120,7 @@ class ProductionBatchRepository {
   }) async {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
-    if (batch.status == ProductionBatchStatus.completed) {
+    if (batch.status == ProductionBatchStatus.complete) {
       throw StateError('Batch already completed');
     }
     if (outputs.isEmpty) throw ArgumentError('At least one output product required');
@@ -203,11 +183,10 @@ class ProductionBatchRepository {
       );
     }
 
+    // DB columns: status (CHECK: pending, in_progress, complete), cost_total, qty_produced. No actual_quantity, completed_at, completed_by.
     final updateData = <String, dynamic>{
-      'status': 'completed',
-      'actual_quantity': totalQty.round(),
-      'completed_at': DateTime.now().toIso8601String(),
-      'completed_by': completedBy,
+      'status': 'complete',
+      'qty_produced': totalQty,
     };
     if (costTotal != null) updateData['cost_total'] = costTotal;
 
@@ -221,12 +200,9 @@ class ProductionBatchRepository {
   }
 
   Future<ProductionBatch> cancelBatch(String batchId) async {
-    final response = await _client
-        .from('production_batches')
-        .update({'status': 'cancelled'})
-        .eq('id', batchId)
-        .select()
-        .single();
-    return ProductionBatch.fromJson(response as Map<String, dynamic>);
+    // DB status CHECK allows only: pending, in_progress, complete — no 'cancelled'. Leave batch status unchanged.
+    final batch = await getBatch(batchId);
+    if (batch == null) throw ArgumentError('Batch not found: $batchId');
+    return batch;
   }
 }

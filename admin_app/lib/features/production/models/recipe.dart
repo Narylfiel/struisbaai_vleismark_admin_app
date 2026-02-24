@@ -1,9 +1,13 @@
 import '../../../core/models/base_model.dart';
 
 /// Blueprint §5.5: Recipe — Output Product, Expected Yield %, ingredients per batch size.
+/// DB columns: id, name, category, ingredients (jsonb), instructions, yield_qty, yield_unit,
+/// cost_per_unit, is_active, created_at, updated_at, output_product_id, expected_yield_pct,
+/// batch_size_kg, cook_time_minutes, created_by.
 class Recipe extends BaseModel {
   final String name;
-  final String? description;
+  /// DB column: instructions (description content maps here).
+  final String? instructions;
   final String? category;
   final int servings;
   final int? prepTimeMinutes;
@@ -21,7 +25,7 @@ class Recipe extends BaseModel {
   const Recipe({
     required super.id,
     required this.name,
-    this.description,
+    this.instructions,
     this.category,
     this.servings = 1,
     this.prepTimeMinutes,
@@ -41,12 +45,9 @@ class Recipe extends BaseModel {
     return {
       'id': id,
       'name': name,
-      'description': description,
+      'instructions': instructions,
       'category': category,
-      'servings': servings,
-      'prep_time_minutes': prepTimeMinutes,
       'cook_time_minutes': cookTimeMinutes,
-      'difficulty': difficulty,
       'is_active': isActive,
       'output_product_id': outputProductId,
       'expected_yield_pct': expectedYieldPct,
@@ -61,7 +62,7 @@ class Recipe extends BaseModel {
     return Recipe(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
-      description: json['description'] as String?,
+      instructions: json['instructions'] as String? ?? json['description'] as String?,
       category: json['category'] as String?,
       servings: (json['servings'] as num?)?.toInt() ?? 1,
       prepTimeMinutes: (json['prep_time_minutes'] as num?)?.toInt(),

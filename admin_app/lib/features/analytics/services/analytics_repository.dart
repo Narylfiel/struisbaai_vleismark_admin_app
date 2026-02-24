@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
@@ -105,17 +106,20 @@ class AnalyticsRepository {
   // ═════════════════════════════════════════════════════════
   Future<List<Map<String, dynamic>>> getReorderRecommendations() async {
     try {
+      // DB columns: days_of_stock, urgency (not days_remaining, status)
       final response = await _client
           .from('reorder_recommendations')
           .select()
-          .order('days_remaining', ascending: true)
+          .order('days_of_stock', ascending: true)
           .limit(50);
       final list = List<Map<String, dynamic>>.from(response);
       for (final r in list) {
         final inv = (r['inventory_items'] as Map?);
         if (inv != null) r['product_name'] = inv['name'];
-        r['days_remaining'] ??= r['days_of_stock'];
-        r['recommendation_text'] ??= _reorderRecommendationText(r['days_remaining'], r['status']);
+        final days = r['days_remaining'] ?? r['days_of_stock'];
+        r['days_remaining'] = days;
+        final status = r['status'] ?? r['urgency'];
+        r['recommendation_text'] ??= _reorderRecommendationText(days, status);
       }
       if (list.isNotEmpty) return list;
     } catch (_) {}
@@ -124,8 +128,9 @@ class AnalyticsRepository {
 
   String _reorderRecommendationText(dynamic days, dynamic status) {
     final d = (days is num) ? days.toDouble() : double.tryParse(days?.toString() ?? '') ?? 0;
-    if (status == 'URGENT' || d < 2) return 'Order NOW';
-    if (status == 'WARNING' || d < 5) return 'Order by Friday';
+    final s = status?.toString().toUpperCase() ?? '';
+    if (s == 'URGENT' || d < 2) return 'Order NOW';
+    if (s == 'WARNING' || s == 'SOON' || d < 5) return 'Order by Friday';
     return 'OK for now';
   }
 
@@ -281,7 +286,12 @@ class AnalyticsRepository {
         'event_date': DateTime.now().toIso8601String().substring(0, 10),
         'event_type': eventType,
       });
-    } catch (_) {}
+    } catch (e, stack) {
+      debugPrint('DATABASE WRITE FAILED: event_tags insert');
+      debugPrint(e.toString());
+      debugPrint(stack.toString());
+      rethrow;
+    }
   }
 
   Future<List<Map<String, dynamic>>> getForecastForEvent(String eventType) async {

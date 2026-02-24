@@ -1,37 +1,47 @@
 import '../../../core/models/base_model.dart';
 
 /// Blueprint §5.5: Production batch — input → output tracking; deduct ingredients, add output product.
+/// DB CHECK: pending, in_progress, complete (no cancelled).
 enum ProductionBatchStatus {
-  planned,
+  pending,
   inProgress,
-  completed,
-  cancelled,
+  complete,
 }
 
 extension ProductionBatchStatusExt on ProductionBatchStatus {
   String get dbValue {
     switch (this) {
-      case ProductionBatchStatus.planned:
-        return 'planned';
+      case ProductionBatchStatus.pending:
+        return 'pending';
       case ProductionBatchStatus.inProgress:
         return 'in_progress';
-      case ProductionBatchStatus.completed:
-        return 'completed';
-      case ProductionBatchStatus.cancelled:
-        return 'cancelled';
+      case ProductionBatchStatus.complete:
+        return 'complete';
+    }
+  }
+
+  /// User-friendly label for UI (DB value is lowercase/snake_case).
+  String get displayLabel {
+    switch (this) {
+      case ProductionBatchStatus.pending:
+        return 'Pending';
+      case ProductionBatchStatus.inProgress:
+        return 'In progress';
+      case ProductionBatchStatus.complete:
+        return 'Complete';
     }
   }
 
   static ProductionBatchStatus fromDb(String? value) {
     switch (value) {
+      case 'pending':
+        return ProductionBatchStatus.pending;
       case 'in_progress':
         return ProductionBatchStatus.inProgress;
-      case 'completed':
-        return ProductionBatchStatus.completed;
-      case 'cancelled':
-        return ProductionBatchStatus.cancelled;
+      case 'complete':
+        return ProductionBatchStatus.complete;
       default:
-        return ProductionBatchStatus.planned;
+        return ProductionBatchStatus.pending;
     }
   }
 }
@@ -56,7 +66,7 @@ class ProductionBatch extends BaseModel {
     required this.recipeId,
     required this.plannedQuantity,
     this.actualQuantity,
-    this.status = ProductionBatchStatus.planned,
+    this.status = ProductionBatchStatus.pending,
     this.startedAt,
     this.completedAt,
     this.startedBy,
@@ -90,9 +100,9 @@ class ProductionBatch extends BaseModel {
   factory ProductionBatch.fromJson(Map<String, dynamic> json) {
     return ProductionBatch(
       id: json['id'] as String,
-      batchNumber: json['batch_number'] as String? ?? '',
+      batchNumber: json['batch_number'] as String? ?? json['id']?.toString() ?? '',
       recipeId: json['recipe_id'] as String? ?? '',
-      plannedQuantity: (json['planned_quantity'] as num?)?.toInt() ?? 0,
+      plannedQuantity: ((json['planned_quantity'] ?? json['qty_produced']) as num?)?.toInt() ?? 0,
       actualQuantity: (json['actual_quantity'] as num?)?.toInt(),
       status: ProductionBatchStatusExt.fromDb(json['status'] as String?),
       startedAt: json['started_at'] != null

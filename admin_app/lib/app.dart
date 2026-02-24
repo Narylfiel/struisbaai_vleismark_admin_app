@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
+import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/widgets/session_scope.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 
 class AdminApp extends StatelessWidget {
@@ -8,7 +10,9 @@ class AdminApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return SessionScope(
+      authService: AuthService(),
+      child: MaterialApp(
       title: AdminConfig.appName,
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
@@ -58,6 +62,7 @@ class AdminApp extends StatelessWidget {
         useMaterial3: true,
       ),
       home: const PinScreen(),
+      ),
     );
   }
 }

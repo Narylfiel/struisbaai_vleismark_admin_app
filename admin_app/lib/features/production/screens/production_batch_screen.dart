@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/production_batch.dart';
 import '../models/recipe.dart';
@@ -85,7 +86,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
   }
 
   void _completeBatch(ProductionBatch batch) {
-    if (batch.status != ProductionBatchStatus.inProgress && batch.status != ProductionBatchStatus.planned) return;
+    if (batch.status != ProductionBatchStatus.inProgress && batch.status != ProductionBatchStatus.pending) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -172,7 +173,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
                   itemCount: _batches.length,
                   itemBuilder: (context, i) {
                     final b = _batches[i];
-                    final canComplete = b.status == ProductionBatchStatus.planned ||
+                    final canComplete = b.status == ProductionBatchStatus.pending ||
                         b.status == ProductionBatchStatus.inProgress;
                     return Card(
                       margin: const EdgeInsets.only(bottom: 8),
@@ -180,7 +181,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
                         title: Text(b.batchNumber, style: const TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text(
                           'Recipe: ${b.recipeId.substring(0, 8)}… | Planned: ${b.plannedQuantity} | '
-                          'Actual: ${b.actualQuantity ?? "—"} | ${b.status.dbValue}',
+                          'Actual: ${b.actualQuantity ?? "—"} | ${b.status.displayLabel}',
                           style: const TextStyle(fontSize: 12),
                         ),
                         trailing: canComplete
@@ -189,8 +190,8 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
                                 child: const Text('Complete'),
                               )
                             : Chip(
-                                label: Text(b.status.dbValue),
-                                backgroundColor: b.status == ProductionBatchStatus.completed
+                                label: Text(b.status.displayLabel),
+                                backgroundColor: b.status == ProductionBatchStatus.complete
                                     ? AppColors.success
                                     : AppColors.textSecondary,
                               ),
@@ -563,7 +564,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         batchId: widget.batch.id,
         actualQuantitiesByIngredientId: actuals,
         outputs: outputs,
-        completedBy: '', // TODO: from auth
+        completedBy: AuthService().getCurrentStaffId(),
         costTotal: costTotal,
       );
       if (mounted) {

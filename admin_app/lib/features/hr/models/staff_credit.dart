@@ -28,8 +28,28 @@ extension StaffCreditTypeExt on StaffCreditType {
     }
   }
 
+  /// Friendly label for UI. DB: meat_purchase, salary_advance, loan, deduction, repayment, other.
+  String get displayLabel {
+    switch (this) {
+      case StaffCreditType.meatPurchase:
+        return 'Meat Purchase';
+      case StaffCreditType.salaryAdvance:
+        return 'Salary Advance';
+      case StaffCreditType.loan:
+        return 'Loan';
+      case StaffCreditType.deduction:
+        return 'Deduction';
+      case StaffCreditType.repayment:
+        return 'Repayment';
+      case StaffCreditType.other:
+        return 'Other';
+    }
+  }
+
   static StaffCreditType fromDb(String? value) {
     switch (value) {
+      case 'meat_purchase':
+        return StaffCreditType.meatPurchase;
       case 'salary_advance':
         return StaffCreditType.salaryAdvance;
       case 'loan':
@@ -67,6 +87,20 @@ extension StaffCreditStatusExt on StaffCreditStatus {
     }
   }
 
+  /// Friendly label for UI. DB: pending, deducted, partial, cleared.
+  String get displayLabel {
+    switch (this) {
+      case StaffCreditStatus.pending:
+        return 'Pending';
+      case StaffCreditStatus.deducted:
+        return 'Deducted';
+      case StaffCreditStatus.partial:
+        return 'Partial';
+      case StaffCreditStatus.cleared:
+        return 'Cleared';
+    }
+  }
+
   static StaffCreditStatus fromDb(String? value) {
     switch (value) {
       case 'deducted':
@@ -78,6 +112,18 @@ extension StaffCreditStatusExt on StaffCreditStatus {
       default:
         return StaffCreditStatus.pending;
     }
+  }
+}
+
+/// Display label for deduct_from. DB: next_payroll, specific_period.
+String staffCreditDeductFromDisplayLabel(String? value) {
+  switch (value) {
+    case 'next_payroll':
+      return 'Next Payroll';
+    case 'specific_period':
+      return 'Specific Period';
+    default:
+      return value ?? '—';
   }
 }
 

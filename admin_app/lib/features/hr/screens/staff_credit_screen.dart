@@ -172,7 +172,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
       return;
     }
     final signedAmount = chargeToStaff ? amountAbs : -amountAbs;
-    final typeLabel = _typeLabel(type);
+    final typeLabel = type.displayLabel;
     final reason = notesController.text.trim().isEmpty ? typeLabel : '$typeLabel — ${notesController.text.trim()}';
 
     try {
@@ -191,17 +191,6 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error));
-    }
-  }
-
-  String _typeLabel(StaffCreditType t) {
-    switch (t) {
-      case StaffCreditType.salaryAdvance: return 'Advance';
-      case StaffCreditType.meatPurchase: return 'Meat Purchase';
-      case StaffCreditType.loan: return 'Loan';
-      case StaffCreditType.deduction: return 'Deduction';
-      case StaffCreditType.repayment: return 'Repayment';
-      case StaffCreditType.other: return 'Other';
     }
   }
 

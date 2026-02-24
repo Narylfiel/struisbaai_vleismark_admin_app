@@ -5,7 +5,17 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'base_service.dart';
 import '../constants/admin_config.dart';
 
-/// Authentication service handling PIN-based login, offline fallback, and session management
+/// Authentication service: single identity source and session for the admin app.
+///
+/// **Identity source:** All identity and validation use `staff_profiles` (id, full_name, role,
+/// is_active, pin_hash). Do not use `profiles` for auth in this app.
+///
+/// **Flow:** (1) PinScreen verifies PIN against staff_profiles (or local cache), then calls
+/// [setSession]. (2) On startup, [restoreSessionFromCache] validates cached session against
+/// staff_profiles. (3) All modules use [currentStaffId]/[getCurrentStaffId] for audit fields.
+///
+/// **Session:** In-memory + SharedPreferences; no Supabase Auth. Use [AuthService] singleton
+/// or [SessionScope.of](context) for consistent access.
 class AuthService extends BaseService {
   static final AuthService _instance = AuthService._internal();
   factory AuthService() => _instance;
@@ -23,6 +33,12 @@ class AuthService extends BaseService {
   String? get currentStaffName => _currentStaffName;
   String? get currentRole => _currentRole;
   bool get isLoggedIn => _currentStaffId != null;
+
+  /// Reusable audit helper: current staff id for completedBy, recorded_by, created_by. Returns empty string if not logged in.
+  String getCurrentStaffId() => _currentStaffId ?? '';
+
+  /// Reusable audit helper: current staff name for display or audit. Returns empty string if not logged in.
+  String getCurrentStaffName() => _currentStaffName ?? '';
 
   /// Authenticate user with PIN
   Future<Map<String, dynamic>?> authenticateWithPin(String pin) async {
@@ -52,12 +68,12 @@ class AuthService extends BaseService {
     }
   }
 
-  /// Online authentication against Supabase
+  /// Online authentication against Supabase (single identity source: staff_profiles)
   Future<Map<String, dynamic>?> _authenticateOnline(String pinHash) async {
     try {
       final response = await executeQuery(
         () => client
-            .from('profiles')
+            .from('staff_profiles')
             .select('id, full_name, role, is_active, pin_hash')
             .eq('pin_hash', pinHash)
             .eq('is_active', true)
@@ -106,16 +122,15 @@ class AuthService extends BaseService {
     }
   }
 
-  /// Validate current session
+  /// Validate current session (single identity source: staff_profiles)
   Future<bool> validateSession() async {
     if (!isLoggedIn || _currentStaffId == null) return false;
     final staffId = _currentStaffId!;
 
     try {
-      // Check if user still exists and is active
       final response = await executeQuery(
         () => client
-            .from('profiles')
+            .from('staff_profiles')
             .select('is_active')
             .eq('id', staffId)
             .single(),
@@ -256,19 +271,23 @@ class AuthService extends BaseService {
     return allowedRoles.contains(_currentRole);
   }
 
-  /// Get all active staff for caching
+  /// Get all active staff for caching (single identity source: staff_profiles)
   Future<List<Map<String, dynamic>>> getAllActiveStaff() async {
     try {
       final response = await executeQuery(
         () => client
-            .from('profiles')
-            .select('id, full_name, role, pin_hash')
+            .from('staff_profiles')
+            .select('id, full_name, role, pin_hash, is_active')
             .eq('is_active', true)
             .order('full_name'),
         operationName: 'Fetch active staff',
       );
 
-      return List<Map<String, dynamic>>.from(response ?? []);
+      final list = List<Map<String, dynamic>>.from(response ?? []);
+      for (final row in list) {
+        row['name'] = row['full_name'];
+      }
+      return list;
     } catch (e) {
       throw Exception('Failed to fetch staff: $e');
     }
@@ -296,9 +315,9 @@ class AuthService extends BaseService {
     }
   }
 
-  /// Hash PIN using SHA-256
+  /// Hash PIN using SHA-256 (unsalted — matches PinScreen and staff_profiles form)
   String _hashPin(String pin) {
-    final bytes = utf8.encode(pin + AdminConfig.supabaseUrl); // Salt with project URL
+    final bytes = utf8.encode(pin);
     return sha256.convert(bytes).toString();
   }
 

@@ -63,10 +63,10 @@ abstract class BaseService {
     return 'An unexpected error occurred: $error';
   }
 
-  /// Check if device is online (basic implementation)
+  /// Check if device is online (uses staff_profiles — same identity source as AuthService)
   Future<bool> isOnline() async {
     try {
-      await client.from('profiles').select('id').limit(1);
+      await client.from('staff_profiles').select('id').limit(1);
       return true;
     } catch (e) {
       return false;

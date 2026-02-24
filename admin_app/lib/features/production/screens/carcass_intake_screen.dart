@@ -354,13 +354,22 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
     );
   }
 
+  /// DB: pending, in_progress, complete
   Color _statusColor(String? status) {
     switch (status) {
-      case 'received': return AppColors.info;
+      case 'pending': return AppColors.info;
       case 'in_progress': return AppColors.warning;
-      case 'completed': return AppColors.success;
-      case 'rejected': return AppColors.error;
+      case 'complete': return AppColors.success;
       default: return AppColors.textSecondary;
+    }
+  }
+
+  String _statusDisplayLabel(String? status) {
+    switch (status) {
+      case 'in_progress': return 'In Progress';
+      case 'complete': return 'Complete';
+      case 'pending': return 'Pending';
+      default: return status?.replaceAll('_', ' ') ?? '—';
     }
   }
 
@@ -427,7 +436,7 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
                         final invW = (intake['invoice_weight'] as num?)?.toDouble() ?? 0;
                         final actW = (intake['actual_weight'] as num?)?.toDouble() ?? 0;
                         final variance = invW > 0 ? ((actW - invW) / invW * 100) : 0.0;
-                        final status = intake['status'] as String? ?? 'received';
+                        final status = intake['status'] as String? ?? 'pending';
                         final date = intake['delivery_date'] != null
                             ? intake['delivery_date'].toString().substring(0, 10)
                             : '—';
@@ -502,7 +511,7 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(
-                                    status.replaceAll('_', ' ').toUpperCase(),
+                                    _statusDisplayLabel(status),
                                     style: TextStyle(
                                       fontSize: 10,
                                       fontWeight: FontWeight.bold,
@@ -565,7 +574,7 @@ class _PendingBreakdownsTabState extends State<_PendingBreakdownsTab> {
       final data = await _supabase
           .from('carcass_intakes')
           .select('*, suppliers(name)')
-          .inFilter('status', ['received', 'in_progress'])
+          .inFilter('status', ['pending', 'in_progress'])
           .order('created_at', ascending: false);
       setState(() => _pending = List<Map<String, dynamic>>.from(data));
     } catch (e) {
@@ -1262,14 +1271,12 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
     final data = {
       'reference_number': refNum,
       'supplier_id': _selectedSupplierId,
-      'invoice_number': _invoiceNumController.text.trim(),
-      'invoice_weight': _invoiceWeight,
-      'actual_weight': _actualWeight,
+      'weight_in': _actualWeight,
       'remaining_weight': _actualWeight,
       'carcass_type': _carcassType,
       'yield_template_id': _selectedTemplateId,
       'delivery_date': _deliveryDate.toIso8601String().substring(0, 10),
-      'status': 'received',
+      'status': 'pending',
       'variance_pct': _variance,
       'notes': _notesController.text.trim(),
     };
@@ -1765,7 +1772,7 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
         }
       }
 
-      final status = _isPartial ? 'in_progress' : 'completed';
+      final status = _isPartial ? 'in_progress' : 'complete';
       await _supabase.from('carcass_intakes').update({
         'status': status,
         'remaining_weight': _remaining,

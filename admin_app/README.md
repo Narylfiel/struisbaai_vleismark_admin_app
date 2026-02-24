@@ -9,6 +9,18 @@ Struisbaai Vleismark — Admin & Back-Office (Blueprint §1–14). Owner/Manager
 
 ## Getting Started
 
+### Android: isar_flutter_libs namespace
+
+If the Android build fails with **"Namespace not specified"** for `:isar_flutter_libs`, run once (and after `flutter pub get` if you see the error again):
+
+```powershell
+.\scripts\patch_isar_android_namespace.ps1
+```
+
+This patches the cached package to add the `namespace` required by Android Gradle Plugin 8+.
+
+---
+
 This project is a starting point for a Flutter application.
 
 A few resources to get you started if this is your first Flutter project:

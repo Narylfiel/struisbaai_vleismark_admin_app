@@ -124,14 +124,11 @@ class StockMovement extends BaseModel {
       'item_id': itemId,
       'movement_type': movementType.dbValue,
       'quantity': quantity,
-      'unit_cost': unitCost,
-      'total_cost': totalCost,
       'reference_type': referenceType,
       'reference_id': referenceId,
       'location_from': locationFromId,
       'location_to': locationToId,
-      'performed_by': performedBy,
-      'performed_at': performedAt?.toIso8601String(),
+      'staff_id': performedBy,
       'notes': notes,
       'metadata': metadata,
     };
@@ -149,7 +146,7 @@ class StockMovement extends BaseModel {
       referenceId: json['reference_id'] as String?,
       locationFromId: json['location_from'] as String?,
       locationToId: json['location_to'] as String?,
-      performedBy: json['performed_by'] as String? ?? '',
+      performedBy: (json['staff_id'] ?? json['performed_by']) as String? ?? '',
       performedAt: json['performed_at'] != null
           ? DateTime.tryParse(json['performed_at'] as String)
           : null,

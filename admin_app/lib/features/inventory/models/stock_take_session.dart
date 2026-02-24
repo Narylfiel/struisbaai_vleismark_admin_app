@@ -25,8 +25,26 @@ extension StockTakeSessionStatusExt on StockTakeSessionStatus {
     }
   }
 
+  /// Friendly label for UI (DB values: open, in_progress, pending_approval, approved, cancelled).
+  String get displayLabel {
+    switch (this) {
+      case StockTakeSessionStatus.open:
+        return 'Open';
+      case StockTakeSessionStatus.inProgress:
+        return 'In Progress';
+      case StockTakeSessionStatus.pendingApproval:
+        return 'Pending Approval';
+      case StockTakeSessionStatus.approved:
+        return 'Approved';
+      case StockTakeSessionStatus.cancelled:
+        return 'Cancelled';
+    }
+  }
+
   static StockTakeSessionStatus fromDb(String? value) {
     switch (value) {
+      case 'open':
+        return StockTakeSessionStatus.open;
       case 'in_progress':
         return StockTakeSessionStatus.inProgress;
       case 'pending_approval':

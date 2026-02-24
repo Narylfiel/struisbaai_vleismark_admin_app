@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/dryer_batch.dart';
 import '../services/dryer_batch_repository.dart';
@@ -166,7 +167,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
                         title: Text(b.batchNumber, style: const TextStyle(fontWeight: FontWeight.w600)),
                         subtitle: Text(
                           '${b.productName} | ${b.dryerType.dbValue} | In: ${b.inputWeightKg} kg | '
-                          'Out: ${b.outputWeightKg ?? "—"} kg | ${b.status.dbValue}',
+                          'Out: ${b.outputWeightKg ?? "—"} kg | ${b.status.displayLabel}',
                           style: const TextStyle(fontSize: 12),
                         ),
                         trailing: canWeighOut
@@ -175,8 +176,8 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
                                 child: const Text('Weigh out'),
                               )
                             : Chip(
-                                label: Text(b.status.dbValue),
-                                backgroundColor: b.status == DryerBatchStatus.completed
+                                label: Text(b.status.displayLabel),
+                                backgroundColor: b.status == DryerBatchStatus.complete
                                     ? AppColors.success
                                     : AppColors.textSecondary,
                               ),
@@ -388,7 +389,7 @@ class _WeighOutDialogState extends State<_WeighOutDialog> {
       await widget.repo.completeBatch(
         batchId: widget.batch.id,
         outputWeightKg: out,
-        completedBy: '', // TODO: from auth
+        completedBy: AuthService().getCurrentStaffId(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
@@ -10,17 +11,34 @@ class SettingsRepository {
       : _client = client ?? SupabaseService.client;
 
   // ═════════════════════════════════════════════════════════
-  // 1. BUSINESS SETTINGS (key-value: setting_key, setting_value)
+  // 1. BUSINESS SETTINGS (supports column-based main row + key-value rows)
+  // DB may have: (a) main row with setting_key null and columns business_name, address, etc.;
+  //              (b) key-value rows with setting_key, setting_value (Scale/Tax/Notification).
   // ═════════════════════════════════════════════════════════
   Future<Map<String, dynamic>> getBusinessSettings() async {
     try {
-      final rows = await _client
-          .from('business_settings')
-          .select('setting_key, setting_value');
+      final rows = await _client.from('business_settings').select('*');
       final map = <String, dynamic>{};
       for (final r in rows as List) {
-        final k = r['setting_key']?.toString();
-        if (k != null) map[k] = r['setting_value'];
+        final row = Map<String, dynamic>.from(r as Map);
+        final key = row['setting_key']?.toString();
+        if (key != null && key.isNotEmpty) {
+          map[key] = row['setting_value'];
+        } else if (row.containsKey('business_name') || row.containsKey('address')) {
+          // Main row (column-based): map to keys expected by Business tab
+          final ws = row['working_hours_start']?.toString() ?? '';
+          final we = row['working_hours_end']?.toString() ?? '';
+          map['business_name'] = row['business_name'];
+          map['address'] = row['address'];
+          map['vat_number'] = row['vat_number'];
+          map['phone'] = row['phone'];
+          map['bcea_start_time'] = ws.length >= 5 ? ws.substring(0, 5) : (ws.isNotEmpty ? ws : '07:00');
+          map['bcea_end_time'] = we.length >= 5 ? we.substring(0, 5) : (we.isNotEmpty ? we : '17:00');
+        }
+      }
+      if (map.isEmpty) {
+        map['bcea_start_time'] = '07:00';
+        map['bcea_end_time'] = '17:00';
       }
       return map;
     } catch (_) {
@@ -29,7 +47,7 @@ class SettingsRepository {
   }
 
   Future<void> updateBusinessSettings(Map<String, dynamic> data) async {
-    const keys = [
+    const mainKeys = [
       'business_name',
       'address',
       'vat_number',
@@ -37,18 +55,51 @@ class SettingsRepository {
       'bcea_start_time',
       'bcea_end_time',
     ];
-    for (final key in keys) {
-      final value = data[key];
-      // JSONB validation: skip null and empty string to avoid garbage rows
-      if (value == null) continue;
-      if (value is String && (value as String).trim().isEmpty) continue;
-      // Temporary debug logging
-      print('Saving key: $key → value: $value');
-      final result = await _client.from('business_settings').upsert(
-        {'setting_key': key, 'setting_value': value},
-        onConflict: 'setting_key',
-      );
-      print('Upsert result: $result');
+    try {
+      // Main row: row with column-based config (has business_name; or first row if only one)
+      final list = (await _client.from('business_settings').select('id, business_name')) as List;
+      final maps = list.cast<Map<String, dynamic>>();
+      Map<String, dynamic>? mainRow;
+      for (final r in maps) {
+        if (r['business_name'] != null && r['business_name'].toString().trim().isNotEmpty) {
+          mainRow = r;
+          break;
+        }
+      }
+      mainRow ??= maps.isNotEmpty ? maps.first : null;
+      if (mainRow != null && mainRow['id'] != null) {
+        final payload = <String, dynamic>{};
+        if (data['business_name'] != null) payload['business_name'] = data['business_name'];
+        if (data['address'] != null) payload['address'] = data['address'];
+        if (data['vat_number'] != null) payload['vat_number'] = data['vat_number'];
+        if (data['phone'] != null) payload['phone'] = data['phone'];
+        final start = data['bcea_start_time']?.toString()?.trim();
+        if (start != null && start.isNotEmpty) {
+          payload['working_hours_start'] = start.length == 5 ? '$start:00' : start;
+        }
+        final end = data['bcea_end_time']?.toString()?.trim();
+        if (end != null && end.isNotEmpty) {
+          payload['working_hours_end'] = end.length == 5 ? '$end:00' : end;
+        }
+        if (payload.isNotEmpty) {
+          await _client.from('business_settings').update(payload).eq('id', mainRow['id']);
+        }
+      } else {
+        // No main row: upsert key-value rows for Business tab keys
+        for (final key in mainKeys) {
+          final value = data[key];
+          if (value == null || (value is String && (value as String).trim().isEmpty)) continue;
+          await _client.from('business_settings').upsert(
+            {'setting_key': key, 'setting_value': value},
+            onConflict: 'setting_key',
+          );
+        }
+      }
+    } catch (e, stack) {
+      debugPrint('DATABASE WRITE FAILED: business_settings update/upsert');
+      debugPrint(e.toString());
+      debugPrint(stack.toString());
+      rethrow;
     }
   }
 

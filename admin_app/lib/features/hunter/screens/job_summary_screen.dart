@@ -25,7 +25,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   @override
   void initState() {
     super.initState();
-    _collected = widget.job['status']?.toString() == 'Completed' || widget.job['status']?.toString() == 'collected';
+    _collected = (widget.job['status']?.toString().toLowerCase() ?? '') == 'completed';
     _loadBusinessSettings();
   }
 
@@ -72,8 +72,8 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
           pw.SizedBox(height: 8),
           pw.Text('Hunter Job Invoice — ${job['job_number'] ?? '—'}', style: pw.TextStyle(fontSize: 16)),
           pw.SizedBox(height: 12),
-          pw.Text('Hunter: ${job['client_name'] ?? '—'}'),
-          pw.Text('Phone: ${job['client_contact'] ?? '—'}'),
+          pw.Text('Hunter: ${job['hunter_name'] ?? job['client_name'] ?? '—'}'),
+          pw.Text('Phone: ${job['contact_phone'] ?? job['client_contact'] ?? '—'}'),
           pw.Text('Species: ${(job['hunter_services'] is Map ? (job['hunter_services'] as Map)['name'] : null) ?? '—'}'),
           pw.Text('Date: ${job['job_date'] ?? job['created_at']?.toString().substring(0, 10) ?? '—'}'),
           pw.SizedBox(height: 12),
@@ -98,7 +98,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
             ],
           ),
           pw.SizedBox(height: 8),
-          pw.Text('Charge: R ${(job['final_price'] ?? job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+          pw.Text('Charge: R ${(job['charge_total'] ?? job['final_price'] ?? job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
           pw.Text('Payment status: ${job['paid'] == true ? 'Paid' : 'Unpaid'}'),
         ],
       ),
@@ -107,12 +107,12 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   }
 
   Future<void> _sendWhatsApp() async {
-    final phone = widget.job['client_contact']?.toString()?.replaceAll(RegExp(r'[^\d+]'), '') ?? '';
+    final phone = (widget.job['contact_phone'] ?? widget.job['client_contact'])?.toString()?.replaceAll(RegExp(r'[^\d+]'), '') ?? '';
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No phone number for hunter.')));
       return;
     }
-    final name = widget.job['client_name'] ?? 'there';
+    final name = widget.job['hunter_name'] ?? widget.job['client_name'] ?? 'there';
     final species = (widget.job['hunter_services'] is Map ? (widget.job['hunter_services'] as Map)['name'] : null) ?? 'order';
     final text = Uri.encodeComponent('Hi $name, your $species is ready for collection.');
     final url = Uri.parse('https://wa.me/$phone?text=$text');
@@ -126,7 +126,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   Future<void> _markCollected() async {
     setState(() => _saving = true);
     try {
-      await _client.from('hunter_jobs').update({'status': 'Completed'}).eq('id', widget.job['id']);
+      await _client.from('hunter_jobs').update({'status': 'completed'}).eq('id', widget.job['id']);
       if (mounted) setState(() { _saving = false; _collected = true; });
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Marked as collected')));
     } catch (e) {
@@ -158,12 +158,12 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
           children: [
             const Text('Job details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 12),
-            _row('Hunter', job['client_name']?.toString() ?? '—'),
-            _row('Phone', job['client_contact']?.toString() ?? '—'),
+            _row('Hunter', (job['hunter_name'] ?? job['client_name'])?.toString() ?? '—'),
+            _row('Phone', (job['contact_phone'] ?? job['client_contact'])?.toString() ?? '—'),
             _row('Species', service?['name']?.toString() ?? '—'),
             _row('Job date', job['job_date']?.toString() ?? '—'),
             _row('Weight in (kg)', (job['weight_in'] ?? job['actual_weight_kg'] as num?)?.toString() ?? '—'),
-            _row('Charge', 'R ${(job['final_price'] ?? job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+            _row('Charge', 'R ${(job['charge_total'] ?? job['final_price'] ?? job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
             _row('Payment', job['paid'] == true ? 'Paid' : 'Unpaid'),
             const SizedBox(height: 16),
             const Text('Cuts', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),

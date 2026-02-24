@@ -392,7 +392,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
                   final s = _sessions[i];
                   return ListTile(
                     title: Text('Session ${s.startedAt != null ? _formatDate(s.startedAt!) : s.id.substring(0, 8)}'),
-                    subtitle: Text('Status: ${s.status.dbValue}'),
+                    subtitle: Text('Status: ${s.status.displayLabel}'),
                     trailing: s.status == StockTakeSessionStatus.open ||
                             s.status == StockTakeSessionStatus.inProgress
                         ? TextButton(
@@ -434,7 +434,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Status: ${s.status.dbValue}',
+                    'Status: ${s.status.displayLabel}',
                     style: const TextStyle(color: AppColors.textSecondary),
                   ),
                 ],

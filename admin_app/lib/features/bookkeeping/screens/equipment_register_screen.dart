@@ -54,9 +54,10 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
     final rate = (r['depreciation_rate'] as num?)?.toDouble();
     final usefulLife = (r['useful_life_years'] as num?)?.toInt();
     final effectiveRate = rate ?? (usefulLife != null && usefulLife > 0 ? 100.0 / usefulLife : 0);
+    /// DB: straight_line, declining_balance, diminishing
     final method = r['depreciation_method']?.toString() ?? 'straight_line';
     double current;
-    if (method == 'diminishing' || method == 'declining_balance') {
+    if (method == 'declining_balance' || method == 'diminishing') {
       current = cost * math.pow(1 - effectiveRate / 100, years);
     } else {
       current = cost - (cost * effectiveRate / 100 * years);
@@ -64,6 +65,7 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
     return current < 0 ? 0 : current;
   }
 
+  /// DB: active, under_repair, written_off
   Color _statusColor(String? status) {
     switch (status) {
       case 'active':
@@ -74,6 +76,20 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
         return AppColors.error;
       default:
         return AppColors.textSecondary;
+    }
+  }
+
+  /// Friendly label for status. DB: active, under_repair, written_off.
+  String _statusDisplayLabel(String? status) {
+    switch (status) {
+      case 'active':
+        return 'Active';
+      case 'under_repair':
+        return 'Under Repair';
+      case 'written_off':
+        return 'Written Off';
+      default:
+        return status?.replaceAll('_', ' ') ?? '—';
     }
   }
 
@@ -98,7 +114,12 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
       log.add({'date': DateTime.now().toIso8601String().substring(0, 10), 'notes': notes});
       await _client.from('equipment_register').update({'service_log': log}).eq('id', id);
       if (mounted) _load();
-    } catch (_) {}
+    } catch (e, stack) {
+      debugPrint('DATABASE WRITE FAILED: equipment_register service log update');
+      debugPrint(e.toString());
+      debugPrint(stack.toString());
+      rethrow;
+    }
   }
 
   @override
@@ -156,7 +177,7 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
                             DataCell(Text('${(r['purchase_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                             DataCell(Text('${_currentValue(r).toStringAsFixed(2)}')),
                             DataCell(Chip(
-                              label: Text(status.replaceAll('_', ' '), style: const TextStyle(fontSize: 11)),
+                              label: Text(_statusDisplayLabel(status), style: const TextStyle(fontSize: 11)),
                               backgroundColor: _statusColor(status).withValues(alpha: 0.2),
                               padding: EdgeInsets.zero,
                               materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
@@ -282,6 +303,7 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
   final _purchaseDateController = TextEditingController();
   final _priceController = TextEditingController();
   final _rateController = TextEditingController();
+  /// DB: straight_line, declining_balance, diminishing
   String _method = 'straight_line';
   String _status = 'active';
   bool _saving = false;
@@ -297,8 +319,7 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
       _purchaseDateController.text = (item['purchase_date']?.toString() ?? '').substring(0, 10);
       _priceController.text = (item['purchase_price'] as num?)?.toString() ?? '';
       _rateController.text = (item['depreciation_rate'] as num?)?.toString() ?? '';
-      _method = item['depreciation_method']?.toString() == 'declining_balance' ? 'diminishing' : (item['depreciation_method']?.toString() ?? 'straight_line');
-      if (_method == 'diminishing') _method = 'diminishing';
+      _method = item['depreciation_method']?.toString() ?? 'straight_line';
       _status = item['status']?.toString() ?? 'active';
     } else {
       _purchaseDateController.text = DateTime.now().toIso8601String().substring(0, 10);
@@ -341,7 +362,8 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
     setState(() => _saving = true);
     try {
       final years = (rate != null && rate > 0) ? (100 / rate).round() : 10;
-      final method = _method == 'diminishing' ? 'declining_balance' : 'straight_line';
+      /// DB values only: straight_line, declining_balance, diminishing
+      final method = _method;
       final data = {
         'description': name,
         'asset_number': serial,
@@ -418,8 +440,10 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
                 children: [
                   Radio<String>(value: 'straight_line', groupValue: _method, onChanged: (v) => setState(() => _method = v!)),
                   const Text('Straight line'),
+                  Radio<String>(value: 'declining_balance', groupValue: _method, onChanged: (v) => setState(() => _method = v!)),
+                  const Text('Declining Balance'),
                   Radio<String>(value: 'diminishing', groupValue: _method, onChanged: (v) => setState(() => _method = v!)),
-                  const Text('Diminishing value'),
+                  const Text('Diminishing'),
                 ],
               ),
               DropdownButtonFormField<String>(
@@ -427,8 +451,8 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
                 decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
                 items: const [
                   DropdownMenuItem(value: 'active', child: Text('Active')),
-                  DropdownMenuItem(value: 'under_repair', child: Text('Under repair')),
-                  DropdownMenuItem(value: 'written_off', child: Text('Written off')),
+                  DropdownMenuItem(value: 'under_repair', child: Text('Under Repair')),
+                  DropdownMenuItem(value: 'written_off', child: Text('Written Off')),
                 ],
                 onChanged: (v) => setState(() => _status = v ?? 'active'),
               ),

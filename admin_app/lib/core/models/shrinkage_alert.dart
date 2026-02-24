@@ -30,8 +30,8 @@ class ShrinkageAlert {
   static ShrinkageAlert fromJson(Map<String, dynamic> json) {
     return ShrinkageAlert(
       id: json['id']?.toString() ?? '',
-      productName: json['product_name']?.toString(),
-      productId: json['product_id']?.toString(),
+      productName: json['product_name']?.toString() ?? json['item_name']?.toString(),
+      productId: json['product_id']?.toString() ?? json['item_id']?.toString(),
       theoreticalStock: _toDouble(json['theoretical_stock']),
       actualStock: _toDouble(json['actual_stock']),
       gapAmount: _toDouble(json['gap_amount']),

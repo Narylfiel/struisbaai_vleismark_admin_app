@@ -115,6 +115,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _shrinkageAlerts = List<Map<String, dynamic>>.from(shrinkage);
     } catch (e) {
       debugPrint('Shrinkage alerts: $e');
+      _shrinkageAlerts = [];
       try {
         final fallback = await _supabase
             .from('shrinkage_alerts')
@@ -136,6 +137,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _reorderAlerts = List<Map<String, dynamic>>.from(reorder);
     } catch (e) {
       debugPrint('Reorder alerts: $e');
+      _reorderAlerts = [];
     }
 
     try {
@@ -148,17 +150,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _overdueAccounts = List<Map<String, dynamic>>.from(overdue);
     } catch (e) {
       debugPrint('Overdue accounts: $e');
+      _overdueAccounts = [];
     }
 
     try {
       final leave = await _supabase
           .from('leave_requests')
           .select('*, staff_profiles!staff_id(full_name)')
-          .eq('status', 'Pending')
+          .eq('status', 'pending')
           .limit(5);
       _pendingLeave = List<Map<String, dynamic>>.from(leave);
     } catch (e) {
       debugPrint('Leave requests: $e');
+      _pendingLeave = [];
     }
   }
 
@@ -173,32 +177,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .eq('is_active', true)
           .inFilter('role', ['cashier', 'blockman', 'manager', 'owner']);
 
-      final todayCards = await _supabase
-          .from('timecards')
-          .select('staff_id, clock_in')
-          .gte('clock_in', todayStart);
+      final todayCards = List<Map<String, dynamic>>.from(
+          await _supabase
+              .from('timecards')
+              .select('staff_id, clock_in')
+              .gte('clock_in', todayStart));
 
-      final clockedInIds = todayCards.map((t) => t['staff_id']).toSet();
+      final clockedInIds = todayCards
+          .map((t) => t['staff_id'])
+          .whereType<String>()
+          .toSet();
 
       final inList = <Map<String, dynamic>>[];
       final outList = <Map<String, dynamic>>[];
 
       for (final staff in allStaff) {
-        if (clockedInIds.contains(staff['id'])) {
-          final card = todayCards.firstWhere(
-              (t) => t['staff_id'] == staff['id']);
-          inList.add({...staff, 'clock_in': card['clock_in']});
+        final sid = staff['id'] as String?;
+        if (sid != null && clockedInIds.contains(sid)) {
+          final matching = todayCards.where((t) => t['staff_id'] == sid).toList();
+          if (matching.isNotEmpty) {
+            inList.add({...staff, 'clock_in': matching.first['clock_in']});
+          } else {
+            outList.add(staff);
+          }
         } else {
           outList.add(staff);
         }
       }
 
-      setState(() {
-        _clockedIn = inList;
-        _notClockedIn = outList;
-      });
+      if (mounted) {
+        setState(() {
+          _clockedIn = inList;
+          _notClockedIn = outList;
+        });
+      }
     } catch (e) {
       debugPrint('Clock-in status: $e');
+      if (mounted) {
+        setState(() {
+          _clockedIn = [];
+          _notClockedIn = [];
+        });
+      }
     }
   }
 

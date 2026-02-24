@@ -99,7 +99,8 @@ class RecipeRepository {
   Future<RecipeIngredient> updateIngredient(RecipeIngredient ingredient) async {
     final data = Map<String, dynamic>.from(ingredient.toJson())
       ..remove('id')
-      ..remove('created_at');
+      ..remove('created_at')
+      ..remove('updated_at');
     final response = await _client
         .from('recipe_ingredients')
         .update(data)

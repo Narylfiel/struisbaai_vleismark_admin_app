@@ -27,13 +27,13 @@ class ModifierGroup extends BaseModel {
     super.updatedAt,
   });
 
+  /// DB columns: id, name, required, allow_multiple, max_selections, active, created_at, is_required, updated_at, sort_order. No description.
   @override
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
-      'description': description,
-      'is_active': isActive,
+      'active': isActive,
       'sort_order': sortOrder,
       'is_required': required_,
       'allow_multiple': allowMultiple,
@@ -47,10 +47,10 @@ class ModifierGroup extends BaseModel {
     return ModifierGroup(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
-      description: json['description'] as String?,
-      isActive: json['is_active'] as bool? ?? true,
+      description: json['description'] as String?, // nullable fallback for reads; not in DB
+      isActive: json['active'] as bool? ?? json['is_active'] as bool? ?? true,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
-      required_: json['is_required'] as bool? ?? false,
+      required_: json['is_required'] as bool? ?? json['required'] as bool? ?? false,
       allowMultiple: json['allow_multiple'] as bool? ?? false,
       maxSelections: (json['max_selections'] as num?)?.toInt() ?? 1,
       createdAt: json['created_at'] != null

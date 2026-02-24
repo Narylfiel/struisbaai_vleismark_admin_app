@@ -74,16 +74,16 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
     try {
       final rows = await _client
           .from('suppliers')
-          .select('id, name, contact_person, phone, email, payment_terms, address')
+          .select('id, name, contact_name, phone, email, account_number, notes')
           .order('name');
       final list = List<Map<String, dynamic>>.from(rows as List);
       final data = list.map((r) => {
         'name': r['name']?.toString() ?? '',
-        'contact_name': r['contact_person']?.toString() ?? '',
+        'contact_name': (r['contact_name'] ?? r['contact_person'])?.toString() ?? '',
         'phone': r['phone']?.toString() ?? '',
         'email': r['email']?.toString() ?? '',
-        'account_number': r['payment_terms']?.toString() ?? '',
-        'notes': r['address']?.toString() ?? '',
+        'account_number': r['account_number']?.toString() ?? '',
+        'notes': r['notes']?.toString() ?? '',
       }).toList();
       final file = await _export.exportToCsv(
         fileName: 'suppliers_export',
@@ -209,11 +209,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
         final id = nameToId[name.toLowerCase()];
         if (id != null) {
           await _client.from('suppliers').update({
-            'contact_person': contactName.isEmpty ? null : contactName,
+            'contact_name': contactName.isEmpty ? null : contactName,
             'phone': phone.isEmpty ? null : phone,
             'email': email.isEmpty ? null : email,
-            'payment_terms': accountNumber.isEmpty ? null : accountNumber,
-            'address': notes.isEmpty ? null : notes,
+            'account_number': accountNumber.isEmpty ? null : accountNumber,
+            'notes': notes.isEmpty ? null : notes,
             'updated_at': DateTime.now().toIso8601String(),
           }).eq('id', id);
           updated++;
@@ -221,11 +221,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
         } else {
           await _client.from('suppliers').insert({
             'name': name,
-            'contact_person': contactName.isEmpty ? null : contactName,
+            'contact_name': contactName.isEmpty ? null : contactName,
             'phone': phone.isEmpty ? null : phone,
             'email': email.isEmpty ? null : email,
-            'payment_terms': accountNumber.isEmpty ? null : accountNumber,
-            'address': notes.isEmpty ? null : notes,
+            'account_number': accountNumber.isEmpty ? null : accountNumber,
+            'notes': notes.isEmpty ? null : notes,
             'is_active': true,
           });
           imported++;

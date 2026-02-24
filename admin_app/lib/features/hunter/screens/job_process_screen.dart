@@ -127,12 +127,10 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
       }
       final jobId = widget.job['id'] as String;
       await _client.from('hunter_jobs').update({
-        'status': 'Ready for Collection',
+        'status': 'ready',
         'cuts': cuts,
         'weight_in': weightIn,
-        'actual_weight_kg': weightIn,
-        'final_price': _finalCharge,
-        'quoted_price': _finalCharge,
+        'charge_total': _finalCharge,
         'total_amount': _finalCharge,
       }).eq('id', jobId);
 
@@ -183,12 +181,12 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
           children: [
             const Text('Intake details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            Text('Hunter: ${widget.job['client_name'] ?? '—'}'),
-            Text('Phone: ${widget.job['client_contact'] ?? '—'}'),
-            Text('Species: ${_service?['name'] ?? '—'}'),
+            Text('Hunter: ${widget.job['hunter_name'] ?? widget.job['client_name'] ?? '—'}'),
+            Text('Phone: ${widget.job['contact_phone'] ?? widget.job['client_contact'] ?? '—'}'),
+            Text('Species: ${_service?['name'] ?? widget.job['species'] ?? '—'}'),
             Text('Job date: ${widget.job['job_date'] ?? '—'}'),
-            Text('Estimated weight: ${widget.job['estimated_weight_kg']} kg'),
-            Text('Quoted charge: R ${(widget.job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
+            Text('Estimated weight: ${widget.job['estimated_weight'] ?? widget.job['estimated_weight_kg'] ?? '—'} kg'),
+            Text('Charge: R ${(widget.job['charge_total'] ?? widget.job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
             const SizedBox(height: 24),
             const Text('Per cut — actual weight & link to product', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),

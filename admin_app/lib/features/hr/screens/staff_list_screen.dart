@@ -900,10 +900,11 @@ class _LeaveTabState extends State<_LeaveTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
+      // DB stores status lowercase: 'pending', 'approved', 'rejected'
       final requests = await _supabase
           .from('leave_requests')
           .select('*, staff_profiles!staff_id(full_name, role)')
-          .eq('status', _filter)
+          .eq('status', _filter.toLowerCase())
           .order('created_at', ascending: false);
       final balances = await _supabase
           .from('leave_balances')
@@ -920,8 +921,10 @@ class _LeaveTabState extends State<_LeaveTab> {
   }
 
   Future<void> _updateStatus(String id, String status, String? notes) async {
+    // DB CHECK expects lowercase: 'pending', 'approved', 'rejected'
+    final statusLower = status.toLowerCase();
     await _supabase.from('leave_requests').update({
-      'status': status,
+      'status': statusLower,
       'review_notes': notes,
       'reviewed_at': DateTime.now().toIso8601String(),
     }).eq('id', id);
@@ -971,7 +974,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
                         itemBuilder: (_, i) {
                           final r = _requests[i];
-                          final isPending = r['status'] == 'Pending';
+                          final isPending = r['status'] == 'pending';
                           return Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_intake_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_process_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
@@ -95,9 +96,9 @@ class _JobsTabState extends State<_JobsTab> {
     try {
       var query = _supabase.from('hunter_jobs').select('*');
       if (widget.isCompleted) {
-        query = query.eq('status', 'Completed');
+        query = query.eq('status', 'completed');
       } else {
-        query = query.neq('status', 'Completed');
+        query = query.neq('status', 'completed');
       }
       final data = await query.order('created_at', ascending: false);
       setState(() => _jobs = List<Map<String, dynamic>>.from(data));
@@ -108,11 +109,13 @@ class _JobsTabState extends State<_JobsTab> {
   }
 
   Color _statusColor(String? status) {
-    switch (status) {
-      case 'Intake': return AppColors.info;
-      case 'Processing': return AppColors.warning;
-      case 'Ready for Collection': return AppColors.success;
-      case 'Completed': return AppColors.textSecondary;
+    final v = hunterJobStatusToDbValue(status);
+    switch (v) {
+      case 'intake': return AppColors.info;
+      case 'processing': return AppColors.warning;
+      case 'ready': return AppColors.success;
+      case 'completed': return AppColors.textSecondary;
+      case 'cancelled': return AppColors.danger;
       default: return AppColors.textLight;
     }
   }
@@ -124,13 +127,11 @@ class _JobsTabState extends State<_JobsTab> {
     ).then((_) => _load());
   }
 
-  /// H1: Tap row → job_process_screen (intake/processing) or job_summary_screen (ready/collected).
+  /// H1: Tap row → job_process_screen (intake/processing) or job_summary_screen (ready/completed).
   void _openJobDetails(Map<String, dynamic> job) {
-    final status = (job['status'] as String?)?.toLowerCase() ?? '';
-    final isProcess = status == 'intake' || status == 'processing' ||
-        job['status'] == 'Intake' || job['status'] == 'Processing';
-    final isSummary = status == 'ready' || status == 'collected' ||
-        job['status'] == 'Ready for Collection' || job['status'] == 'Completed';
+    final status = hunterJobStatusToDbValue(job['status'] as String?);
+    final isProcess = status == 'intake' || status == 'processing';
+    final isSummary = status == 'ready' || status == 'completed';
     if (isProcess) {
       Navigator.of(context).push(
         MaterialPageRoute(builder: (_) => JobProcessScreen(job: job)),
@@ -203,7 +204,8 @@ class _JobsTabState extends State<_JobsTab> {
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
                       itemBuilder: (_, i) {
                         final job = _jobs[i];
-                        final status = job['status'] as String? ?? 'Intake';
+                        final statusDb = job['status'] as String? ?? 'intake';
+                        final statusLabel = HunterJobStatusExt.fromDb(statusDb).displayLabel;
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
@@ -214,27 +216,27 @@ class _JobsTabState extends State<_JobsTab> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(job['customer_name'] ?? job['client_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)),
-                                  Text(job['customer_phone'] ?? job['client_contact'] ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                  Text(job['hunter_name'] ?? job['customer_name'] ?? job['client_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)),
+                                  Text(job['contact_phone'] ?? job['customer_phone'] ?? job['client_contact'] ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 ],
                               )
                             ),
                             const SizedBox(width: 16),
                             Expanded(
-                              child: Text('${job['animal_type'] ?? 'Unknown'} - ${(job['estimated_weight'] as num?)?.toStringAsFixed(1) ?? (job['estimated_weight_kg'] as num?)?.toStringAsFixed(1) ?? '0.0'} kg')
+                              child: Text('${job['animal_type'] ?? 'Unknown'} - ${((job['estimated_weight'] ?? job['estimated_weight_kg']) as num?)?.toStringAsFixed(1) ?? '0.0'} kg')
                             ),
                             const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${((job['total_amount'] ?? job['quoted_price'] ?? job['final_price']) as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                            SizedBox(width: 100, child: Text('R ${((job['total_amount'] ?? job['charge_total'] ?? job['quoted_price'] ?? job['final_price']) as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                             const SizedBox(width: 16),
                             SizedBox(
                               width: 120, 
                               child: Container(
                                 padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
                                 decoration: BoxDecoration(
-                                  color: _statusColor(status).withOpacity(0.1),
+                                  color: _statusColor(statusDb).withOpacity(0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
-                                child: Text(status, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: _statusColor(status), fontWeight: FontWeight.bold)),
+                                child: Text(statusLabel, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, color: _statusColor(statusDb), fontWeight: FontWeight.bold)),
                               )
                             ),
                             const SizedBox(width: 16),
@@ -315,21 +317,24 @@ class _JobFormDialogState extends State<_JobFormDialog> {
       double estTotal = 0;
       for (final sId in _selectedServices) {
         final s = _services.firstWhere((x) => x['id'] == sId);
-        final rate = (s['rate'] as num?)?.toDouble() ?? 0.0;
-        estTotal += (w * rate); // Rough estimate
+        final base = (s['base_price'] as num?)?.toDouble() ?? 0.0;
+        final perKg = (s['price_per_kg'] as num?)?.toDouble() ?? 0.0;
+        estTotal += base + (w * perKg);
       }
 
       final res = await _supabase.from('hunter_jobs').insert({
         'job_number': jobNo,
+        'hunter_name': _nameCtrl.text.trim(),
+        'contact_phone': _phoneCtrl.text.trim(),
         'customer_name': _nameCtrl.text,
         'customer_phone': _phoneCtrl.text,
-        'customer_email': _emailCtrl.text,
         'animal_type': _animalCtrl.text,
+        'species': _animalCtrl.text.trim().isEmpty ? null : _animalCtrl.text.trim(),
         'estimated_weight': w,
-        'notes': _notesCtrl.text,
-        'deposit_paid': double.tryParse(_depositCtrl.text) ?? 0.0,
+        'notes': _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
+        'charge_total': estTotal,
         'total_amount': estTotal,
-        'status': 'Intake'
+        'status': 'intake',
       }).select().single();
 
       final jobId = res['id'];
@@ -390,10 +395,13 @@ class _JobFormDialogState extends State<_JobFormDialog> {
                     ..._services.map((s) {
                       final id = s['id'] as String;
                       final isSelected = _selectedServices.contains(id);
-                      final rate = s['rate'] ?? 0;
-                      final rateType = s['rate_type'] == 'per_kg' ? '/ kg' : '/ pack';
+                      final base = (s['base_price'] as num?)?.toDouble() ?? 0;
+                      final perKg = (s['price_per_kg'] as num?)?.toDouble();
+                      final priceLabel = perKg != null && perKg > 0
+                          ? (base > 0 ? 'R $base + R $perKg/kg' : 'R $perKg/kg')
+                          : 'R $base';
                       return CheckboxListTile(
-                        title: Text('${s['service_name']} (R $rate $rateType)'),
+                        title: Text('${s['name']} ($priceLabel)'),
                         value: isSelected,
                         onChanged: (v) {
                           setState(() {
@@ -442,14 +450,14 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
   @override
   void initState() {
     super.initState();
-    _status = widget.job['status'] ?? 'Intake';
+    _status = hunterJobStatusToDbValue(widget.job['status'] as String?);
     _loadProcesses();
   }
 
   Future<void> _loadProcesses() async {
     try {
       final res = await _supabase.from('hunter_job_processes')
-          .select('*, hunter_services!inner(service_name, rate, rate_type)')
+          .select('*, hunter_services!inner(name, base_price, price_per_kg)')
           .eq('job_id', widget.job['id'])
           .order('id');
       setState(() {
@@ -461,10 +469,10 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
     }
   }
 
-  Future<void> _updateStatus(String newStatus) async {
+  Future<void> _updateStatus(String newStatusDb) async {
     try {
-      await _supabase.from('hunter_jobs').update({'status': newStatus}).eq('id', widget.job['id']);
-      setState(() => _status = newStatus);
+      await _supabase.from('hunter_jobs').update({'status': newStatusDb}).eq('id', widget.job['id']);
+      setState(() => _status = newStatusDb);
       widget.onSaved();
     } catch (e) {
       debugPrint('$e');
@@ -483,11 +491,11 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
           children: [
             Row(
               children: [
-                Expanded(child: Text('Customer: ${widget.job['customer_name'] ?? widget.job['client_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.bold))),
-                Text('Status: $_status', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+                Expanded(child: Text('Customer: ${widget.job['hunter_name'] ?? widget.job['customer_name'] ?? widget.job['client_name'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.bold))),
+                Text('Status: ${HunterJobStatusExt.fromDb(_status).displayLabel}', style: const TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
               ],
             ),
-            Text('Animal: ${widget.job['animal_type'] ?? '—'} (${(widget.job['estimated_weight'] ?? widget.job['estimated_weight_kg']) ?? '—'} kg)'),
+            Text('Animal: ${widget.job['animal_type'] ?? '—'} (${widget.job['estimated_weight'] ?? widget.job['estimated_weight_kg'] ?? '—'} kg)'),
             const SizedBox(height: 16),
             const Text('Processing Steps', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
             const Divider(),
@@ -499,13 +507,18 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
                     itemBuilder: (_, i) {
                       final p = _processes[i];
                       final srv = p['hunter_services'];
-                      final isCompleted = p['status'] == 'Completed';
+                      final isCompleted = (p['status'] as String?)?.toLowerCase() == 'completed';
                       return ListTile(
                         leading: Icon(isCompleted ? Icons.check_circle : Icons.radio_button_unchecked, color: isCompleted ? AppColors.success : AppColors.textLight),
-                        title: Text('${srv['service_name']}'),
-                        subtitle: Text('Status: ${p['status']}'),
+                        title: Text('${srv['name'] ?? '—'}'),
+                        subtitle: Text('Status: ${(p['status'] as String?) ?? '—'}'),
                         trailing: isCompleted ? const Text('Done', style: TextStyle(color: AppColors.success)) : ElevatedButton(
-                          onPressed: () {}, // Would open step form
+                          onPressed: () {
+                            Navigator.pop(context);
+                            Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => JobProcessScreen(job: widget.job)),
+                            ).then((_) => widget.onSaved());
+                          },
                           child: const Text('Process'),
                         ),
                       );
@@ -516,9 +529,9 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
         ),
       ),
       actions: [
-        if (_status == 'Intake') ElevatedButton(onPressed: () => _updateStatus('Processing'), child: const Text('START PROCESSING')),
-        if (_status == 'Processing') ElevatedButton(onPressed: () => _updateStatus('Ready for Collection'), child: const Text('MARK READY')),
-        if (_status == 'Ready for Collection') ElevatedButton(onPressed: () => _updateStatus('Completed'), child: const Text('COMPLETE & INVOICE', style: TextStyle(backgroundColor: AppColors.success, color: Colors.white))),
+        if (_status == 'intake') ElevatedButton(onPressed: () => _updateStatus('processing'), child: const Text('START PROCESSING')),
+        if (_status == 'processing') ElevatedButton(onPressed: () => _updateStatus('ready'), child: const Text('MARK READY')),
+        if (_status == 'ready') ElevatedButton(onPressed: () => _updateStatus('completed'), child: const Text('COMPLETE & INVOICE', style: TextStyle(backgroundColor: AppColors.success, color: Colors.white))),
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('CLOSE')),
       ],
     );
@@ -549,7 +562,7 @@ class _ServicesTabState extends State<_ServicesTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _supabase.from('hunter_services').select('*').order('service_name');
+      final data = await _supabase.from('hunter_services').select('*').order('name');
       setState(() => _services = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Services load: $e');
@@ -590,9 +603,7 @@ class _ServicesTabState extends State<_ServicesTab> {
           child: const Row(children: [
             Expanded(flex: 2, child: Text('SERVICE NAME', style: _h)),
             SizedBox(width: 16),
-            SizedBox(width: 100, child: Text('RATE', style: _h)),
-            SizedBox(width: 16),
-            SizedBox(width: 80, child: Text('YIELD', style: _h)),
+            SizedBox(width: 140, child: Text('PRICING', style: _h)),
             SizedBox(width: 16),
             SizedBox(width: 80, child: Text('STATUS', style: _h)),
             SizedBox(width: 16),
@@ -612,14 +623,17 @@ class _ServicesTabState extends State<_ServicesTab> {
                       itemBuilder: (_, i) {
                         final s = _services[i];
                         final active = s['is_active'] as bool? ?? true;
+                        final base = (s['base_price'] as num?)?.toDouble() ?? 0;
+                        final perKg = (s['price_per_kg'] as num?)?.toDouble();
+                        final rateStr = perKg != null && perKg > 0
+                            ? (base > 0 ? 'R $base + R $perKg/kg' : 'R $perKg/kg')
+                            : 'R $base';
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
-                            Expanded(flex: 2, child: Text(s['service_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600))),
+                            Expanded(flex: 2, child: Text(s['name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600))),
                             const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('R ${s['rate']} / ${s['rate_type'] == 'per_kg' ? 'kg' : 'pack'}')),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 80, child: Text('${s['expected_yield'] ?? '0'}%')),
+                            SizedBox(width: 140, child: Text(rateStr, overflow: TextOverflow.ellipsis)),
                             const SizedBox(width: 16),
                             SizedBox(width: 80, child: Text(active ? 'Active' : 'Inactive', style: TextStyle(color: active ? AppColors.success : AppColors.error, fontSize: 12))),
                             const SizedBox(width: 16),
@@ -651,11 +665,9 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
   final _formKey = GlobalKey<FormState>();
 
   final _nameCtrl = TextEditingController();
-  final _rateCtrl = TextEditingController();
-  final _yieldCtrl = TextEditingController();
-  final _minWtCtrl = TextEditingController();
+  final _basePriceCtrl = TextEditingController();
+  final _pricePerKgCtrl = TextEditingController();
 
-  String _rateType = 'per_kg';
   bool _isActive = true;
   bool _isSaving = false;
 
@@ -664,11 +676,9 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
     super.initState();
     if (widget.service != null) {
       final s = widget.service!;
-      _nameCtrl.text = s['service_name'] ?? '';
-      _rateCtrl.text = (s['rate'] ?? '').toString();
-      _yieldCtrl.text = (s['expected_yield'] ?? '').toString();
-      _minWtCtrl.text = (s['min_weight'] ?? '').toString();
-      _rateType = s['rate_type'] ?? 'per_kg';
+      _nameCtrl.text = s['name'] ?? '';
+      _basePriceCtrl.text = (s['base_price'] ?? '').toString();
+      _pricePerKgCtrl.text = (s['price_per_kg'] ?? '').toString();
       _isActive = s['is_active'] ?? true;
     }
   }
@@ -677,11 +687,9 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     final payload = {
-      'service_name': _nameCtrl.text,
-      'rate_type': _rateType,
-      'rate': double.tryParse(_rateCtrl.text) ?? 0.0,
-      'expected_yield': double.tryParse(_yieldCtrl.text) ?? 0.0,
-      'min_weight': double.tryParse(_minWtCtrl.text) ?? 0.0,
+      'name': _nameCtrl.text.trim(),
+      'base_price': double.tryParse(_basePriceCtrl.text) ?? 0.0,
+      'price_per_kg': double.tryParse(_pricePerKgCtrl.text),
       'is_active': _isActive,
     };
 
@@ -707,27 +715,19 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
       title: Text(widget.service == null ? 'New Service' : 'Edit Service'),
       content: Form(
         key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Service Name'), validator: (v) => v!.isEmpty ? 'Req' : null),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<String>(
-              initialValue: _rateType,
-              decoration: const InputDecoration(labelText: 'Rate Type'),
-              items: const [
-                DropdownMenuItem(value: 'per_kg', child: Text('Per Kg')),
-                DropdownMenuItem(value: 'per_pack', child: Text('Per Pack')),
-              ],
-              onChanged: (v) => setState(() => _rateType = v!),
-            ),
-            const SizedBox(height: 8),
-            TextFormField(controller: _rateCtrl, decoration: const InputDecoration(labelText: 'Rate (R)'), keyboardType: TextInputType.number),
-            const SizedBox(height: 8),
-            TextFormField(controller: _yieldCtrl, decoration: const InputDecoration(labelText: 'Expected Yield (%)'), keyboardType: TextInputType.number),
-            const SizedBox(height: 8),
-            SwitchListTile(title: const Text('Active'), value: _isActive, onChanged: (v) => setState(() => _isActive = v)),
-          ],
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Service name'), validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null),
+              const SizedBox(height: 8),
+              TextFormField(controller: _basePriceCtrl, decoration: const InputDecoration(labelText: 'Base price (R)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+              const SizedBox(height: 8),
+              TextFormField(controller: _pricePerKgCtrl, decoration: const InputDecoration(labelText: 'Price per kg (R) — optional'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+              const SizedBox(height: 8),
+              SwitchListTile(title: const Text('Active'), value: _isActive, onChanged: (v) => setState(() => _isActive = v!)),
+            ],
+          ),
         ),
       ),
       actions: [

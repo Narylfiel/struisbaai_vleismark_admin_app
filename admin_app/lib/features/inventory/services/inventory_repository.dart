@@ -32,19 +32,15 @@ class InventoryRepository {
     if (quantity < 0 || (quantity == 0 && movementType != MovementType.adjustment)) {
       throw ArgumentError('Quantity must be non-negative (0 only for adjustment)');
     }
-    final totalCost =
-        unitCost != null ? (unitCost * quantity) : null;
     final row = {
       'item_id': itemId,
       'movement_type': movementType.dbValue,
       'quantity': quantity,
-      'unit_cost': unitCost,
-      'total_cost': totalCost,
       'reference_type': referenceType,
       'reference_id': referenceId,
       'location_from': locationFromId,
       'location_to': locationToId,
-      'performed_by': performedBy,
+      'staff_id': performedBy,
       'notes': notes,
       'metadata': metadata,
     };
@@ -158,7 +154,7 @@ class InventoryRepository {
       'item_id': itemId,
       'movement_type': 'adjustment',
       'quantity': variance.abs(),
-      'performed_by': performedBy,
+      'staff_id': performedBy,
       'notes': notes ?? 'Stock take: was $cur, set to $actualQuantity',
       'metadata': {'previous': cur, 'actual': actualQuantity},
     };
@@ -205,7 +201,7 @@ class InventoryRepository {
         .from('stock_movements')
         .select()
         .eq('item_id', itemId)
-        .order('performed_at', ascending: false)
+        .order('created_at', ascending: false)
         .limit(limit);
     final list = List<Map<String, dynamic>>.from(response);
     return list.map((e) => StockMovement.fromJson(e)).toList();
