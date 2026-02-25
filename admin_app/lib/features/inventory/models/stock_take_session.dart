@@ -66,6 +66,7 @@ class StockTakeSession extends BaseModel {
   final DateTime? approvedAt;
   final String? approvedBy;
   final String? notes;
+  final String? rejectionNote;
 
   const StockTakeSession({
     required super.id,
@@ -75,6 +76,7 @@ class StockTakeSession extends BaseModel {
     this.approvedAt,
     this.approvedBy,
     this.notes,
+    this.rejectionNote,
     super.createdAt,
     super.updatedAt,
   });
@@ -89,6 +91,7 @@ class StockTakeSession extends BaseModel {
       'approved_at': approvedAt?.toIso8601String(),
       'approved_by': approvedBy,
       'notes': notes,
+      'rejection_note': rejectionNote,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -107,6 +110,7 @@ class StockTakeSession extends BaseModel {
           : null,
       approvedBy: json['approved_by'] as String?,
       notes: json['notes'] as String?,
+      rejectionNote: json['rejection_note'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

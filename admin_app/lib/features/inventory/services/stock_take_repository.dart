@@ -164,14 +164,62 @@ class StockTakeRepository {
         .eq('id', sessionId);
   }
 
-  /// Hard delete: only if status is 'open' or 'cancelled'. Delete stock_take_entries first.
+  /// Hard delete: delete stock_take_entries first, then session. Owner-only enforced in UI.
   Future<void> deleteSession(String sessionId) async {
-    final session = await getSession(sessionId);
-    if (session == null) throw ArgumentError('Session not found');
-    if (session.status != StockTakeSessionStatus.open && session.status != StockTakeSessionStatus.cancelled) {
-      throw StateError('Cannot delete an active or approved stock take.');
-    }
     await _client.from('stock_take_entries').delete().eq('session_id', sessionId);
     await _client.from('stock_take_sessions').delete().eq('id', sessionId);
+  }
+
+  /// Reject session: revert to in_progress with rejection_note so staff can recount.
+  Future<void> rejectSession(String sessionId, String rejectionNote) async {
+    await _client
+        .from('stock_take_sessions')
+        .update({
+          'status': 'in_progress',
+          'rejection_note': rejectionNote,
+          'approved_at': null,
+          'approved_by': null,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', sessionId);
+  }
+
+  /// Update entry actual_quantity (for edit/correct).
+  Future<void> updateEntryActualQuantity(String entryId, double actualQuantity) async {
+    await _client
+        .from('stock_take_entries')
+        .update({
+          'actual_quantity': actualQuantity,
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', entryId);
+  }
+
+  /// Get staff display names for given IDs (started_by, etc.).
+  Future<Map<String, String>> getStaffNamesForIds(Set<String> ids) async {
+    if (ids.isEmpty) return {};
+    try {
+      final list = await _client
+          .from('staff_profiles')
+          .select('id, full_name')
+          .inFilter('id', ids.toList());
+      return {
+        for (final r in list)
+          (r as Map<String, dynamic>)['id']?.toString() ?? '':
+              (r['full_name'] as String? ?? 'Unknown'),
+      };
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Get entries with inventory item names (for view/export).
+  Future<List<Map<String, dynamic>>> getEntriesWithItems(String sessionId) async {
+    final list = await _client
+        .from('stock_take_entries')
+        .select('*, inventory_items(name, plu_code, sell_price)')
+        .eq('session_id', sessionId)
+        .order('item_id');
+    return List<Map<String, dynamic>>.from(list);
   }
 }

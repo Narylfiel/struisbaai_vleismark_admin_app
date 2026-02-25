@@ -19,28 +19,23 @@ class ProductListScreenState extends State<ProductListScreen> {
   /// Call from parent (e.g. Inventory + button) to open Add Product form.
   void openAddProduct() => _openProduct(null);
   final _supabase = SupabaseService.client;
-  final _searchController = TextEditingController();
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
   List<Map<String, dynamic>> _categories = []; // includes {id, name}; first item is All (id: null)
   bool _isLoading = true;
-  String? _selectedCategoryFilterId; // null = All
+  Set<String> _selectedCategoryIds = {}; // empty = All
   String? _selectedChannelFilter; // null = All, 'pos', 'app', 'online'
   bool _showInactive = false;
   final Set<String> _selectedProductIds = {}; // for bulk channel action
+  String? _searchExactProductId; // when user selects autocomplete suggestion
+  String _searchQuery = ''; // text search (managed by Autocomplete field)
+  String _sortOption = 'plu_asc'; // plu_asc, plu_desc, name_az, name_za, price_low, price_high, stock_low, stock_high, category
 
   @override
   void initState() {
     super.initState();
     _loadData();
-    _searchController.addListener(_filterProducts);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -70,21 +65,92 @@ class ProductListScreenState extends State<ProductListScreen> {
   }
 
   void _filterProducts() {
-    final query = _searchController.text.toLowerCase();
+    final query = _searchQuery.trim().toLowerCase();
     setState(() {
       _filtered = _products.where((p) {
-        final matchSearch = query.isEmpty ||
-            (p['name'] ?? '').toLowerCase().contains(query) ||
-            (p['plu_code']?.toString() ?? '').contains(query) ||
-            (p['barcode'] ?? '').toLowerCase().contains(query) ||
-            (p['text_lookup_code'] ?? '').toLowerCase().contains(query);
-        final matchCat = _selectedCategoryFilterId == null ||
-            p['category_id']?.toString() == _selectedCategoryFilterId;
+        final matchSearch = _searchExactProductId != null
+            ? p['id']?.toString() == _searchExactProductId
+            : query.isEmpty ||
+                (p['name'] ?? '').toLowerCase().contains(query) ||
+                (p['plu_code']?.toString() ?? '').contains(query) ||
+                (p['barcode'] ?? '').toLowerCase().contains(query) ||
+                (p['text_lookup_code'] ?? '').toLowerCase().contains(query);
+        final catId = p['category_id']?.toString();
+        final matchCat = _selectedCategoryIds.isEmpty ||
+            (catId != null && _selectedCategoryIds.contains(catId));
         final matchActive = _showInactive || (p['is_active'] == true);
         final matchChannel = _matchChannelFilter(p);
         return matchSearch && matchCat && matchActive && matchChannel;
       }).toList();
+      _applySort();
     });
+  }
+
+  void _applySort() {
+    final catNames = <String, String>{};
+    for (final c in _categories) {
+      if (c['id'] != null) {
+        catNames[c['id'].toString()] = c['name'] as String? ?? '';
+      }
+    }
+    _filtered.sort((a, b) {
+      switch (_sortOption) {
+        case 'plu_desc':
+          return ((b['plu_code'] as num?) ?? 0).compareTo((a['plu_code'] as num?) ?? 0);
+        case 'name_az':
+          return ((a['name'] ?? '').toString().toLowerCase())
+              .compareTo((b['name'] ?? '').toString().toLowerCase());
+        case 'name_za':
+          return ((b['name'] ?? '').toString().toLowerCase())
+              .compareTo((a['name'] ?? '').toString().toLowerCase());
+        case 'price_low':
+          return ((a['sell_price'] as num?) ?? 0).compareTo((b['sell_price'] as num?) ?? 0);
+        case 'price_high':
+          return ((b['sell_price'] as num?) ?? 0).compareTo((a['sell_price'] as num?) ?? 0);
+        case 'stock_low':
+          return ((a['current_stock'] as num?) ?? 0).compareTo((b['current_stock'] as num?) ?? 0);
+        case 'stock_high':
+          return ((b['current_stock'] as num?) ?? 0).compareTo((a['current_stock'] as num?) ?? 0);
+        case 'category':
+          final na = catNames[a['category_id']?.toString()] ?? '';
+          final nb = catNames[b['category_id']?.toString()] ?? '';
+          return na.compareTo(nb);
+        case 'plu_asc':
+        default:
+          return ((a['plu_code'] as num?) ?? 0).compareTo((b['plu_code'] as num?) ?? 0);
+      }
+    });
+  }
+
+  String _sortLabel() {
+    switch (_sortOption) {
+      case 'plu_asc': return 'PLU ↑';
+      case 'plu_desc': return 'PLU ↓';
+      case 'name_az': return 'Name A→Z';
+      case 'name_za': return 'Name Z→A';
+      case 'price_low': return 'Price ↑';
+      case 'price_high': return 'Price ↓';
+      case 'stock_low': return 'Stock ↑';
+      case 'stock_high': return 'Stock ↓';
+      case 'category': return 'Category';
+      default: return 'PLU ↑';
+    }
+  }
+
+  PopupMenuItem<String> _sortMenuItem(String value, String label) {
+    return PopupMenuItem<String>(
+      value: value,
+      child: Row(
+        children: [
+          if (_sortOption == value)
+            const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Icon(Icons.check, size: 18, color: AppColors.primary),
+            ),
+          Text(label),
+        ],
+      ),
+    );
   }
 
   bool _matchChannelFilter(Map<String, dynamic> p) {
@@ -177,19 +243,178 @@ class ProductListScreenState extends State<ProductListScreen> {
                 final isWide = constraints.maxWidth > 900;
 
                 final searchField = SizedBox(
-                  width: isWide ? 220 : double.infinity,
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search by name, PLU, barcode...',
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppColors.border),
+                  width: isWide ? 260 : double.infinity,
+                  child: Autocomplete<Map<String, dynamic>>(
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      if (textEditingValue.text.isEmpty) {
+                        return const Iterable<Map<String, dynamic>>.empty();
+                      }
+                      final query = textEditingValue.text.toLowerCase();
+                      return _products.where((p) {
+                        final name = (p['name'] ?? '').toString().toLowerCase();
+                        final plu = (p['plu_code']?.toString() ?? '').toLowerCase();
+                        return name.contains(query) || plu.contains(query);
+                      }).take(8);
+                    },
+                    displayStringForOption: (p) =>
+                        '${p['plu_code'] ?? ''} — ${p['name'] ?? ''}',
+                    onSelected: (p) {
+                      setState(() {
+                        _searchExactProductId = p['id']?.toString();
+                        _filterProducts();
+                      });
+                    },
+                    fieldViewBuilder: (context, controller, focusNode, onSubmitted) {
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        decoration: InputDecoration(
+                          hintText: 'Search by name, PLU...',
+                          prefixIcon: const Icon(Icons.search, size: 18),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.clear, size: 18),
+                            onPressed: () {
+                              controller.clear();
+                              setState(() {
+                                _searchExactProductId = null;
+                                _searchQuery = '';
+                                _filterProducts();
+                              });
+                            },
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 10),
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                            borderSide: const BorderSide(color: AppColors.border),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setState(() {
+                            _searchExactProductId = null;
+                            _searchQuery = value;
+                            _filterProducts();
+                          });
+                        },
+                        onSubmitted: (_) => onSubmitted(),
+                      );
+                    },
+                    optionsViewBuilder: (context, onSelected, options) {
+                      return Align(
+                        alignment: Alignment.topLeft,
+                        child: Material(
+                          elevation: 4,
+                          child: SizedBox(
+                            width: 320,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 240),
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (context, index) {
+                                  final p = options.elementAt(index);
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      '${p['plu_code'] ?? ''} — ${p['name'] ?? ''}',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    onTap: () => onSelected(p),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                );
+
+                final categoryFilterBtn = InkWell(
+                  onTap: () async {
+                    var selected = Set<String>.from(_selectedCategoryIds);
+                    await showDialog(
+                      context: context,
+                      builder: (ctx) => StatefulBuilder(
+                        builder: (ctx, setDialogState) => AlertDialog(
+                          title: const Text('Filter by Category'),
+                          content: SingleChildScrollView(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                ListTile(
+                                  dense: true,
+                                  title: const Text('All', style: TextStyle(fontWeight: FontWeight.w600)),
+                                  onTap: () {
+                                    selected.clear();
+                                    Navigator.pop(ctx);
+                                    setState(() {
+                                      _selectedCategoryIds.clear();
+                                      _filterProducts();
+                                    });
+                                  },
+                                ),
+                                const Divider(),
+                                ..._categories.where((c) => c['id'] != null).map((c) {
+                                  final id = c['id']?.toString() ?? '';
+                                  final name = c['name'] as String? ?? '';
+                                  return CheckboxListTile(
+                                    dense: true,
+                                    title: Text(name),
+                                    value: selected.contains(id),
+                                    onChanged: (v) {
+                                      setDialogState(() {
+                                        if (v == true) {
+                                          selected.add(id);
+                                        } else {
+                                          selected.remove(id);
+                                        }
+                                      });
+                                    },
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx),
+                              child: const Text('Cancel'),
+                            ),
+                            FilledButton(
+                              onPressed: () {
+                                Navigator.pop(ctx);
+                                setState(() {
+                                  _selectedCategoryIds = selected;
+                                  _filterProducts();
+                                });
+                              },
+                              child: const Text('Apply'),
+                            ),
+                          ],
+                        ),
                       ),
+                    );
+                  },
+                  borderRadius: BorderRadius.circular(8),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.category, size: 18),
+                        const SizedBox(width: 6),
+                        Text(
+                          _selectedCategoryIds.isEmpty
+                              ? 'All'
+                              : '${_selectedCategoryIds.length} categories',
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ],
                     ),
                   ),
                 );
@@ -197,28 +422,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                 final filters = Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    SizedBox(
-                      width: 120,
-                      child: DropdownButton<String?>(
-                        value: _selectedCategoryFilterId,
-                        underline: const SizedBox(),
-                        hint: const Text('All'),
-                        isExpanded: true,
-                        items: _categories
-                            .map((c) => DropdownMenuItem<String?>(
-                                  value: c['id']?.toString(),
-                                  child: Text(
-                                    c['name'] as String,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ))
-                            .toList(),
-                        onChanged: (v) {
-                          setState(() => _selectedCategoryFilterId = v);
-                          _filterProducts();
-                        },
-                      ),
-                    ),
+                    categoryFilterBtn,
                     const SizedBox(width: 8),
                     SizedBox(
                       width: 120,
@@ -265,6 +469,28 @@ class ProductListScreenState extends State<ProductListScreen> {
                   label: const Text('Add Product'),
                 );
 
+                final sortButton = PopupMenuButton<String>(
+                  tooltip: 'Sort',
+                  icon: const Icon(Icons.sort, size: 20),
+                  onSelected: (v) {
+                    setState(() {
+                      _sortOption = v;
+                      _filterProducts();
+                    });
+                  },
+                  itemBuilder: (context) => [
+                    _sortMenuItem('plu_asc', 'PLU (ascending)'),
+                    _sortMenuItem('plu_desc', 'PLU (descending)'),
+                    _sortMenuItem('name_az', 'Name (A→Z)'),
+                    _sortMenuItem('name_za', 'Name (Z→A)'),
+                    _sortMenuItem('price_low', 'Price (low→high)'),
+                    _sortMenuItem('price_high', 'Price (high→low)'),
+                    _sortMenuItem('stock_low', 'Stock (low→high)'),
+                    _sortMenuItem('stock_high', 'Stock (high→low)'),
+                    _sortMenuItem('category', 'Category'),
+                  ],
+                );
+
                 final bulkButton = AuthService().currentRole == 'owner' &&
                         _selectedProductIds.isNotEmpty
                     ? Padding(
@@ -293,6 +519,8 @@ class ProductListScreenState extends State<ProductListScreen> {
                       countText,
                       const SizedBox(width: 12),
                       bulkButton,
+                      sortButton,
+                      const SizedBox(width: 8),
                       addButton,
                     ],
                   );
@@ -305,6 +533,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                           Expanded(child: searchField),
                           const SizedBox(width: 8),
                           bulkButton,
+                          sortButton,
                           addButton,
                         ],
                       ),
@@ -324,34 +553,36 @@ class ProductListScreenState extends State<ProductListScreen> {
           ),
           const Divider(height: 1, color: AppColors.border),
 
-          // Table header
+          // Table header — fixed widths to prevent overflow at 996px
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             color: AppColors.surfaceBg,
             child: Row(
               children: [
+                const SizedBox(width: 40, child: Text('#', style: _headerStyle)),
+                const SizedBox(width: 8),
                 if (AuthService().currentRole == 'owner')
                   const SizedBox(width: 36, child: Text('', style: _headerStyle)),
                 if (AuthService().currentRole == 'owner') const SizedBox(width: 8),
                 const SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const Expanded(flex: 3, child: Text('NAME', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 56, child: Text('CHANNELS', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const Expanded(flex: 2, child: Text('CATEGORY', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 90, child: Text('SELL PRICE', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 80, child: Text('COST', style: _headerStyle)),
-                const SizedBox(width: 12),
+                const SizedBox(width: 8),
+                const Expanded(child: Text('NAME', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 60, child: Text('CHANNELS', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 100, child: Text('CATEGORY', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 80, child: Text('SELL PRICE', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 70, child: Text('COST', style: _headerStyle)),
+                const SizedBox(width: 8),
                 const SizedBox(width: 60, child: Text('GP %', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 80, child: Text('ON HAND', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 60, child: Text('STATUS', style: _headerStyle)),
-                const SizedBox(width: 12),
-                const SizedBox(width: 120, child: Text('ACTIONS', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 90, child: Text('ON HAND', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 70, child: Text('STATUS', style: _headerStyle)),
+                const SizedBox(width: 8),
+                const SizedBox(width: 80, child: Text('ACTIONS', style: _headerStyle)),
               ],
             ),
           ),
@@ -373,6 +604,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                             const Divider(height: 1, color: AppColors.border),
                         itemBuilder: (context, i) {
                           final p = _filtered[i];
+                          final rowNum = i + 1;
                           final sell =
                               (p['sell_price'] as num?)?.toDouble() ?? 0;
                           final cost =
@@ -402,6 +634,19 @@ class ProductListScreenState extends State<ProductListScreen> {
                                   : AppColors.border.withOpacity(0.3),
                               child: Row(
                                 children: [
+                                  // Row number
+                                  SizedBox(
+                                    width: 40,
+                                    child: Text(
+                                      '$rowNum',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
                                   // Checkbox (owner only)
                                   if (AuthService().currentRole == 'owner') ...[
                                     SizedBox(
@@ -433,16 +678,16 @@ class ProductListScreenState extends State<ProductListScreen> {
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.primary,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
-                                  // Name
+                                  // Name — Expanded, must not overflow
                                   Expanded(
-                                    flex: 3,
                                     child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           p['name'] ?? '',
@@ -451,6 +696,8 @@ class ProductListScreenState extends State<ProductListScreen> {
                                             fontWeight: FontWeight.w500,
                                             color: AppColors.textPrimary,
                                           ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
                                         ),
                                         if (p['pos_display_name'] != null &&
                                             p['pos_display_name'] != p['name'])
@@ -460,24 +707,26 @@ class ProductListScreenState extends State<ProductListScreen> {
                                               fontSize: 11,
                                               color: AppColors.textSecondary,
                                             ),
+                                            overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
                                           ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
-                                  // Channel indicators
+                                  // Channel indicators — fixed 60px
                                   SizedBox(
-                                    width: 56,
+                                    width: 60,
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         if (availablePos)
                                           Icon(Icons.receipt, size: 14, color: AppColors.textSecondary),
-                                        if (availablePos && (availableApp || availableOnline)) const SizedBox(width: 4),
+                                        if (availablePos && (availableApp || availableOnline)) const SizedBox(width: 2),
                                         if (availableApp)
                                           Icon(Icons.phone_android, size: 14, color: AppColors.textSecondary),
-                                        if (availableApp && availableOnline) const SizedBox(width: 4),
+                                        if (availableApp && availableOnline) const SizedBox(width: 2),
                                         if (availableOnline)
                                           Icon(Icons.public, size: 14, color: AppColors.textSecondary),
                                         if (!availablePos && !availableApp && !availableOnline)
@@ -485,12 +734,13 @@ class ProductListScreenState extends State<ProductListScreen> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
-                                  // Category
-                                  Expanded(
-                                    flex: 2,
+                                  // Category — fixed 100px with ellipsis
+                                  SizedBox(
+                                    width: 100,
                                     child: Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Container(
                                           width: 10,
@@ -501,7 +751,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                                             shape: BoxShape.circle,
                                           ),
                                         ),
-                                        const SizedBox(width: 6),
+                                        const SizedBox(width: 4),
                                         Expanded(
                                           child: Text(
                                             _categoryNameById(p['category_id']) ?? '—',
@@ -509,16 +759,17 @@ class ProductListScreenState extends State<ProductListScreen> {
                                                 fontSize: 13,
                                                 color: AppColors.textPrimary),
                                             overflow: TextOverflow.ellipsis,
+                                            maxLines: 1,
                                           ),
                                         ),
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
                                   // Sell price
                                   SizedBox(
-                                    width: 90,
+                                    width: 80,
                                     child: Text(
                                       'R ${sell.toStringAsFixed(2)}',
                                       style: const TextStyle(
@@ -526,22 +777,24 @@ class ProductListScreenState extends State<ProductListScreen> {
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.textPrimary,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
                                   // Cost
                                   SizedBox(
-                                    width: 80,
+                                    width: 70,
                                     child: Text(
                                       'R ${cost.toStringAsFixed(2)}',
                                       style: const TextStyle(
                                         fontSize: 13,
                                         color: AppColors.textSecondary,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
                                   // GP %
                                   SizedBox(
@@ -557,13 +810,14 @@ class ProductListScreenState extends State<ProductListScreen> {
                                                 ? AppColors.warning
                                                 : AppColors.error,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
                                   // On hand
                                   SizedBox(
-                                    width: 80,
+                                    width: 90,
                                     child: Text(
                                       '${onHand.toStringAsFixed(AdminConfig.stockKgDecimals)} ${p['unit_type'] ?? 'kg'}',
                                       style: TextStyle(
@@ -575,13 +829,14 @@ class ProductListScreenState extends State<ProductListScreen> {
                                             ? FontWeight.bold
                                             : FontWeight.normal,
                                       ),
+                                      overflow: TextOverflow.ellipsis,
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
                                   // Status
                                   SizedBox(
-                                    width: 60,
+                                    width: 70,
                                     child: Container(
                                       padding: const EdgeInsets.symmetric(
                                           horizontal: 8, vertical: 3),
@@ -601,15 +856,17 @@ class ProductListScreenState extends State<ProductListScreen> {
                                           fontWeight: FontWeight.w600,
                                         ),
                                         textAlign: TextAlign.center,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
+                                  const SizedBox(width: 8),
 
-                                  // Actions
+                                  // Actions — fixed 80px, min size
                                   SizedBox(
-                                    width: 120,
+                                    width: 80,
                                     child: Row(
+                                      mainAxisSize: MainAxisSize.min,
                                       children: [
                                         IconButton(
                                           icon: const Icon(Icons.edit,
@@ -782,6 +1039,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   bool _manufacturedItem = false;
   List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _dryerTypes = [];
+  double? _recipeCostPerKg;
+  bool _recipeCostLoading = false;
 
   // Section G — Channels
   bool _availablePos = true;
@@ -847,6 +1106,55 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     } catch (_) {}
   }
 
+  Future<void> _loadRecipeCost(String? recipeId) async {
+    if (recipeId == null || recipeId.isEmpty) {
+      setState(() => _recipeCostPerKg = null);
+      return;
+    }
+    setState(() => _recipeCostLoading = true);
+    try {
+      final recipe = await _supabase.from('recipes').select('id, name, batch_size_kg').eq('id', recipeId).maybeSingle();
+      if (recipe == null) {
+        if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
+        return;
+      }
+      final batchSize = (recipe['batch_size_kg'] as num?)?.toDouble() ?? 1.0;
+      if (batchSize <= 0) {
+        if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
+        return;
+      }
+      final ingredients = await _supabase
+          .from('recipe_ingredients')
+          .select('inventory_item_id, quantity')
+          .eq('recipe_id', recipeId);
+      double totalCost = 0;
+      for (final ing in ingredients as List) {
+        final itemId = (ing as Map)['inventory_item_id']?.toString();
+        final qty = ((ing['quantity'] as num?)?.toDouble()) ?? 0;
+        if (itemId == null || qty <= 0) continue;
+        final item = await _supabase.from('inventory_items').select('cost_price').eq('id', itemId).maybeSingle();
+        final cp = (item?['cost_price'] as num?)?.toDouble();
+        if (cp != null) totalCost += qty * cp;
+      }
+      if (mounted) setState(() {
+        _recipeCostPerKg = totalCost / batchSize;
+        _recipeCostLoading = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
+    }
+  }
+
+  /// Recipe name for recipe_link column (backward compatibility) when recipe_id is set.
+  String? get _recipeNameForSelectedId {
+    if (_recipeId == null) return null;
+    try {
+      return _recipes.firstWhere((r) => r['id']?.toString() == _recipeId)['name'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   void _populateForm(Map<String, dynamic> p) {
     _pluController.text = p['plu_code']?.toString() ?? '';
     _nameController.text = p['name'] ?? '';
@@ -888,6 +1196,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _recipeId = p['recipe_id'] as String?;
     _dryerProductType = p['dryer_product_type'] as String?;
     _manufacturedItem = p['manufactured_item'] as bool? ?? false;
+    _loadRecipeCost(_recipeId);
     _internalNotesController.text = p['internal_notes'] ?? '';
     _dietaryTags = List<String>.from(p['dietary_tags'] ?? []);
     _allergenInfo = List<String>.from(p['allergen_info'] ?? []);
@@ -961,7 +1270,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'ishida_sync': _ishidaSync,
       'is_active': _isActive,
       'sell_price': double.tryParse(_sellPriceController.text),
-      'cost_price': double.tryParse(_costPriceController.text),
+      'cost_price': _recipeId != null && _recipeCostPerKg != null
+          ? _recipeCostPerKg!
+          : double.tryParse(_costPriceController.text),
       'target_margin_pct': double.tryParse(_targetMarginController.text),
       'freezer_markdown_pct': double.tryParse(_freezerMarkdownController.text),
       'vat_group': _vatGroup,
@@ -980,6 +1291,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'modifier_group_ids': _modifierGroupIds.isEmpty ? null : _modifierGroupIds,
       'supplier_ids': _supplierIds.isEmpty ? null : _supplierIds,
       'recipe_id': _recipeId,
+      'recipe_link': _recipeId != null
+          ? _recipeNameForSelectedId
+          : null,
       'dryer_product_type': _dryerProductType,
       'manufactured_item': _manufacturedItem,
       'image_url': _imageUrlController.text.trim().isEmpty ? null : _imageUrlController.text.trim(),
@@ -1435,8 +1749,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                         onPressed: () => _openProductSupplierDialog(row),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.delete_outline, size: 18, color: AppColors.error),
+                        icon: const Icon(Icons.close, size: 18, color: AppColors.danger),
                         onPressed: () => _deleteProductSupplier(row),
+                        tooltip: 'Remove',
                       ),
                     ],
                   ),
@@ -1468,20 +1783,46 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
   Future<void> _deleteProductSupplier(Map<String, dynamic> row) async {
     final id = row['id'] as String?;
+    final supplierId = row['supplier_id']?.toString();
     if (id == null) return;
+    final supplierName = row['suppliers'] is Map
+        ? (row['suppliers'] as Map)['name'] as String?
+        : row['supplier_product_name']?.toString();
+    final name = supplierName ?? 'this supplier';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove supplier mapping?'),
+        content: Text('Remove $name from this product?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
     try {
       await _supabase.from('product_suppliers').delete().eq('id', id);
-      _loadProductSuppliers();
+      if (mounted) {
+        await _loadProductSuppliers();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Supplier mapping removed')));
+      }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger));
       }
     }
   }
 
   Widget _buildTabB() {
     final sell = double.tryParse(_sellPriceController.text) ?? 0;
-    final cost = double.tryParse(_costPriceController.text) ?? 0;
+    final cost = (_recipeId != null && _recipeCostPerKg != null)
+        ? _recipeCostPerKg!
+        : (double.tryParse(_costPriceController.text) ?? 0);
     final gp = sell > 0 ? ((sell - cost) / sell * 100) : 0.0;
     final markup = cost > 0 ? ((sell - cost) / cost * 100) : 0.0;
     final target = double.tryParse(_targetMarginController.text) ?? 30.0;
@@ -1508,14 +1849,40 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ),
               const SizedBox(width: 16),
               Expanded(
-                child: _field(
-                  label: 'Cost Price (R)',
-                  controller: _costPriceController,
-                  hint: '72.00',
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  onChanged: (_) => setState(() {}),
-                ),
+                child: _recipeId != null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Cost Price (R)',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textSecondary)),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              color: AppColors.surfaceBg,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: _recipeCostLoading
+                                ? const Text('Calculating…', style: TextStyle(color: AppColors.textSecondary))
+                                : Text(
+                                    'Auto (from recipe): R ${_recipeCostPerKg?.toStringAsFixed(2) ?? '—'}',
+                                    style: const TextStyle(color: AppColors.textSecondary),
+                                  ),
+                          ),
+                        ],
+                      )
+                    : _field(
+                        label: 'Cost Price (R)',
+                        controller: _costPriceController,
+                        hint: '72.00',
+                        keyboardType:
+                            const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => setState(() {}),
+                      ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -1962,6 +2329,13 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   }
 
   Widget _buildTabF() {
+    Map<String, dynamic>? selectedRecipe;
+    if (_recipeId != null) {
+      try {
+        selectedRecipe = _recipes.firstWhere((r) => r['id']?.toString() == _recipeId);
+      } catch (_) {}
+    }
+    final recipeName = selectedRecipe?['name'] as String? ?? '';
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1987,8 +2361,18 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                         child: Text(r['name'] as String? ?? ''),
                       )),
                 ],
-                onChanged: (v) => setState(() => _recipeId = v),
+                onChanged: (v) {
+                  setState(() => _recipeId = v);
+                  _loadRecipeCost(v);
+                },
               ),
+              if (_recipeId != null && recipeName.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Recipe: $recipeName${_recipeCostPerKg != null ? ' | Est. cost/kg: R ${_recipeCostPerKg!.toStringAsFixed(2)}' : _recipeCostLoading ? ' | Calculating…' : ''}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -2008,8 +2392,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 items: const [
                   DropdownMenuItem(value: null, child: Text('None')),
                   DropdownMenuItem(value: 'biltong', child: Text('Biltong')),
-                  DropdownMenuItem(value: 'droewors', child: Text('Droewors')),
-                  DropdownMenuItem(value: 'chilli_bites', child: Text('Chilli Bites')),
+                  DropdownMenuItem(value: 'droewors', child: Text('Droëwors')),
+                  DropdownMenuItem(value: 'snap_sticks', child: Text('Snap Sticks')),
                   DropdownMenuItem(value: 'other', child: Text('Other')),
                 ],
                 onChanged: (v) => setState(() => _dryerProductType = v),

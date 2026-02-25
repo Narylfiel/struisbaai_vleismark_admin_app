@@ -5,6 +5,7 @@ import '../../../core/services/supabase_service.dart';
 import '../models/promotion.dart';
 import '../models/promotion_product.dart';
 import '../services/promotion_repository.dart';
+import '../widgets/product_search_picker.dart';
 
 /// Multi-step form: Basic info → Trigger → Reward → Audience & Channels → Schedule.
 class PromotionFormScreen extends StatefulWidget {
@@ -36,9 +37,11 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   // Step 2 — trigger
   final _buyQtyController = TextEditingController(text: '2');
   final _getQtyController = TextEditingController(text: '1');
-  List<String> _triggerItemIds = [];
-  List<String> _rewardItemIds = [];
-  List<String> _bundleItemIds = [];
+  List<Map<String, dynamic>> _triggerProducts = [];
+  List<Map<String, dynamic>> _rewardProducts = [];
+  List<Map<String, dynamic>> _bundleProducts = [];
+  List<Map<String, dynamic>> _weightProducts = [];
+  List<Map<String, dynamic>> _pointsProducts = [];
   bool _bundleAllRequired = true;
   final _minSpendController = TextEditingController();
   final _minWeightController = TextEditingController();
@@ -54,7 +57,6 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   final _rewardDiscountPctController = TextEditingController();
   final _rewardDiscountRandController = TextEditingController();
   final _rewardMultiplierController = TextEditingController(text: '3');
-  String? _rewardItemId;
   final _voucherValueController = TextEditingController();
   final _partnerNameController = TextEditingController();
   final _partnerCodeController = TextEditingController();
@@ -76,7 +78,6 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   @override
   void initState() {
     super.initState();
-    _loadInventory();
     if (widget.promotion != null) {
       final p = widget.promotion!;
       _nameController.text = p.name;
@@ -85,9 +86,10 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
       _requiresManualActivation = p.requiresManualActivation;
       _buyQtyController.text = (p.triggerConfig['buy_quantity'] ?? 2).toString();
       _getQtyController.text = (p.triggerConfig['get_quantity'] ?? 1).toString();
-      _triggerItemIds = p.products.where((e) => e.role == PromotionProductRole.triggerItem).map((e) => e.inventoryItemId).toList();
-      _rewardItemIds = p.products.where((e) => e.role == PromotionProductRole.rewardItem).map((e) => e.inventoryItemId).toList();
-      _bundleItemIds = p.products.where((e) => e.role == PromotionProductRole.bundleItem).map((e) => e.inventoryItemId).toList();
+      final triggerIds = p.products.where((e) => e.role == PromotionProductRole.triggerItem).map((e) => e.inventoryItemId).toList();
+      final rewardIds = p.products.where((e) => e.role == PromotionProductRole.rewardItem).map((e) => e.inventoryItemId).toList();
+      final bundleIds = p.products.where((e) => e.role == PromotionProductRole.bundleItem).map((e) => e.inventoryItemId).toList();
+      _loadProductMaps(p.promotionType, triggerIds, rewardIds, bundleIds);
       _bundleAllRequired = p.triggerConfig['all_required'] == true;
       _minSpendController.text = (p.triggerConfig['min_spend'] ?? '').toString();
       _minWeightController.text = (p.triggerConfig['min_weight_kg'] ?? '').toString();
@@ -101,7 +103,6 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
       _rewardDiscountPctController.text = (p.rewardConfig['value'] ?? p.rewardConfig['discount_pct'] ?? '').toString();
       _rewardDiscountRandController.text = (p.rewardConfig['value'] ?? '').toString();
       _rewardMultiplierController.text = (p.rewardConfig['multiplier'] ?? 3).toString();
-      _rewardItemId = (_rewardItemIds.isNotEmpty) ? _rewardItemIds.first : null;
       _voucherValueController.text = (p.rewardConfig['value'] ?? '').toString();
       _partnerNameController.text = p.rewardConfig['partner_name']?.toString() ?? '';
       _partnerCodeController.text = p.rewardConfig['voucher_code']?.toString() ?? '';
@@ -114,16 +115,29 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
     }
   }
 
-  Future<void> _loadInventory() async {
+  Future<void> _loadProductMaps(PromotionType type, List<String> triggerIds, List<String> rewardIds, List<String> bundleIds) async {
+    final allIds = {...triggerIds, ...rewardIds, ...bundleIds};
+    if (allIds.isEmpty) return;
     try {
-      final r = await _client.from('inventory_items').select('id, name').order('name');
-      if (mounted) setState(() {
-        _inventoryItems = List<Map<String, dynamic>>.from(r as List);
-        _loadingInventory = false;
+      final r = await _client
+          .from('inventory_items')
+          .select('id, name, plu_code, category_id')
+          .inFilter('id', allIds.toList());
+      final list = List<Map<String, dynamic>>.from(r as List);
+      if (!mounted) return;
+      setState(() {
+        _triggerProducts = list.where((m) => triggerIds.contains(m['id']?.toString())).toList();
+        _rewardProducts = list.where((m) => rewardIds.contains(m['id']?.toString())).toList();
+        _bundleProducts = list.where((m) => bundleIds.contains(m['id']?.toString())).toList();
+        if (type == PromotionType.weightThreshold) {
+          _weightProducts = List.from(_triggerProducts);
+          _triggerProducts = [];
+        } else if (type == PromotionType.pointsMultiplier) {
+          _pointsProducts = List.from(_triggerProducts);
+          _triggerProducts = [];
+        }
       });
-    } catch (_) {
-      if (mounted) setState(() => _loadingInventory = false);
-    }
+    } catch (_) {}
   }
 
   @override
@@ -171,7 +185,8 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
   Map<String, dynamic> _buildRewardConfig() {
     switch (_rewardType) {
       case 'free_item':
-        return {'type': 'free_item', 'item_id': _rewardItemId, 'quantity': 1};
+        final id = _rewardProducts.isNotEmpty ? _rewardProducts.first['id']?.toString() : null;
+        return {'type': 'free_item', 'item_id': id, 'quantity': 1};
       case 'discount_pct':
         return {'type': 'discount_pct', 'value': double.tryParse(_rewardDiscountPctController.text) ?? 0};
       case 'discount_rand':
@@ -191,17 +206,25 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
 
   List<PromotionProduct> _buildProducts(String promotionId) {
     final list = <PromotionProduct>[];
-    for (final id in _triggerItemIds) {
-      list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.triggerItem, quantity: 1));
+    for (final p in _triggerProducts) {
+      final id = p['id']?.toString();
+      if (id != null) list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.triggerItem, quantity: 1));
     }
-    for (final id in _rewardItemIds) {
-      list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.rewardItem, quantity: 1));
+    for (final p in _rewardProducts) {
+      final id = p['id']?.toString();
+      if (id != null) list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.rewardItem, quantity: 1));
     }
-    for (final id in _bundleItemIds) {
-      list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.bundleItem, quantity: 1));
+    for (final p in _bundleProducts) {
+      final id = p['id']?.toString();
+      if (id != null) list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.bundleItem, quantity: 1));
     }
-    if (_rewardType == 'free_item' && _rewardItemId != null && _rewardItemId!.isNotEmpty && !_rewardItemIds.contains(_rewardItemId)) {
-      list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: _rewardItemId!, role: PromotionProductRole.rewardItem, quantity: 1));
+    for (final p in _weightProducts) {
+      final id = p['id']?.toString();
+      if (id != null) list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.triggerItem, quantity: 1));
+    }
+    for (final p in _pointsProducts) {
+      final id = p['id']?.toString();
+      if (id != null) list.add(PromotionProduct(id: '', promotionId: promotionId, inventoryItemId: id, role: PromotionProductRole.triggerItem, quantity: 1));
     }
     return list;
   }
@@ -348,11 +371,22 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               ],
             ),
             const SizedBox(height: 16),
-            const Text('Trigger products (buy these)', style: TextStyle(fontWeight: FontWeight.w500)),
-            _productChips(_triggerItemIds, (ids) => setState(() => _triggerItemIds = ids)),
+            ProductSearchPicker(
+              label: 'Trigger products (buy these)',
+              selectedProducts: _triggerProducts,
+              onAdd: (p) => setState(() => _triggerProducts = [..._triggerProducts, p]),
+              onRemove: (id) => setState(() => _triggerProducts = _triggerProducts.where((x) => x['id']?.toString() != id).toList()),
+              readOnly: widget.viewOnly,
+            ),
             const SizedBox(height: 16),
-            const Text('Reward product (free)', style: TextStyle(fontWeight: FontWeight.w500)),
-            _productChips(_rewardItemIds, (ids) => setState(() => _rewardItemIds = ids)),
+            ProductSearchPicker(
+              label: 'Reward product (free)',
+              selectedProducts: _rewardProducts,
+              onAdd: (p) => setState(() => _rewardProducts = [p]),
+              onRemove: (_) => setState(() => _rewardProducts = []),
+              singleSelect: true,
+              readOnly: widget.viewOnly,
+            ),
           ],
         ),
       );
@@ -367,8 +401,13 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               value: _bundleAllRequired,
               onChanged: widget.viewOnly ? null : (v) => setState(() => _bundleAllRequired = v!),
             ),
-            const Text('Bundle products', style: TextStyle(fontWeight: FontWeight.w500)),
-            _productChips(_bundleItemIds, (ids) => setState(() => _bundleItemIds = ids)),
+            ProductSearchPicker(
+              label: 'Bundle products',
+              selectedProducts: _bundleProducts,
+              onAdd: (p) => setState(() => _bundleProducts = [..._bundleProducts, p]),
+              onRemove: (id) => setState(() => _bundleProducts = _bundleProducts.where((x) => x['id']?.toString() != id).toList()),
+              readOnly: widget.viewOnly,
+            ),
           ],
         ),
       );
@@ -397,6 +436,14 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               controller: _minWeightController,
               decoration: const InputDecoration(labelText: 'Minimum weight (kg)'),
               keyboardType: TextInputType.number,
+              readOnly: widget.viewOnly,
+            ),
+            const SizedBox(height: 16),
+            ProductSearchPicker(
+              label: 'Products / category filter',
+              selectedProducts: _weightProducts,
+              onAdd: (p) => setState(() => _weightProducts = [..._weightProducts, p]),
+              onRemove: (id) => setState(() => _weightProducts = _weightProducts.where((x) => x['id']?.toString() != id).toList()),
               readOnly: widget.viewOnly,
             ),
           ],
@@ -444,6 +491,14 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               keyboardType: TextInputType.number,
               readOnly: widget.viewOnly,
             ),
+            const SizedBox(height: 16),
+            ProductSearchPicker(
+              label: 'Products / category filter',
+              selectedProducts: _pointsProducts,
+              onAdd: (p) => setState(() => _pointsProducts = [..._pointsProducts, p]),
+              onRemove: (id) => setState(() => _pointsProducts = _pointsProducts.where((x) => x['id']?.toString() != id).toList()),
+              readOnly: widget.viewOnly,
+            ),
           ],
         ),
       );
@@ -469,27 +524,6 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
     );
   }
 
-  Widget _productChips(List<String> selectedIds, void Function(List<String>) onChanged) {
-    if (_loadingInventory) return const Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator());
-    return Wrap(
-      spacing: 8,
-      children: _inventoryItems.map((m) {
-        final id = m['id'] as String?;
-        final name = m['name'] as String? ?? '';
-        final selected = id != null && selectedIds.contains(id);
-        return FilterChip(
-          label: Text(name.length > 20 ? '${name.substring(0, 20)}…' : name),
-          selected: selected,
-          onSelected: widget.viewOnly ? null : (v) {
-            final next = List<String>.from(selectedIds);
-            if (v) next.add(id!); else next.remove(id);
-            onChanged(next);
-          },
-        );
-      }).toList(),
-    );
-  }
-
   Widget _buildStep3() {
     return SingleChildScrollView(
       child: Column(
@@ -504,14 +538,14 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
           ),
           if (_rewardType == 'free_item') ...[
             const SizedBox(height: 16),
-            const Text('Free product', style: TextStyle(fontWeight: FontWeight.w500)),
-            if (_loadingInventory) const CircularProgressIndicator() else
-              DropdownButtonFormField<String>(
-                value: _rewardItemId,
-                decoration: const InputDecoration(labelText: 'Product'),
-                items: _inventoryItems.map((m) => DropdownMenuItem(value: m['id'] as String?, child: Text(m['name'] as String? ?? ''))).toList(),
-                onChanged: widget.viewOnly ? null : (v) => setState(() => _rewardItemId = v),
-              ),
+            ProductSearchPicker(
+              label: 'Free product',
+              selectedProducts: _rewardProducts,
+              onAdd: (p) => setState(() => _rewardProducts = [p]),
+              onRemove: (_) => setState(() => _rewardProducts = []),
+              singleSelect: true,
+              readOnly: widget.viewOnly,
+            ),
           ],
           if (_rewardType == 'discount_pct') ...[
             const SizedBox(height: 16),
