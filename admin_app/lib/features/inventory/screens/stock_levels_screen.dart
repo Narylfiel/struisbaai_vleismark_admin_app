@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
@@ -54,7 +53,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
       // inventory_items has reorder_level (not reorder_point per schema)
       final res = await _supabase
           .from('inventory_items')
-          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type, category_id')
+          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type, stock_control_type, category_id')
           .eq('is_active', true)
           .order('name');
       _items = List<Map<String, dynamic>>.from(res);
@@ -76,6 +75,29 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   double _reorderLevel(Map<String, dynamic> p) {
     return (p['reorder_level'] as num?)?.toDouble() ?? 0;
+  }
+
+  /// Format stock quantity: weight items (kg) show 3 decimals; unit items show whole numbers.
+  String _formatStock(dynamic quantity, Map<String, dynamic> item) {
+    final double qty = (quantity as num?)?.toDouble() ?? 0.0;
+    final unitType = item['unit_type']?.toString().toLowerCase();
+    final stockControl = item['stock_control_type']?.toString().toLowerCase();
+
+    // Weight items: unit_type kg, or stock_control_type weight/weighted
+    final isWeight = unitType == 'kg' ||
+        stockControl == 'weight' ||
+        stockControl == 'weighted' ||
+        stockControl == 'kg';
+    if (isWeight) {
+      return '${qty.toStringAsFixed(3)} kg';
+    }
+
+    // Unit/pack items: whole number or 1 decimal
+    final unitLabel = unitType == 'packs' ? 'packs' : 'units';
+    if (qty == qty.roundToDouble()) {
+      return '${qty.toInt()} $unitLabel';
+    }
+    return '${qty.toStringAsFixed(1)} $unitLabel';
   }
 
   String _status(Map<String, dynamic> p) {
@@ -149,24 +171,19 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   Future<void> _exportCsv() async {
     try {
-      final unit = 'kg';
       final data = _filtered.asMap().entries.map((e) {
         final i = e.key + 1;
         final p = e.value;
-        final onHand = _onHand(p);
-        final fresh = (p['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-        final frozen = (p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-        final reorder = _reorderLevel(p);
         final st = _status(p);
         return {
           '#': i.toString(),
           'PLU': p['plu_code']?.toString() ?? '',
           'Product': p['name']?.toString() ?? '',
           'Category': _categoryName(p['category_id']?.toString()) ?? '',
-          'On Hand': '${onHand.toStringAsFixed(AdminConfig.stockKgDecimals)} $unit',
-          'Fresh': '${fresh.toStringAsFixed(AdminConfig.stockKgDecimals)} $unit',
-          'Frozen': '${frozen.toStringAsFixed(AdminConfig.stockKgDecimals)} $unit',
-          'Reorder Level': '${reorder.toStringAsFixed(AdminConfig.stockKgDecimals)} $unit',
+          'On Hand': _formatStock(p['current_stock'], p),
+          'Fresh': _formatStock(p['stock_on_hand_fresh'], p),
+          'Frozen': _formatStock(p['stock_on_hand_frozen'], p),
+          'Reorder Level': _formatStock(p['reorder_level'], p),
           'Status': st,
         };
       }).toList();
@@ -188,7 +205,6 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unit = 'kg'; // could come from first item's unit_type
     return Column(
       children: [
         Container(
@@ -333,7 +349,6 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                         final frozen = (p['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
                         final reorder = _reorderLevel(p);
                         final low = reorder > 0 && onHand <= reorder;
-                        final unitType = p['unit_type']?.toString() ?? 'kg';
                         final catName = _categoryName(p['category_id']?.toString()) ?? '—';
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10),
@@ -347,13 +362,13 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                               const SizedBox(width: 12),
                               SizedBox(width: 100, child: Text(catName, overflow: TextOverflow.ellipsis)),
                               const SizedBox(width: 12),
-                              SizedBox(width: 90, child: Text('${onHand.toStringAsFixed(AdminConfig.stockKgDecimals)} $unitType')),
+                              SizedBox(width: 90, child: Text(_formatStock(p['current_stock'], p))),
                               const SizedBox(width: 12),
-                              SizedBox(width: 80, child: Text('${fresh.toStringAsFixed(AdminConfig.stockKgDecimals)} $unitType')),
+                              SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_fresh'], p))),
                               const SizedBox(width: 12),
-                              SizedBox(width: 80, child: Text('${frozen.toStringAsFixed(AdminConfig.stockKgDecimals)} $unitType')),
+                              SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_frozen'], p))),
                               const SizedBox(width: 12),
-                              SizedBox(width: 90, child: Text('${reorder.toStringAsFixed(AdminConfig.stockKgDecimals)} $unitType')),
+                              SizedBox(width: 90, child: Text(_formatStock(p['reorder_level'], p))),
                               const SizedBox(width: 12),
                               SizedBox(
                                 width: 80,

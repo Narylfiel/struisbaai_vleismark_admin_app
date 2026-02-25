@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -135,6 +134,27 @@ class ProductListScreenState extends State<ProductListScreen> {
       case 'category': return 'Category';
       default: return 'PLU ↑';
     }
+  }
+
+  /// Format stock quantity: weight items (kg) show 3 decimals; unit items show whole numbers.
+  String _formatStock(dynamic quantity, Map<String, dynamic> item) {
+    final double qty = (quantity as num?)?.toDouble() ?? 0.0;
+    final unitType = item['unit_type']?.toString().toLowerCase();
+    final stockControl = item['stock_control_type']?.toString().toLowerCase();
+
+    final isWeight = unitType == 'kg' ||
+        stockControl == 'weight' ||
+        stockControl == 'weighted' ||
+        stockControl == 'kg';
+    if (isWeight) {
+      return '${qty.toStringAsFixed(3)} kg';
+    }
+
+    final unitLabel = unitType == 'packs' ? 'packs' : 'units';
+    if (qty == qty.roundToDouble()) {
+      return '${qty.toInt()} $unitLabel';
+    }
+    return '${qty.toStringAsFixed(1)} $unitLabel';
   }
 
   PopupMenuItem<String> _sortMenuItem(String value, String label) {
@@ -819,7 +839,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                                   SizedBox(
                                     width: 90,
                                     child: Text(
-                                      '${onHand.toStringAsFixed(AdminConfig.stockKgDecimals)} ${p['unit_type'] ?? 'kg'}',
+                                      _formatStock(p['current_stock'], p),
                                       style: TextStyle(
                                         fontSize: 13,
                                         color: onHand <= reorder
@@ -1101,9 +1121,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
   Future<void> _loadRecipes() async {
     try {
-      final r = await _supabase.from('recipes').select('id, name').eq('is_active', true).order('name');
-      setState(() => _recipes = List<Map<String, dynamic>>.from(r));
-    } catch (_) {}
+      final r = await _supabase.from('recipes').select('id, name').order('name');
+      if (mounted) {
+        setState(() => _recipes = List<Map<String, dynamic>>.from(r));
+        debugPrint('Recipes loaded: ${_recipes.length}');
+      }
+    } catch (e) {
+      debugPrint('Error loading recipes: $e');
+    }
   }
 
   Future<void> _loadRecipeCost(String? recipeId) async {
@@ -2352,18 +2377,22 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
                 value: _recipeId,
-                decoration: const InputDecoration(isDense: true),
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: 'Recipe Link (Own-Processed)',
+                ),
                 hint: const Text('None'),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('None')),
                   ..._recipes.map((r) => DropdownMenuItem<String>(
                         value: r['id'] as String?,
-                        child: Text(r['name'] as String? ?? ''),
+                        child: Text(r['name'] as String? ?? 'Unnamed'),
                       )),
                 ],
                 onChanged: (v) {
                   setState(() => _recipeId = v);
-                  _loadRecipeCost(v);
+                  if (v != null) _loadRecipeCost(v);
                 },
               ),
               if (_recipeId != null && recipeName.isNotEmpty) ...[

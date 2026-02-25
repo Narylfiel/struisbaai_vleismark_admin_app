@@ -136,7 +136,8 @@ class StockTakeRepository {
   }
 
   /// Blueprint §4.7 step 9: On approval — stock adjusted to physical counts; variances logged to stock_movements.
-  Future<void> approveSession(String sessionId, String approvedBy) async {
+  /// Returns the number of products whose stock was updated.
+  Future<int> approveSession(String sessionId, String approvedBy) async {
     final session = await getSession(sessionId);
     if (session == null) throw ArgumentError('Session not found');
     if (session.status == StockTakeSessionStatus.approved) {
@@ -162,6 +163,26 @@ class StockTakeRepository {
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('id', sessionId);
+
+    // Ensure inventory_items.current_stock is set for each counted product (belt-and-suspenders)
+    final rawEntries = await _client
+        .from('stock_take_entries')
+        .select('item_id, actual_quantity')
+        .eq('session_id', sessionId);
+    int updated = 0;
+    for (final entry in rawEntries as List) {
+      final map = entry as Map<String, dynamic>;
+      final itemId = map['item_id']?.toString();
+      final actual = map['actual_quantity'];
+      if (itemId != null && actual != null) {
+        await _client
+            .from('inventory_items')
+            .update({'current_stock': (actual as num).toDouble()})
+            .eq('id', itemId);
+        updated++;
+      }
+    }
+    return updated;
   }
 
   /// Hard delete: delete stock_take_entries first, then session. Owner-only enforced in UI.

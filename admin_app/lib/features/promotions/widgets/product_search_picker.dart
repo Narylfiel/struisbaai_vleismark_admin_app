@@ -90,7 +90,11 @@ class _ProductSearchPickerState extends State<ProductSearchPicker> {
       if (_selectedCategoryId != null && _selectedCategoryId!.isNotEmpty) {
         q = q.eq('category_id', _selectedCategoryId!);
       }
-      final r = await q.or('name.ilike.$pattern,plu_code.ilike.$pattern').limit(20);
+      // plu_code is integer — use eq for exact PLU match; ilike only on name (text)
+      final pluNum = int.tryParse(query);
+      final r = pluNum != null
+          ? await q.or('name.ilike.$pattern,plu_code.eq.$pluNum').limit(20)
+          : await q.ilike('name', pattern).limit(20);
       if (mounted) {
         setState(() {
           _searchResults = List<Map<String, dynamic>>.from(r as List);
@@ -125,38 +129,44 @@ class _ProductSearchPickerState extends State<ProductSearchPicker> {
         const SizedBox(height: 8),
         if (!widget.readOnly) ...[
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               SizedBox(
-                width: 150,
+                width: 140,
                 child: DropdownButtonFormField<String>(
+                  isExpanded: true,
                   value: _selectedCategoryId,
                   decoration: const InputDecoration(
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                    border: OutlineInputBorder(),
                     isDense: true,
-                    contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   ),
                   hint: const Text('All categories'),
                   items: [
-                    const DropdownMenuItem(value: null, child: Text('All categories')),
-                    ..._categories.map((c) {
-                      final name = c['name'] as String? ?? '';
-                      return DropdownMenuItem<String>(
-                        value: c['id'] as String?,
-                        child: Text(name.length > 18 ? '${name.substring(0, 18)}…' : name),
-                      );
-                    }),
+                    const DropdownMenuItem(value: null, child: Text('All', overflow: TextOverflow.ellipsis)),
+                    ..._categories.map((c) => DropdownMenuItem<String>(
+                      value: c['id'] as String?,
+                      child: Text(
+                        c['name'] as String? ?? '',
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
+                    )),
                   ],
                   onChanged: _categoriesLoaded ? _onCategoryChanged : null,
                 ),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
                 child: TextField(
                   controller: _searchController,
                   focusNode: _searchFocusNode,
                   decoration: const InputDecoration(
                     hintText: 'Search by name or PLU (min 2 chars)',
+                    prefixIcon: Icon(Icons.search, size: 18),
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                     isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 20),
                   ),
                   onChanged: (_) => _onSearchChanged(),
                 ),

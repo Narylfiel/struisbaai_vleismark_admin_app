@@ -353,11 +353,11 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     if (_currentSession == null || _staffId.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await _repo.approveSession(_currentSession!.id, _staffId);
+      final count = await _repo.approveSession(_currentSession!.id, _staffId);
       if (mounted) {
         await _loadSessionsAndOpen();
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Stock-take approved; stock adjusted')),
+          SnackBar(content: Text('Stock take approved — $count products updated')),
         );
       }
     } catch (e) {
@@ -508,10 +508,12 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     if (!_isOwnerOrManager || _staffId.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await _repo.approveSession(session.id, _staffId);
+      final count = await _repo.approveSession(session.id, _staffId);
       if (mounted) {
         await _loadSessionsAndOpen();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Stock take approved')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Stock take approved — $count products updated')),
+        );
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
