@@ -171,13 +171,13 @@ class ExportService extends BaseService {
       final inventoryData = await executeQuery(() => query, operationName: 'Export inventory data');
 
       final data = List<Map<String, dynamic>>.from(inventoryData ?? []);
-      final columns = ['plu_code', 'name', 'categories.name', 'current_stock', 'reorder_point', 'average_cost', 'total_value'];
+      final columns = ['plu_code', 'name', 'categories.name', 'current_stock', 'reorder_level', 'average_cost', 'total_value'];
       final headers = {
         'plu_code': 'PLU Code',
         'name': 'Product Name',
         'categories.name': 'Category',
         'current_stock': 'Current Stock',
-        'reorder_point': 'Reorder Point',
+        'reorder_level': 'Reorder Level',
         'average_cost': 'Avg Cost',
         'total_value': 'Total Value',
       };

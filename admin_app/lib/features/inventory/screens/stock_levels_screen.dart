@@ -27,9 +27,10 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
+      // inventory_items has reorder_level (not reorder_point per schema)
       final res = await _supabase
           .from('inventory_items')
-          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, reorder_point, unit_type')
+          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type')
           .eq('is_active', true)
           .order('name');
       setState(() => _items = List<Map<String, dynamic>>.from(res));
@@ -45,7 +46,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
   }
 
   double _reorderLevel(Map<String, dynamic> p) {
-    return (p['reorder_level'] as num?)?.toDouble() ?? (p['reorder_point'] as num?)?.toDouble() ?? 0;
+    return (p['reorder_level'] as num?)?.toDouble() ?? 0;
   }
 
   String _status(Map<String, dynamic> p) {

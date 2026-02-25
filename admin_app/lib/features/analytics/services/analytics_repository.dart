@@ -138,7 +138,7 @@ class AnalyticsRepository {
     try {
       final invRows = await _client
           .from('inventory_items')
-          .select('id, name, current_stock, reorder_point, reorder_level')
+          .select('id, name, current_stock, reorder_level')
           .eq('is_active', true);
       final recs = <Map<String, dynamic>>[];
       final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
@@ -153,7 +153,7 @@ class AnalyticsRepository {
           final id = map['id']?.toString();
           if (id == null) continue;
           final stock = (map['current_stock'] as num?)?.toDouble() ?? 0;
-          final reorder = (map['reorder_point'] as num?)?.toDouble() ?? (map['reorder_level'] as num?)?.toDouble() ?? 0;
+          final reorder = (map['reorder_level'] as num?)?.toDouble() ?? 0;
           if (reorder <= 0) continue;
           if (stock > reorder) continue;
           recs.add({
@@ -181,7 +181,7 @@ class AnalyticsRepository {
         final map = Map<String, dynamic>.from(r as Map<String, dynamic>);
         final id = map['id']?.toString();
         final stock = (map['current_stock'] as num?)?.toDouble() ?? 0;
-        final reorder = (map['reorder_point'] as num?)?.toDouble() ?? (map['reorder_level'] as num?)?.toDouble() ?? 0;
+        final reorder = (map['reorder_level'] as num?)?.toDouble() ?? 0;
         if (reorder <= 0) continue;
         final sold7 = qtyByItem[id] ?? 0;
         final dailyVelocity = sold7 / 7;

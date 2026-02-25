@@ -16,6 +16,9 @@ class OcrService extends BaseService {
 
   /// Process image for OCR with retry logic
   Future<String> processImageForText(File imageFile) async {
+    if (_apiKey.isEmpty || _apiKey.trim().isEmpty) {
+      throw Exception('OCR not configured — enter invoice details manually');
+    }
     if (!await isOnline()) {
       throw Exception('OCR requires an active internet connection. Please try again later.');
     }

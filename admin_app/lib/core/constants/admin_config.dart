@@ -19,9 +19,30 @@ class AdminConfig {
   static const int maxPinAttempts = 5;
   static const int pinLockoutMinutes = 15;
 
+  // Staff roles (for profile creation and display)
+  static const List<String> staffRoles = [
+    'owner',
+    'manager',
+    'cashier',
+    'blockman',
+    'butchery_assistant',
+  ];
+
+  /// Display label for role (e.g. butchery_assistant -> "Butchery Assistant")
+  static String roleDisplayLabel(String role) {
+    switch (role) {
+      case 'owner': return 'Owner';
+      case 'manager': return 'Manager';
+      case 'cashier': return 'Cashier';
+      case 'blockman': return 'Blockman';
+      case 'butchery_assistant': return 'Butchery Assistant';
+      default: return role;
+    }
+  }
+
   // Roles allowed in Admin App (from blueprint Section 2)
-  static const List<String> allowedRoles = ['owner', 'manager'];
-  static const List<String> rejectedRoles = ['cashier', 'blockman'];
+  static const List<String> allowedRoles = ['owner', 'manager', 'blockman', 'butchery_assistant'];
+  static const List<String> rejectedRoles = ['cashier'];
 
   /// Stock measurement precision: grams 1g, kg 3 decimal places (C6)
   static const int stockGramPrecision = 1;

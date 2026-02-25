@@ -64,6 +64,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadDashboard() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       await Future.wait([
@@ -75,12 +76,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       debugPrint('Dashboard error: $e');
     }
+    if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
   Future<void> _load7DaySales() async {
     try {
       final data = await _dashboardRepo.getLast7DaysSales();
+      if (!mounted) return;
       setState(() => _sevenDaySales = data);
     } catch (e) {
       debugPrint('7-day sales: $e');
@@ -90,6 +93,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadSalesStats() async {
     try {
       final stats = await _dashboardRepo.getTodayStats();
+      if (!mounted) return;
       setState(() {
         _todaySales = stats.todayTotal;
         _transactionCount = stats.transactionCount;

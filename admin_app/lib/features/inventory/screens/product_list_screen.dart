@@ -172,26 +172,28 @@ class ProductListScreenState extends State<ProductListScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
             color: AppColors.cardBg,
-            child: Row(
-              children: [
-                // Search
-                SizedBox(
-                  width: 280,
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search by name, PLU, barcode...',
-                      prefixIcon: const Icon(Icons.search, size: 18),
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 10),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(8),
-                        borderSide: const BorderSide(color: AppColors.border),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  // Search
+                  SizedBox(
+                    width: 280,
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search by name, PLU, barcode...',
+                        prefixIcon: const Icon(Icons.search, size: 18),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        isDense: true,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(8),
+                          borderSide: const BorderSide(color: AppColors.border),
+                        ),
                       ),
                     ),
                   ),
-                ),
                 const SizedBox(width: 12),
 
                 // Category filter
@@ -276,6 +278,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                   label: const Text('Add Product'),
                 ),
               ],
+            ),
             ),
           ),
           const Divider(height: 1, color: AppColors.border),

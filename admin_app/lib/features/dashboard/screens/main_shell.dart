@@ -70,7 +70,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   List<_NavItem> get _navItems {
     final isOwner = widget.role == 'owner';
-    return [
+    final isLimitedRole = widget.role == 'blockman' || widget.role == 'butchery_assistant';
+
+    final allItems = [
       _NavItem(icon: Icons.dashboard,     label: 'Dashboard',   screen: const DashboardScreen()),
       _NavItem(icon: Icons.inventory_2,   label: 'Inventory',   screen: const InventoryNavigationScreen()),
       _NavItem(icon: Icons.local_offer,    label: 'Promotions',  screen: const PromotionListScreen()),
@@ -80,14 +82,24 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _NavItem(icon: Icons.account_balance_wallet, label: 'Staff Credits', screen: const StaffCreditScreen()),
       _NavItem(icon: Icons.fact_check,    label: 'Compliance', screen: const ComplianceScreen()),
       _NavItem(icon: Icons.credit_card,   label: 'Accounts',    screen: const AccountListScreen()),
-      if (isOwner)
-        _NavItem(icon: Icons.book,        label: 'Bookkeeping', screen: const InvoiceListScreen()),
+      _NavItem(icon: Icons.book,          label: 'Bookkeeping', screen: const InvoiceListScreen()),
       _NavItem(icon: Icons.analytics,     label: 'Analytics',   screen: const ShrinkageScreen()),
       _NavItem(icon: Icons.summarize,     label: 'Reports',     screen: const ReportHubScreen()),
       _NavItem(icon: Icons.person_search, label: 'Customers',   screen: const CustomerListScreen()),
       _NavItem(icon: Icons.history,       label: 'Audit Log',   screen: const AuditLogScreen()),
-      if (isOwner)
-        _NavItem(icon: Icons.settings,    label: 'Settings',    screen: const BusinessSettingsScreen()),
+      _NavItem(icon: Icons.settings,      label: 'Settings',    screen: const BusinessSettingsScreen()),
+    ];
+
+    if (isLimitedRole) {
+      const allowedLabels = ['Dashboard', 'Inventory', 'Production', 'Hunter'];
+      return allItems.where((i) => allowedLabels.contains(i.label)).toList();
+    }
+
+    return [
+      ...allItems.take(9),
+      if (isOwner) allItems[9],
+      ...allItems.skip(10).take(4),
+      if (isOwner) allItems[14],
     ];
   }
 

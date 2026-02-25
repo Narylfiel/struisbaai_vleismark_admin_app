@@ -663,7 +663,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
       }
       final iiRows = await _client
           .from('inventory_items')
-          .select('id, name, plu_code, unit_type, current_stock, reorder_level, reorder_point')
+          .select('id, name, plu_code, unit_type, current_stock, reorder_level')
           .inFilter('id', itemIds)
           .eq('is_active', true)
           .order('name');
@@ -679,7 +679,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
         if (id == null) continue;
         final ps = psByItem[id];
         final currentStock = (map['current_stock'] as num?)?.toDouble() ?? 0;
-        final reorderLevel = (map['reorder_level'] as num?)?.toDouble() ?? (map['reorder_point'] as num?)?.toDouble() ?? 0;
+        final reorderLevel = (map['reorder_level'] as num?)?.toDouble() ?? 0;
         final unitPrice = (ps?['unit_price'] as num?)?.toDouble() ?? 0;
         final unit = map['unit_type']?.toString() ?? 'kg';
         final suggested = reorderLevel > 0 && currentStock < reorderLevel

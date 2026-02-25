@@ -271,7 +271,7 @@ class ReportService extends BaseService {
       final summary = {
         'Total Items': data.length,
         'Total Value': totalValue.toStringAsFixed(2),
-        'Low Stock Items': data.where((item) => (item['current_stock'] as num? ?? 0) <= (item['reorder_point'] as num? ?? 0)).length,
+        'Low Stock Items': data.where((item) => (item['current_stock'] as num? ?? 0) <= (item['reorder_level'] as num? ?? 0)).length,
       };
 
       switch (format.toLowerCase()) {

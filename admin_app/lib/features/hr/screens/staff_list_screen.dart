@@ -130,6 +130,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
       case 'manager': return AppColors.primary;
       case 'blockman': return AppColors.warning;
       case 'cashier': return AppColors.info;
+      case 'butchery_assistant': return AppColors.textSecondary;
       default: return AppColors.textSecondary;
     }
   }
@@ -1163,16 +1164,13 @@ class _PayrollTabState extends State<_PayrollTab> {
   Future<void> _loadPeriods() async {
     setState(() => _isLoading = true);
     try {
-      final data = await _supabase
-          .from('payroll_entries')
-          .select('period_id')
-          .order('created_at', ascending: false);
-      // For now show staff with calculated pay from timecards
+      // payroll_entries has staff_id, pay_period_start, pay_period_end, etc. (no period_id)
+      // Load payroll from staff + timecards for current month
       await _loadCurrentPayroll();
     } catch (e) {
       debugPrint('Payroll: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   Future<void> _loadCurrentPayroll() async {
@@ -2276,10 +2274,11 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 initialValue: _role,
                 decoration: const InputDecoration(isDense: true),
                 items: const [
+                  DropdownMenuItem(value: 'owner', child: Text('Owner')),
+                  DropdownMenuItem(value: 'manager', child: Text('Manager')),
                   DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
                   DropdownMenuItem(value: 'blockman', child: Text('Blockman')),
-                  DropdownMenuItem(value: 'manager', child: Text('Manager')),
-                  DropdownMenuItem(value: 'owner', child: Text('Owner')),
+                  DropdownMenuItem(value: 'butchery_assistant', child: Text('Butchery Assistant')),
                 ],
                 onChanged: (v) => setState(() => _role = v!),
               ),
