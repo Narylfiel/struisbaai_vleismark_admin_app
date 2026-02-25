@@ -2072,6 +2072,48 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     }
   }
 
+  Future<void> _confirmDeactivateStaff(Map<String, dynamic> staff) async {
+    final name = staff['full_name'] as String? ?? 'this staff member';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete staff?'),
+        content: Text(
+          'Delete $name? This cannot be undone. This will prevent staff from logging in.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    setState(() => _isSaving = true);
+    try {
+      await _supabase
+          .from('staff_profiles')
+          .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', staff['id']);
+      widget.onSaved();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
   Future<void> _save() async {
     if (_nameController.text.trim().isEmpty) return;
     setState(() => _isSaving = true);
@@ -2149,6 +2191,12 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                     color: AppColors.textPrimary),
               ),
               const Spacer(),
+              if (widget.staff != null && AuthService().currentRole == 'owner')
+                IconButton(
+                  icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                  onPressed: _isSaving ? null : () => _confirmDeactivateStaff(widget.staff!),
+                  tooltip: 'Deactivate staff',
+                ),
               IconButton(
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context)),

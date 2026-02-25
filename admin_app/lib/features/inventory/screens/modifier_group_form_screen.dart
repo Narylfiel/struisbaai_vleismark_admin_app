@@ -116,8 +116,8 @@ class _ModifierGroupFormScreenState extends State<ModifierGroupFormScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete modifier group'),
-        content: Text('Delete "${widget.group!.name}"? Items in this group will also be deleted.'),
+        title: const Text('Delete modifier group?'),
+        content: Text('Delete "${widget.group!.name}"? This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -133,14 +133,12 @@ class _ModifierGroupFormScreenState extends State<ModifierGroupFormScreen> {
     try {
       await _repo.deleteGroup(widget.group!.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Modifier group deleted'), backgroundColor: AppColors.success),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
         );
       }
     } finally {

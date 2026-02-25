@@ -88,6 +88,14 @@ class SupplierInvoiceRepository {
     await _client.from('supplier_invoices').delete().eq('id', id);
   }
 
+  /// Soft delete: set status = 'cancelled'. Only call when status is 'draft'.
+  Future<void> cancelInvoice(String id) async {
+    await _client
+        .from('supplier_invoices')
+        .update({'status': SupplierInvoiceStatus.cancelled.dbValue})
+        .eq('id', id);
+  }
+
   Future<void> setStatus(String id, SupplierInvoiceStatus status) async {
     await _client
         .from('supplier_invoices')

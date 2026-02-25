@@ -169,4 +169,48 @@ class SettingsRepository {
   Future<void> toggleNotification(String id, bool val) async {
     await _client.from('system_config').update({'is_active': val}).eq('id', id);
   }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5. ELECTRICITY RATE (dryer cost tracking)
+  // ═══════════════════════════════════════════════════════════════════
+  Future<double> getElectricityRate() async {
+    try {
+      final result = await _client
+          .from('system_config')
+          .select('value')
+          .eq('key', 'electricity_rate_per_kwh')
+          .eq('is_active', true)
+          .maybeSingle();
+      if (result == null) return 2.50;
+      final v = result['value'];
+      return double.tryParse(v?.toString() ?? '2.50') ?? 2.50;
+    } catch (_) {
+      return 2.50;
+    }
+  }
+
+  Future<void> updateElectricityRate(double rate) async {
+    await _client
+        .from('system_config')
+        .update({
+          'value': rate.toString(),
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('key', 'electricity_rate_per_kwh');
+  }
+
+  /// Returns the system_config row for electricity_rate_per_kwh (for updated_at display).
+  Future<Map<String, dynamic>?> getElectricityRateConfig() async {
+    try {
+      final result = await _client
+          .from('system_config')
+          .select('value, updated_at')
+          .eq('key', 'electricity_rate_per_kwh')
+          .eq('is_active', true)
+          .maybeSingle();
+      return result != null ? Map<String, dynamic>.from(result as Map) : null;
+    } catch (_) {
+      return null;
+    }
+  }
 }

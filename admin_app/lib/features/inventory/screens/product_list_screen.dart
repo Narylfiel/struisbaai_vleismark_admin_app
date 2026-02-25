@@ -694,6 +694,41 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _imageUrlController.text = p['image_url']?.toString() ?? '';
   }
 
+  Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
+    final name = product['name']?.toString() ?? 'Product';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete product?'),
+        content: Text('Delete $name? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _supabase
+          .from('inventory_items')
+          .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', product['id']);
+      if (mounted) {
+        widget.onSaved();
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
@@ -822,6 +857,12 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     ),
                   ),
                   const Spacer(),
+                  if (isEdit)
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: AppColors.danger),
+                      onPressed: () => _confirmDeleteProduct(widget.product!),
+                      tooltip: 'Delete product',
+                    ),
                   IconButton(
                     icon: const Icon(Icons.close),
                     onPressed: () => Navigator.pop(context),

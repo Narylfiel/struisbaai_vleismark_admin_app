@@ -106,6 +106,16 @@ class DryerBatch extends BaseModel {
   /// Blueprint: Finished product (e.g. biltong PLU)
   final String? outputProductId;
   final String? recipeId;
+  /// Set on create (loaded into dryer).
+  final DateTime? loadedAt;
+  /// Read only from DB (computed from loaded_at/completed_at).
+  final double? dryingHours;
+  /// Dryer power kW (default 2.5).
+  final double? kwhPerHour;
+  /// Calculated by Flutter and saved on complete.
+  final double? electricityCost;
+  /// Planned drying duration in hours (e.g. 48 for biltong).
+  final double? plannedHours;
 
   const DryerBatch({
     required super.id,
@@ -122,6 +132,11 @@ class DryerBatch extends BaseModel {
     this.inputProductId,
     this.outputProductId,
     this.recipeId,
+    this.loadedAt,
+    this.dryingHours,
+    this.kwhPerHour,
+    this.electricityCost,
+    this.plannedHours,
     super.createdAt,
     super.updatedAt,
   });
@@ -153,6 +168,10 @@ class DryerBatch extends BaseModel {
       'input_product_id': inputProductId,
       'output_product_id': outputProductId,
       'recipe_id': recipeId,
+      'loaded_at': loadedAt?.toIso8601String(),
+      'kwh_per_hour': kwhPerHour,
+      'electricity_cost': electricityCost,
+      'planned_hours': plannedHours,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -176,6 +195,11 @@ class DryerBatch extends BaseModel {
       inputProductId: json['input_product_id'] as String?,
       outputProductId: json['output_product_id'] as String?,
       recipeId: json['recipe_id'] as String?,
+      loadedAt: _parseDateTime(json['loaded_at']) ?? _parseDateTime(json['started_at']),
+      dryingHours: (json['drying_hours'] as num?)?.toDouble(),
+      kwhPerHour: (json['kwh_per_hour'] as num?)?.toDouble(),
+      electricityCost: (json['electricity_cost'] as num?)?.toDouble(),
+      plannedHours: (json['planned_hours'] as num?)?.toDouble(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

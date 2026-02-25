@@ -163,4 +163,15 @@ class StockTakeRepository {
         })
         .eq('id', sessionId);
   }
+
+  /// Hard delete: only if status is 'open' or 'cancelled'. Delete stock_take_entries first.
+  Future<void> deleteSession(String sessionId) async {
+    final session = await getSession(sessionId);
+    if (session == null) throw ArgumentError('Session not found');
+    if (session.status != StockTakeSessionStatus.open && session.status != StockTakeSessionStatus.cancelled) {
+      throw StateError('Cannot delete an active or approved stock take.');
+    }
+    await _client.from('stock_take_entries').delete().eq('session_id', sessionId);
+    await _client.from('stock_take_sessions').delete().eq('id', sessionId);
+  }
 }

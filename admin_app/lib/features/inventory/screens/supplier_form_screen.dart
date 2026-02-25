@@ -56,6 +56,36 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
     super.dispose();
   }
 
+  Future<void> _confirmDeleteSupplier(Supplier supplier) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete supplier?'),
+        content: Text('Delete ${supplier.name}? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.deleteSupplier(supplier.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
@@ -113,6 +143,14 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
         title: Text(isEditing ? 'Edit supplier' : 'Add supplier'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          if (isEditing && widget.supplier != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _confirmDeleteSupplier(widget.supplier!),
+              tooltip: 'Delete supplier',
+            ),
+        ],
       ),
       body: Form(
         key: _formKey,

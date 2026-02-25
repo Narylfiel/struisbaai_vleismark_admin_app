@@ -4,6 +4,7 @@ import 'package:admin_app/features/settings/services/settings_repository.dart';
 import 'package:admin_app/features/settings/screens/tax_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/scale_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/notification_settings_screen.dart';
+import 'package:admin_app/features/settings/screens/utilities_settings_screen.dart';
 
 class BusinessSettingsScreen extends StatefulWidget {
   const BusinessSettingsScreen({super.key});
@@ -19,7 +20,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -46,6 +47,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 Tab(icon: Icon(Icons.monitor_weight, size: 18), text: 'Scale / HW'),
                 Tab(icon: Icon(Icons.request_quote, size: 18), text: 'Tax Rates'),
                 Tab(icon: Icon(Icons.notifications_active, size: 18), text: 'Notifications'),
+                Tab(icon: Icon(Icons.bolt, size: 18), text: 'Utilities'),
               ],
             ),
           ),
@@ -58,6 +60,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 const ScaleSettingsScreen(embedded: true),
                 const TaxSettingsScreen(embedded: true),
                 const NotificationSettingsScreen(embedded: true),
+                const UtilitiesSettingsScreen(embedded: true),
               ],
             ),
           ),

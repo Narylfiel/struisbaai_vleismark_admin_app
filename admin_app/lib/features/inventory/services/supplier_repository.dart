@@ -60,7 +60,8 @@ class SupplierRepository {
     return Supplier.fromJson(response as Map<String, dynamic>);
   }
 
+  /// Soft delete: set is_active = false (suppliers table has is_active).
   Future<void> deleteSupplier(String id) async {
-    await _client.from('suppliers').delete().eq('id', id);
+    await _client.from('suppliers').update({'is_active': false}).eq('id', id);
   }
 }

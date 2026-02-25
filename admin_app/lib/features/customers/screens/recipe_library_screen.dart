@@ -69,6 +69,36 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
     ).then((_) => _load());
   }
 
+  Future<void> _confirmDeleteRecipe(Recipe recipe) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete recipe?'),
+        content: Text('Delete ${recipe.name}? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.deleteRecipe(recipe.id);
+      if (mounted) {
+        setState(() => _recipes.removeWhere((r) => r.id == recipe.id));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
@@ -112,6 +142,7 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
                     return _RecipeCard(
                       recipe: r,
                       onTap: () => _openDetail(r),
+                      onLongPress: () => _confirmDeleteRecipe(r),
                     );
                   },
                 ),
@@ -136,8 +167,9 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
 class _RecipeCard extends StatelessWidget {
   final Recipe recipe;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
 
-  const _RecipeCard({required this.recipe, required this.onTap});
+  const _RecipeCard({required this.recipe, required this.onTap, this.onLongPress});
 
   @override
   Widget build(BuildContext context) {
@@ -148,6 +180,7 @@ class _RecipeCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
+        onLongPress: onLongPress,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Column(

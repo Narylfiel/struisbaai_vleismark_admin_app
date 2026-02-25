@@ -255,8 +255,8 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete supplier'),
-        content: Text('Delete "${supplier.name}"?'),
+        title: const Text('Delete supplier?'),
+        content: Text('Delete "${supplier.name}"? This cannot be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
           TextButton(
@@ -271,9 +271,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
     try {
       await _repo.deleteSupplier(supplier.id);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Supplier deleted'), backgroundColor: AppColors.success),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
         _load();
       }
     } catch (e) {

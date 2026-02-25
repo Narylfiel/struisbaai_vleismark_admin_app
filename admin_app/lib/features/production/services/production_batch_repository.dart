@@ -33,6 +33,41 @@ class ProductionBatchRepository {
         .toList();
   }
 
+  /// Split a parent batch into multiple output batches. Each split has recipe_id, qty_produced, notes.
+  /// Inserts new production_batches with status 'complete', parent_batch_id, batch_date today.
+  Future<List<ProductionBatch>> splitBatch({
+    required String parentBatchId,
+    required List<Map<String, dynamic>> splits,
+  }) async {
+    if (splits.isEmpty) return [];
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final created = <ProductionBatch>[];
+    for (final split in splits) {
+      final recipeId = split['recipe_id'] as String?;
+      final qty = (split['qty_produced'] as num?)?.toDouble();
+      if (recipeId == null || recipeId.isEmpty || qty == null || qty <= 0) continue;
+      final recipe = await _recipeRepo.getRecipe(recipeId);
+      if (recipe == null) continue;
+      final outProductId = recipe.outputProductId;
+      final batchData = {
+        'batch_date': today,
+        'recipe_id': recipeId,
+        'qty_produced': qty,
+        'status': 'complete',
+        'parent_batch_id': parentBatchId,
+        'notes': split['notes'] as String?,
+        if (outProductId != null && outProductId.isNotEmpty) 'output_product_id': outProductId,
+      };
+      final row = await _client
+          .from('production_batches')
+          .insert(batchData)
+          .select()
+          .single();
+      created.add(ProductionBatch.fromJson(row as Map<String, dynamic>));
+    }
+    return created;
+  }
+
   Future<ProductionBatch?> getBatch(String id) async {
     final row = await _client
         .from('production_batches')
@@ -204,5 +239,27 @@ class ProductionBatchRepository {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
     return batch;
+  }
+
+  /// Returns true if any batch has parent_batch_id == batchId.
+  Future<bool> hasChildBatches(String batchId) async {
+    final list = await _client
+        .from('production_batches')
+        .select('id')
+        .eq('parent_batch_id', batchId)
+        .limit(1);
+    return (list as List).isNotEmpty;
+  }
+
+  /// Hard delete: production_batch_ingredients and production_batch_outputs first, then production_batches.
+  /// Throws if batch has children (splits); delete splits first.
+  Future<void> deleteBatch(String batchId) async {
+    final hasChildren = await hasChildBatches(batchId);
+    if (hasChildren) {
+      throw StateError('Cannot delete — this batch has splits. Delete splits first.');
+    }
+    await _client.from('production_batch_ingredients').delete().eq('batch_id', batchId);
+    await _client.from('production_batch_outputs').delete().eq('batch_id', batchId);
+    await _client.from('production_batches').delete().eq('id', batchId);
   }
 }

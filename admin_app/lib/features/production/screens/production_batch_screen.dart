@@ -99,6 +99,167 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     ).then((_) => _load());
   }
 
+  void _splitBatch(ProductionBatch batch) {
+    if (batch.status != ProductionBatchStatus.inProgress && batch.status != ProductionBatchStatus.complete) return;
+    showDialog(
+      context: context,
+      builder: (ctx) => _SplitBatchDialog(
+        parentBatch: batch,
+        recipes: _recipes,
+        batchRepo: _batchRepo,
+        onDone: () {
+          Navigator.pop(ctx);
+          _load();
+        },
+      ),
+    ).then((_) => _load());
+  }
+
+  Future<void> _confirmDeleteProductionBatch(ProductionBatch batch) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete batch?'),
+        content: Text('Delete batch ${batch.batchNumber}? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _batchRepo.deleteBatch(batch.id);
+      if (mounted) {
+        setState(() => _batches.removeWhere((b) => b.id == batch.id));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        final msg = e.toString().contains('splits') ? 'Cannot delete — this batch has splits. Delete splits first.' : e.toString();
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
+  /// Build list: roots (no parent_batch_id) then each root's children indented. Parents with children get "Split" badge.
+  List<Widget> _buildBatchListItems() {
+    final roots = _batches.where((b) => b.parentBatchId == null).toList()
+      ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+    final childrenByParent = <String, List<ProductionBatch>>{};
+    for (final b in _batches) {
+      if (b.parentBatchId != null) {
+        childrenByParent.putIfAbsent(b.parentBatchId!, () => []).add(b);
+      }
+    }
+    for (final list in childrenByParent.values) {
+      list.sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
+    }
+    final parentIdsWithSplits = childrenByParent.keys.toSet();
+    final recipeNameById = <String, String>{};
+    for (final r in _recipes) {
+      recipeNameById[r.id] = r.name;
+    }
+    final items = <Widget>[];
+    for (final root in roots) {
+      items.add(_buildBatchCard(root, recipeNameById, parentIdsWithSplits.contains(root.id), false));
+      for (final child in childrenByParent[root.id] ?? []) {
+        items.add(_buildBatchCard(child, recipeNameById, false, true, parentBatch: root));
+      }
+    }
+    return items;
+  }
+
+  Widget _buildBatchCard(
+    ProductionBatch b,
+    Map<String, String> recipeNameById,
+    bool showSplitBadge,
+    bool isChild, {
+    ProductionBatch? parentBatch,
+  }) {
+    final canComplete = b.status == ProductionBatchStatus.pending ||
+        b.status == ProductionBatchStatus.inProgress;
+    final canSplit = (b.status == ProductionBatchStatus.inProgress || b.status == ProductionBatchStatus.complete) &&
+        b.parentBatchId == null;
+    final recipeName = recipeNameById[b.recipeId] ?? b.recipeId.substring(0, 8);
+    final qtyDisplay = b.actualQuantity ?? b.plannedQuantity;
+    return Card(
+      margin: EdgeInsets.only(bottom: 8, left: isChild ? 20 : 0),
+      child: ListTile(
+        onLongPress: () => _confirmDeleteProductionBatch(b),
+        title: Row(
+          children: [
+            if (isChild) const Padding(
+              padding: EdgeInsets.only(right: 8),
+              child: Text('↳', style: TextStyle(fontSize: 16)),
+            ),
+            Expanded(
+              child: Text(
+                b.batchNumber,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ),
+            if (showSplitBadge)
+              Padding(
+                padding: const EdgeInsets.only(left: 8),
+                child: Chip(
+                  label: const Text('Split', style: TextStyle(fontSize: 11)),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.2),
+                  padding: EdgeInsets.zero,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+          ],
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isChild && parentBatch != null)
+              Text(
+                '↳ Split from ${parentBatch.createdAt != null ? _formatDate(parentBatch.createdAt!) : "parent"}',
+                style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
+              ),
+            Text(
+              'Recipe: $recipeName | Qty: $qtyDisplay | ${b.status.displayLabel}',
+              style: const TextStyle(fontSize: 12),
+            ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (canSplit)
+              TextButton(
+                onPressed: () => _splitBatch(b),
+                child: const Text('Split batch'),
+              ),
+            if (canComplete)
+              TextButton(
+                onPressed: () => _completeBatch(b),
+                child: const Text('Complete'),
+              ),
+            if (!canComplete && !canSplit)
+              Chip(
+                label: Text(b.status.displayLabel),
+                backgroundColor: b.status == ProductionBatchStatus.complete
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime d) {
+    return '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_loading) {
@@ -168,36 +329,9 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
                     ],
                   ),
                 )
-              : ListView.builder(
+              : ListView(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: _batches.length,
-                  itemBuilder: (context, i) {
-                    final b = _batches[i];
-                    final canComplete = b.status == ProductionBatchStatus.pending ||
-                        b.status == ProductionBatchStatus.inProgress;
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        title: Text(b.batchNumber, style: const TextStyle(fontWeight: FontWeight.w600)),
-                        subtitle: Text(
-                          'Recipe: ${b.recipeId.substring(0, 8)}… | Planned: ${b.plannedQuantity} | '
-                          'Actual: ${b.actualQuantity ?? "—"} | ${b.status.displayLabel}',
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                        trailing: canComplete
-                            ? TextButton(
-                                onPressed: () => _completeBatch(b),
-                                child: const Text('Complete'),
-                              )
-                            : Chip(
-                                label: Text(b.status.displayLabel),
-                                backgroundColor: b.status == ProductionBatchStatus.complete
-                                    ? AppColors.success
-                                    : AppColors.textSecondary,
-                              ),
-                      ),
-                    );
-                  },
+                  children: _buildBatchListItems(),
                 ),
         ),
       ],
@@ -313,6 +447,318 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
         ElevatedButton(
           onPressed: _loading ? null : _start,
           child: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start batch'),
+        ),
+      ],
+    );
+  }
+}
+
+class _SplitRow {
+  String? recipeId;
+  final TextEditingController qtyController = TextEditingController();
+  final TextEditingController notesController = TextEditingController();
+}
+
+class _SplitBatchDialog extends StatefulWidget {
+  final ProductionBatch parentBatch;
+  final List<Recipe> recipes;
+  final ProductionBatchRepository batchRepo;
+  final VoidCallback onDone;
+
+  const _SplitBatchDialog({
+    required this.parentBatch,
+    required this.recipes,
+    required this.batchRepo,
+    required this.onDone,
+  });
+
+  @override
+  State<_SplitBatchDialog> createState() => _SplitBatchDialogState();
+}
+
+class _SplitBatchDialogState extends State<_SplitBatchDialog> {
+  final List<_SplitRow> _rows = [];
+  String? _error;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rows.add(_SplitRow());
+    _rows.add(_SplitRow());
+  }
+
+  @override
+  void dispose() {
+    for (final r in _rows) {
+      r.qtyController.dispose();
+      r.notesController.dispose();
+    }
+    super.dispose();
+  }
+
+  double get _parentQty =>
+      (widget.parentBatch.actualQuantity ?? widget.parentBatch.plannedQuantity).toDouble();
+
+  double get _totalSplitQty {
+    double sum = 0;
+    for (final r in _rows) {
+      final q = double.tryParse(r.qtyController.text);
+      if (q != null && q > 0) sum += q;
+    }
+    return sum;
+  }
+
+  double get _remaining => _parentQty - _totalSplitQty;
+
+  String _recipeName(String? recipeId) {
+    if (recipeId == null || recipeId.isEmpty) return '— Select recipe —';
+    try {
+      final r = widget.recipes.firstWhere((x) => x.id == recipeId);
+      return r.name;
+    } catch (_) {
+      return recipeId.length >= 8 ? '${recipeId.substring(0, 8)}…' : recipeId;
+    }
+  }
+
+  Future<void> _pickRecipe(_SplitRow row) async {
+    final selected = await showDialog<Recipe>(
+      context: context,
+      builder: (ctx) {
+        final searchController = TextEditingController();
+        List<Recipe> filtered = List.from(widget.recipes);
+        return StatefulBuilder(
+          builder: (ctx, setDialog) {
+            return AlertDialog(
+              title: const Text('Select recipe'),
+              content: SizedBox(
+                width: 320,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search by name',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.search),
+                      ),
+                      onChanged: (_) {
+                        setDialog(() {
+                          final q = searchController.text.trim().toLowerCase();
+                          filtered = q.isEmpty
+                              ? List.from(widget.recipes)
+                              : widget.recipes
+                                  .where((r) => r.name.toLowerCase().contains(q))
+                                  .toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: filtered.length,
+                        itemBuilder: (_, i) {
+                          final r = filtered[i];
+                          return ListTile(
+                            title: Text(r.name),
+                            onTap: () => Navigator.pop(ctx, r),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      setState(() {
+        row.recipeId = selected.id;
+      });
+    }
+  }
+
+  Future<void> _confirm() async {
+    setState(() => _error = null);
+    if (_rows.length < 2) {
+      setState(() => _error = 'Add at least 2 splits');
+      return;
+    }
+    final splits = <Map<String, dynamic>>[];
+    for (final r in _rows) {
+      if (r.recipeId == null || r.recipeId!.isEmpty) continue;
+      final q = double.tryParse(r.qtyController.text);
+      if (q == null || q <= 0) continue;
+      splits.add({
+        'recipe_id': r.recipeId,
+        'qty_produced': q,
+        'notes': r.notesController.text.trim().isEmpty ? null : r.notesController.text.trim(),
+      });
+    }
+    if (splits.length < 2) {
+      setState(() => _error = 'Add at least 2 splits with recipe and quantity');
+      return;
+    }
+    final total = splits.fold<double>(0, (s, m) => s + ((m['qty_produced'] as num?)?.toDouble() ?? 0));
+    if (total > _parentQty) {
+      setState(() => _error = 'Total quantity ($total) cannot exceed parent batch ($_parentQty kg)');
+      return;
+    }
+    setState(() => _loading = true);
+    try {
+      await widget.batchRepo.splitBatch(
+        parentBatchId: widget.parentBatch.id,
+        splits: splits,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Batch split into ${splits.length} outputs'), backgroundColor: AppColors.success),
+        );
+        widget.onDone();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String recipeName;
+    try {
+      recipeName = widget.recipes.firstWhere((r) => r.id == widget.parentBatch.recipeId).name;
+    } catch (_) {
+      recipeName = widget.parentBatch.recipeId.length >= 8
+          ? '${widget.parentBatch.recipeId.substring(0, 8)}…'
+          : widget.parentBatch.recipeId;
+    }
+    return AlertDialog(
+      title: const Text('Split batch'),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Parent batch', style: TextStyle(fontWeight: FontWeight.w600)),
+            const SizedBox(height: 4),
+            Text('Recipe: $recipeName | Qty produced: $_parentQty kg'),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                const Text('Splits', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(width: 16),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() => _rows.add(_SplitRow()));
+                  },
+                  icon: const Icon(Icons.add, size: 18),
+                  label: const Text('Add output'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...List.generate(_rows.length, (i) {
+              final row = _rows[i];
+              return Card(
+                margin: const EdgeInsets.only(bottom: 12),
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      InkWell(
+                        onTap: () => _pickRecipe(row),
+                        child: InputDecorator(
+                          decoration: const InputDecoration(
+                            labelText: 'Recipe',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            suffixIcon: Icon(Icons.arrow_drop_down),
+                          ),
+                          child: Text(_recipeName(row.recipeId)),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          SizedBox(
+                            width: 100,
+                            child: TextFormField(
+                              controller: row.qtyController,
+                              decoration: const InputDecoration(
+                                labelText: 'Quantity (kg)',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextFormField(
+                              controller: row.notesController,
+                              decoration: const InputDecoration(
+                                labelText: 'Notes (optional)',
+                                hintText: 'e.g. filled into casings',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                              ),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_rows.length > 2)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger, size: 22),
+                            onPressed: () {
+                              setState(() {
+                                row.qtyController.dispose();
+                                row.notesController.dispose();
+                                _rows.removeAt(i);
+                              });
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+            const SizedBox(height: 12),
+            Text(
+              'Total: $_totalSplitQty kg | Remaining: $_remaining kg',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: _remaining < 0 ? AppColors.danger : null,
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12)),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+        ElevatedButton(
+          onPressed: _loading ? null : _confirm,
+          child: _loading
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Confirm split'),
         ),
       ],
     );

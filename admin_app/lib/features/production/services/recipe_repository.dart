@@ -57,8 +57,9 @@ class RecipeRepository {
     return Recipe.fromJson(response as Map<String, dynamic>);
   }
 
+  /// Soft delete: set is_active = false (recipes table has is_active).
   Future<void> deleteRecipe(String id) async {
-    await _client.from('recipes').delete().eq('id', id);
+    await _client.from('recipes').update({'is_active': false}).eq('id', id);
   }
 
   Future<List<RecipeIngredient>> getIngredientsByRecipe(String recipeId) async {

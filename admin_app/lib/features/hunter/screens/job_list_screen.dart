@@ -128,6 +128,44 @@ class _JobsTabState extends State<_JobsTab> {
   }
 
   /// H1: Tap row → job_process_screen (intake/processing) or job_summary_screen (ready/completed).
+  Future<void> _confirmCancelJob(Map<String, dynamic> job) async {
+    final statusDb = hunterJobStatusToDbValue(job['status'] as String?);
+    if (statusDb != 'intake') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only intake jobs can be cancelled.'), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+    final name = job['job_number']?.toString() ?? job['hunter_name']?.toString() ?? 'Job';
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel job?'),
+        content: Text('Delete $name? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _supabase.from('hunter_jobs').update({'status': 'cancelled'}).eq('id', job['id']);
+      if (mounted) {
+        await _load();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   void _openJobDetails(Map<String, dynamic> job) {
     final status = hunterJobStatusToDbValue(job['status'] as String?);
     final isProcess = status == 'intake' || status == 'processing';
@@ -206,7 +244,9 @@ class _JobsTabState extends State<_JobsTab> {
                         final job = _jobs[i];
                         final statusDb = job['status'] as String? ?? 'intake';
                         final statusLabel = HunterJobStatusExt.fromDb(statusDb).displayLabel;
-                        return Padding(
+                        final canCancel = statusDb == 'intake';
+                        final isCancelled = statusDb == 'cancelled';
+                        final rowContent = Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
                             SizedBox(width: 120, child: Text(job['job_number'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
@@ -245,6 +285,12 @@ class _JobsTabState extends State<_JobsTab> {
                               child: IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 16), onPressed: () => _openJobDetails(job)),
                             ),
                           ]),
+                        );
+                        return InkWell(
+                          onLongPress: canCancel ? () => _confirmCancelJob(job) : null,
+                          child: isCancelled
+                              ? Opacity(opacity: 0.6, child: rowContent)
+                              : rowContent,
                         );
                       },
                     ),

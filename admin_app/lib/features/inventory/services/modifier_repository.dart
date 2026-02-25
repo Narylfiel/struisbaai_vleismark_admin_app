@@ -62,8 +62,14 @@ class ModifierRepository {
     return ModifierGroup.fromJson(response as Map<String, dynamic>);
   }
 
+  /// Soft delete: set active = false on group and all items in that group.
   Future<void> deleteGroup(String id) async {
-    await _client.from('modifier_groups').delete().eq('id', id);
+    await _client
+        .from('modifier_items')
+        .update({'active': false}).eq('modifier_group_id', id);
+    await _client
+        .from('modifier_groups')
+        .update({'active': false}).eq('id', id);
   }
 
   // ---------- Modifier Items ----------

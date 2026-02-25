@@ -139,6 +139,42 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
     return items;
   }
 
+  Future<void> _confirmCancelInvoice(CustomerInvoice invoice) async {
+    if (invoice.status != CustomerInvoiceStatus.draft) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only draft invoices can be cancelled'), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel invoice?'),
+        content: Text('Delete ${invoice.invoiceNumber}? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.cancelInvoice(invoice.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   Future<void> _saveDraft() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final createdBy = AuthService().getCurrentStaffId();
@@ -238,6 +274,14 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
         title: Text(widget.invoice != null ? 'Edit customer invoice' : 'New customer invoice'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          if (widget.invoice != null && widget.invoice!.status == CustomerInvoiceStatus.draft)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _confirmCancelInvoice(widget.invoice!),
+              tooltip: 'Cancel invoice',
+            ),
+        ],
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),

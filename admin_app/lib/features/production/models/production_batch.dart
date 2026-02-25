@@ -59,6 +59,10 @@ class ProductionBatch extends BaseModel {
   final String? notes;
   /// Output product to add on completion (from recipe)
   final String? outputProductId;
+  /// Parent batch when this batch is a split child.
+  final String? parentBatchId;
+  /// Note describing the split (e.g. output product per split).
+  final String? splitNote;
 
   const ProductionBatch({
     required super.id,
@@ -73,6 +77,8 @@ class ProductionBatch extends BaseModel {
     this.completedBy,
     this.notes,
     this.outputProductId,
+    this.parentBatchId,
+    this.splitNote,
     super.createdAt,
     super.updatedAt,
   });
@@ -92,6 +98,8 @@ class ProductionBatch extends BaseModel {
       'completed_by': completedBy,
       'notes': notes,
       'output_product_id': outputProductId,
+      if (parentBatchId != null) 'parent_batch_id': parentBatchId,
+      if (splitNote != null) 'split_note': splitNote,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -115,6 +123,8 @@ class ProductionBatch extends BaseModel {
       completedBy: json['completed_by'] as String?,
       notes: json['notes'] as String?,
       outputProductId: json['output_product_id'] as String?,
+      parentBatchId: json['parent_batch_id'] as String?,
+      splitNote: json['split_note'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

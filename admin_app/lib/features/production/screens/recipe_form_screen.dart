@@ -78,10 +78,11 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     }
   }
 
-  /// Filter inventory items by search (name, PLU, barcode).
+  /// Filter inventory items by search (name, PLU, barcode). Minimum 2 characters to avoid loading all products.
   List<Map<String, dynamic>> _filterProducts(String search) {
-    if (search.trim().isEmpty) return _inventoryItems;
-    final lower = search.trim().toLowerCase();
+    final q = search.trim();
+    if (q.length < 2) return [];
+    final lower = q.toLowerCase();
     return _inventoryItems.where((e) {
       final name = (e['name'] as String? ?? '').toLowerCase();
       final plu = (e['plu_code']?.toString() ?? '').toLowerCase();
@@ -97,15 +98,21 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     return '$plu — $name';
   }
 
-  /// Show searchable product picker dialog; returns selected product id or null.
+  /// Show searchable product picker dialog; returns selected product id or null. Min 2 chars to filter.
   Future<String?> _showProductPicker({String? currentValue}) async {
     final searchController = TextEditingController();
-    List<Map<String, dynamic>> filtered = List.from(_inventoryItems);
+    List<Map<String, dynamic>> filtered = [];
     return showDialog<String>(
       context: context,
       builder: (ctx) {
         return StatefulBuilder(
           builder: (ctx, setDialog) {
+            final query = searchController.text;
+            if (query.trim().length >= 2) {
+              filtered = _filterProducts(query);
+            } else {
+              filtered = [];
+            }
             return AlertDialog(
               title: const Text('Select product'),
               content: SizedBox(
@@ -118,34 +125,38 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                       controller: searchController,
                       decoration: const InputDecoration(
                         labelText: 'Search by name, PLU or barcode',
-                        hintText: 'Type to filter...',
+                        hintText: 'Type at least 2 characters...',
                         prefixIcon: Icon(Icons.search),
                         border: OutlineInputBorder(),
                       ),
-                      onChanged: (_) {
-                        setDialog(() {
-                          filtered = _filterProducts(searchController.text);
-                        });
-                      },
+                      onChanged: (_) => setDialog(() {}),
                     ),
                     const SizedBox(height: 12),
                     Flexible(
-                      child: filtered.isEmpty
-                          ? const Center(child: Text('No products match'))
-                          : ListView.builder(
-                              shrinkWrap: true,
-                              itemCount: filtered.length,
-                              itemBuilder: (_, i) {
-                                final e = filtered[i];
-                                final id = e['id'] as String?;
-                                final selected = id == currentValue;
-                                return ListTile(
-                                  title: Text(_productLabel(e), style: const TextStyle(fontSize: 14)),
-                                  selected: selected,
-                                  onTap: () => Navigator.pop(ctx, id),
-                                );
-                              },
-                            ),
+                      child: query.trim().length < 2
+                          ? const Center(
+                              child: Text(
+                                'Type at least 2 characters to search',
+                                style: TextStyle(color: AppColors.textSecondary),
+                                textAlign: TextAlign.center,
+                              ),
+                            )
+                          : filtered.isEmpty
+                              ? const Center(child: Text('No products match'))
+                              : ListView.builder(
+                                  shrinkWrap: true,
+                                  itemCount: filtered.length,
+                                  itemBuilder: (_, i) {
+                                    final e = filtered[i];
+                                    final id = e['id'] as String?;
+                                    final selected = id == currentValue;
+                                    return ListTile(
+                                      title: Text(_productLabel(e), style: const TextStyle(fontSize: 14)),
+                                      selected: selected,
+                                      onTap: () => Navigator.pop(ctx, id),
+                                    );
+                                  },
+                                ),
                     ),
                   ],
                 ),
@@ -333,6 +344,36 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     setState(() => _ingredients.removeAt(index));
   }
 
+  Future<void> _confirmDeleteRecipe(Recipe recipe) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete recipe?'),
+        content: Text('Delete ${recipe.name}? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.deleteRecipe(recipe.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     // C5: Output product required — no auto-create; user must link existing or create new.
@@ -457,6 +498,14 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         title: Text(isEditing ? 'Edit recipe' : 'Add recipe'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
+        actions: [
+          if (isEditing && widget.recipe != null)
+            IconButton(
+              icon: const Icon(Icons.delete_outline),
+              onPressed: () => _confirmDeleteRecipe(widget.recipe!),
+              tooltip: 'Delete recipe',
+            ),
+        ],
       ),
       body: Form(
         key: _formKey,

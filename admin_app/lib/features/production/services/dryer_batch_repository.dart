@@ -71,6 +71,8 @@ class DryerBatchRepository {
     required String productName,
     required double inputWeightKg,
     required String dryerType,
+    double? kwhPerHour,
+    double? plannedHours,
     String? inputProductId,
     String? outputProductId,
     String? recipeId,
@@ -81,13 +83,16 @@ class DryerBatchRepository {
     String? performedBy,
   }) async {
     final batchNum = (batchNumber == null || batchNumber.isEmpty) ? await _nextBatchNumber() : batchNumber;
-    // DB columns: start_date, end_date, items, weight_in, weight_out, status, notes, input_product_id, output_product_id, recipe_id, started_at, batch_number
-    // UUID columns must be null not empty string.
+    final now = DateTime.now().toIso8601String();
+    // DB columns: weight_in, status, started_at, loaded_at, kwh_per_hour, planned_hours, ...
     final data = {
       'batch_number': batchNum,
       'weight_in': inputWeightKg,
       'status': 'drying',
-      'started_at': DateTime.now().toIso8601String(),
+      'started_at': now,
+      'loaded_at': now,
+      'kwh_per_hour': kwhPerHour ?? 2.5,
+      if (plannedHours != null && plannedHours > 0) 'planned_hours': plannedHours,
       'input_product_id': inputProductId?.isEmpty == true ? null : inputProductId,
       'output_product_id': outputProductId?.isEmpty == true ? null : outputProductId,
       'recipe_id': recipeId?.isEmpty == true ? null : recipeId,
@@ -150,17 +155,30 @@ class DryerBatchRepository {
         .toList();
   }
 
-  /// Weigh out: set output weight, add finished product stock, status completed.
+  /// Weigh out: set output weight, add finished product stock, status completed. Records completed_at, kwh_per_hour, electricity_cost.
+  /// Cost formula: dryingHours = (completed_at - loaded_at) in hours; kWh = dryingHours × kwhPerHour; cost = kWh × electricityRate.
+  /// kW is power only — never divide/multiply time by kW except as: kWh = hours × kW.
   Future<DryerBatch> completeBatch({
     required String batchId,
     required double outputWeightKg,
     required String completedBy,
+    double kwhPerHour = 2.5,
+    required double electricityRate,
   }) async {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
     if (batch.status == DryerBatchStatus.complete) {
       throw StateError('Batch already completed');
     }
+    final loadedAt = batch.loadedAt ?? batch.startedAt;
+    // Actual elapsed time in hours (completed_at - loaded_at); time never involves kW.
+    final dryingHours = loadedAt != null
+        ? (DateTime.now().difference(loadedAt).inMinutes / 60.0)
+        : 0.0;
+    final kWh = dryingHours * kwhPerHour;
+    final electricityCost = kWh * electricityRate;
+    final electricityCostRounded = (electricityCost * 100).round() / 100;
+
     final outputProductId = batch.outputProductId;
     if (outputProductId != null && outputProductId.isNotEmpty && outputWeightKg > 0) {
       await _inventoryRepo.recordMovement(
@@ -173,12 +191,14 @@ class DryerBatchRepository {
         notes: 'Dryer batch ${batch.batchNumber} weigh out',
       );
     }
-    // DB columns: weight_out, status (CHECK: loading, drying, complete)
     final response = await _client
         .from('dryer_batches')
         .update({
           'weight_out': outputWeightKg,
           'status': 'complete',
+          'completed_at': DateTime.now().toIso8601String(),
+          'kwh_per_hour': kwhPerHour,
+          'electricity_cost': electricityCostRounded,
         })
         .eq('id', batchId)
         .select()
@@ -191,5 +211,11 @@ class DryerBatchRepository {
     final batch = await getBatch(batchId);
     if (batch == null) throw ArgumentError('Batch not found: $batchId');
     return batch;
+  }
+
+  /// Hard delete: dryer_batch_ingredients first, then dryer_batches (no is_active flag).
+  Future<void> deleteBatch(String batchId) async {
+    await _client.from('dryer_batch_ingredients').delete().eq('batch_id', batchId);
+    await _client.from('dryer_batches').delete().eq('id', batchId);
   }
 }

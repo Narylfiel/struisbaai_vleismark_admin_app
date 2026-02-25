@@ -361,6 +361,46 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     );
   }
 
+  Future<void> _confirmDeleteSession(StockTakeSession session) async {
+    if (session.status != StockTakeSessionStatus.open && session.status != StockTakeSessionStatus.cancelled) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot delete an active or approved stock take.'), backgroundColor: AppColors.danger),
+      );
+      return;
+    }
+    final name = session.startedAt != null ? _formatDate(session.startedAt!) : session.id.substring(0, 8);
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete session?'),
+        content: Text('Delete session $name? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _repo.deleteSession(session.id);
+      if (mounted) {
+        setState(() {
+          _sessions.removeWhere((s) => s.id == session.id);
+          if (_currentSession?.id == session.id) _currentSession = null;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   Widget _buildSessionList() {
     return Card(
       child: Padding(
@@ -391,6 +431,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
                 itemBuilder: (context, i) {
                   final s = _sessions[i];
                   return ListTile(
+                    onLongPress: () => _confirmDeleteSession(s),
                     title: Text('Session ${s.startedAt != null ? _formatDate(s.startedAt!) : s.id.substring(0, 8)}'),
                     subtitle: Text('Status: ${s.status.displayLabel}'),
                     trailing: s.status == StockTakeSessionStatus.open ||
