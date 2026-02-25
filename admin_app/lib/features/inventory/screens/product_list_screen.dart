@@ -172,113 +172,154 @@ class ProductListScreenState extends State<ProductListScreen> {
           Container(
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 12),
             color: AppColors.cardBg,
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: [
-                  // Search
-                  SizedBox(
-                    width: 280,
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: InputDecoration(
-                        hintText: 'Search by name, PLU, barcode...',
-                        prefixIcon: const Icon(Icons.search, size: 18),
-                        contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 10),
-                        isDense: true,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                          borderSide: const BorderSide(color: AppColors.border),
-                        ),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 900;
+
+                final searchField = SizedBox(
+                  width: isWide ? 220 : double.infinity,
+                  child: TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search by name, PLU, barcode...',
+                      prefixIcon: const Icon(Icons.search, size: 18),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 10),
+                      isDense: true,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8),
+                        borderSide: const BorderSide(color: AppColors.border),
                       ),
                     ),
                   ),
-                const SizedBox(width: 12),
+                );
 
-                // Category filter
-                DropdownButton<String?>(
-                  value: _selectedCategoryFilterId,
-                  underline: const SizedBox(),
-                  hint: const Text('All'),
-                  items: _categories
-                      .map((c) => DropdownMenuItem<String?>(
-                            value: c['id']?.toString(),
-                            child: Text(c['name'] as String),
-                          ))
-                      .toList(),
-                  onChanged: (v) {
-                    setState(() => _selectedCategoryFilterId = v);
-                    _filterProducts();
-                  },
-                ),
-                const SizedBox(width: 12),
-
-                // Channel filter
-                const Text('Channel:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                const SizedBox(width: 6),
-                DropdownButton<String?>(
-                  value: _selectedChannelFilter,
-                  underline: const SizedBox(),
-                  hint: const Text('All'),
-                  items: const [
-                    DropdownMenuItem(value: null, child: Text('All')),
-                    DropdownMenuItem(value: 'pos', child: Text('POS Only')),
-                    DropdownMenuItem(value: 'app', child: Text('App')),
-                    DropdownMenuItem(value: 'online', child: Text('Online')),
-                  ],
-                  onChanged: (v) {
-                    setState(() => _selectedChannelFilter = v);
-                    _filterProducts();
-                  },
-                ),
-                const SizedBox(width: 12),
-
-                // Show inactive toggle
-                Row(
+                final filters = Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Switch(
-                      value: _showInactive,
-                      onChanged: (v) {
-                        setState(() => _showInactive = v);
-                        _filterProducts();
-                      },
-                      activeThumbColor: AppColors.primary,
+                    SizedBox(
+                      width: 120,
+                      child: DropdownButton<String?>(
+                        value: _selectedCategoryFilterId,
+                        underline: const SizedBox(),
+                        hint: const Text('All'),
+                        isExpanded: true,
+                        items: _categories
+                            .map((c) => DropdownMenuItem<String?>(
+                                  value: c['id']?.toString(),
+                                  child: Text(
+                                    c['name'] as String,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ))
+                            .toList(),
+                        onChanged: (v) {
+                          setState(() => _selectedCategoryFilterId = v);
+                          _filterProducts();
+                        },
+                      ),
                     ),
-                    const Text('Show inactive',
-                        style: TextStyle(
-                            fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 120,
+                      child: DropdownButton<String?>(
+                        value: _selectedChannelFilter,
+                        underline: const SizedBox(),
+                        hint: const Text('All'),
+                        isExpanded: true,
+                        items: const [
+                          DropdownMenuItem(value: null, child: Text('All')),
+                          DropdownMenuItem(value: 'pos', child: Text('POS Only')),
+                          DropdownMenuItem(value: 'app', child: Text('App')),
+                          DropdownMenuItem(value: 'online', child: Text('Online')),
+                        ],
+                        onChanged: (v) {
+                          setState(() => _selectedChannelFilter = v);
+                          _filterProducts();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Switch(
+                          value: _showInactive,
+                          onChanged: (v) {
+                            setState(() => _showInactive = v);
+                            _filterProducts();
+                          },
+                          activeThumbColor: AppColors.primary,
+                        ),
+                        const Text('Show inactive',
+                            style: TextStyle(
+                                fontSize: 13, color: AppColors.textSecondary)),
+                      ],
+                    ),
                   ],
-                ),
+                );
 
-                const Spacer(),
-
-                // Count
-                Text(
-                  '${_filtered.length} products',
-                  style: const TextStyle(
-                      fontSize: 13, color: AppColors.textSecondary),
-                ),
-                const SizedBox(width: 16),
-
-                // Bulk channel (owner only)
-                if (AuthService().currentRole == 'owner' && _selectedProductIds.isNotEmpty) ...[
-                  OutlinedButton.icon(
-                    onPressed: () => _openBulkChannelDialog(),
-                    icon: const Icon(Icons.storefront, size: 18),
-                    label: Text('Set channel (${_selectedProductIds.length})'),
-                  ),
-                  const SizedBox(width: 8),
-                ],
-
-                // Add button
-                ElevatedButton.icon(
+                final addButton = ElevatedButton.icon(
                   onPressed: () => _openProduct(null),
                   icon: const Icon(Icons.add, size: 18),
                   label: const Text('Add Product'),
-                ),
-              ],
-            ),
+                );
+
+                final bulkButton = AuthService().currentRole == 'owner' &&
+                        _selectedProductIds.isNotEmpty
+                    ? Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openBulkChannelDialog(),
+                          icon: const Icon(Icons.storefront, size: 18),
+                          label: Text('Set channel (${_selectedProductIds.length})'),
+                        ),
+                      )
+                    : const SizedBox.shrink();
+
+                final countText = Text(
+                  '${_filtered.length} products',
+                  style: const TextStyle(
+                      fontSize: 13, color: AppColors.textSecondary),
+                );
+
+                if (isWide) {
+                  return Row(
+                    children: [
+                      searchField,
+                      const SizedBox(width: 8),
+                      filters,
+                      const Spacer(),
+                      countText,
+                      const SizedBox(width: 12),
+                      bulkButton,
+                      addButton,
+                    ],
+                  );
+                } else {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(child: searchField),
+                          const SizedBox(width: 8),
+                          bulkButton,
+                          addButton,
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          filters,
+                          const Spacer(),
+                          countText,
+                        ],
+                      ),
+                    ],
+                  );
+                }
+              },
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
