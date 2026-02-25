@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:csv/csv.dart';
 import 'package:excel/excel.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
@@ -331,6 +332,43 @@ class ExportService extends BaseService {
     } catch (e) {
       throw Exception('Failed to export payroll: $e');
     }
+  }
+
+  /// Save CSV to Downloads folder (or save-file dialog on Windows). Returns path for SnackBar, or null if cancelled.
+  Future<String?> saveCsvToFile({
+    required String suggestedFileName,
+    required List<Map<String, dynamic>> data,
+    required List<String> columns,
+  }) async {
+    final csvData = <List<dynamic>>[];
+    csvData.add(columns);
+    for (final row in data) {
+      final csvRow = <dynamic>[];
+      for (final column in columns) {
+        csvRow.add(_formatValueForCsv(row[column]));
+      }
+      csvData.add(csvRow);
+    }
+    final csvString = const ListToCsvConverter().convert(csvData);
+    final bytes = utf8.encode(csvString);
+
+    if (Platform.isWindows) {
+      final path = await FilePicker.platform.saveFile(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        fileName: suggestedFileName.endsWith('.csv') ? suggestedFileName : '$suggestedFileName.csv',
+      );
+      if (path == null) return null;
+      final file = File(path);
+      await file.writeAsBytes(bytes);
+      return path;
+    }
+    final dir = await getDownloadsDirectory();
+    if (dir == null) return null;
+    final fileName = suggestedFileName.endsWith('.csv') ? suggestedFileName : '$suggestedFileName.csv';
+    final file = File('${dir.path}/$fileName');
+    await file.writeAsBytes(bytes);
+    return file.path;
   }
 
   /// Share exported file

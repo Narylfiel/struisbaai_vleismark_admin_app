@@ -142,8 +142,9 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
 
                 if (state is CategoryLoaded) {
                   final filteredCategories = _filterCategories(state.categories);
+                  final rows = _buildCategoryRows(filteredCategories);
 
-                  if (filteredCategories.isEmpty) {
+                  if (rows.isEmpty) {
                     return Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -182,87 +183,32 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                     );
                   }
 
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
+                  return BlocListener<CategoryBloc, CategoryState>(
+                    listener: (context, state) {
+                      if (state is CategoryOperationSuccess) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(state.message), backgroundColor: AppColors.success),
+                        );
+                      } else if (state is CategoryError) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(state.message), backgroundColor: AppColors.danger),
+                        );
+                      }
+                    },
                     child: SingleChildScrollView(
-                      child: DataTable(
-                        columns: const [
-                          DataColumn(label: Text('Color')),
-                          DataColumn(label: Text('Name')),
-                          DataColumn(label: Text('Notes')),
-                          DataColumn(label: Text('Sort Order')),
-                          DataColumn(label: Text('Status')),
-                          DataColumn(label: Text('Actions')),
-                        ],
-                        rows: filteredCategories.map((category) {
-                          return DataRow(
-                            cells: [
-                              DataCell(
-                                Container(
-                                  width: 24,
-                                  height: 24,
-                                  decoration: BoxDecoration(
-                                    color: Color(int.parse(category.colorCode.replaceAll('#', '0xFF'))),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  category.name,
-                                  style: const TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  category.notes ?? '',
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              DataCell(
-                                Text(category.sortOrder.toString()),
-                              ),
-                              DataCell(
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: category.isActive ? AppColors.success : AppColors.danger,
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  child: Text(
-                                    category.isActive ? 'Active' : 'Inactive',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              DataCell(
-                                ActionButtonsWidget(
-                                  actions: [
-                                    ActionButtons.edit(
-                                      onPressed: () => _navigateToForm(category: category),
-                                      iconOnly: true,
-                                    ),
-                                    ActionButtons.delete(
-                                      onPressed: () => _confirmDelete(category),
-                                      iconOnly: true,
-                                    ),
-                                  ],
-                                  compact: true,
-                                  spacing: 8,
-                                ),
-                              ),
-                            ]
-                          );
-                        }).toList(),
+                      scrollDirection: Axis.horizontal,
+                      child: SingleChildScrollView(
+                        child: DataTable(
+                          columns: const [
+                            DataColumn(label: Text('Color')),
+                            DataColumn(label: Text('Name')),
+                            DataColumn(label: Text('Notes')),
+                            DataColumn(label: Text('Sort Order')),
+                            DataColumn(label: Text('Status')),
+                            DataColumn(label: Text('Actions')),
+                          ],
+                          rows: rows,
+                        ),
                       ),
                     ),
                   );
@@ -274,6 +220,93 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Build flat list of rows: top-level categories first, then subcategories indented under parent.
+  List<DataRow> _buildCategoryRows(List<Category> categories) {
+    final roots = categories.where((c) => c.parentId == null || c.parentId!.isEmpty).toList()
+      ..sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.name.compareTo(b.name);
+      });
+    final childrenByParent = <String, List<Category>>{};
+    for (final c in categories) {
+      if (c.parentId != null && c.parentId!.isNotEmpty) {
+        childrenByParent.putIfAbsent(c.parentId!, () => []).add(c);
+      }
+    }
+    for (final list in childrenByParent.values) {
+      list.sort((a, b) {
+        final o = a.sortOrder.compareTo(b.sortOrder);
+        return o != 0 ? o : a.name.compareTo(b.name);
+      });
+    }
+    final rows = <DataRow>[];
+    for (final category in roots) {
+      rows.add(_categoryToDataRow(category, false));
+      for (final child in childrenByParent[category.id] ?? []) {
+        rows.add(_categoryToDataRow(child, true));
+      }
+    }
+    return rows;
+  }
+
+  DataRow _categoryToDataRow(Category category, bool isSubcategory) {
+    return DataRow(
+      cells: [
+        DataCell(
+          Container(
+            width: 24,
+            height: 24,
+            decoration: BoxDecoration(
+              color: Color(int.parse(category.colorCode.replaceAll('#', '0xFF'))),
+              borderRadius: BorderRadius.circular(4),
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            isSubcategory ? '  ↳ ${category.name}' : category.name,
+            style: TextStyle(
+              fontWeight: FontWeight.w500,
+              fontStyle: isSubcategory ? FontStyle.italic : null,
+            ),
+          ),
+        ),
+        DataCell(
+          Text(
+            category.notes ?? '',
+            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        DataCell(Text(category.sortOrder.toString())),
+        DataCell(
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: category.isActive ? AppColors.success : AppColors.danger,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              category.isActive ? 'Active' : 'Inactive',
+              style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w500),
+            ),
+          ),
+        ),
+        DataCell(
+          ActionButtonsWidget(
+            actions: [
+              ActionButtons.edit(onPressed: () => _navigateToForm(category: category), iconOnly: true),
+              ActionButtons.delete(onPressed: () => _confirmDelete(category), iconOnly: true),
+            ],
+            compact: true,
+            spacing: 8,
+          ),
+        ),
+      ],
     );
   }
 
@@ -327,28 +360,22 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
   }
 
   void _confirmDelete(Category category) {
-    showDialog(
+    showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Category'),
-        content: Text('Are you sure you want to delete "${category.name}"? This action cannot be undone.'),
+        title: const Text('Delete category?'),
+        content: Text('Delete "${category.name}"? This cannot be undone.'),
         actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<CategoryBloc>().add(DeleteCategory(category.id));
-            },
-            style: TextButton.styleFrom(
-              foregroundColor: AppColors.danger,
-            ),
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
             child: const Text('Delete'),
           ),
         ],
       ),
-    );
+    ).then((ok) {
+      if (ok == true) context.read<CategoryBloc>().add(DeleteCategory(category.id));
+    });
   }
 }

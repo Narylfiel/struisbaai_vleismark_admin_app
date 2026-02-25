@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -147,7 +148,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Job ${job['job_number'] ?? '—'}'),
+        title: Text('Job ${hunterJobDisplayNumber(job['id']?.toString())}'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),

@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
+import 'package:admin_app/features/hunter/services/parked_sale_repository.dart';
 
 /// H1: Hunter Job Process — read-only intake; per-cut actual weight + link to inventory_item; Mark Ready → update job, add stock, navigate to summary.
 class JobProcessScreen extends StatefulWidget {
@@ -134,6 +136,13 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
         'total_amount': _finalCharge,
       }).eq('id', jobId);
 
+      final parkedRef = await createParkedSaleForJob(jobId);
+      if (mounted && parkedRef != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Job ready — parked sale $parkedRef created for POS')),
+        );
+      }
+
       for (final c in cuts) {
         final invId = c['inventory_item_id']?.toString();
         final w = (c['weight_kg'] as num?)?.toDouble() ?? 0;
@@ -150,7 +159,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
           MaterialPageRoute(
             builder: (_) => _JobSummaryRoute(
               jobId: jobId,
-              jobNumber: widget.job['job_number']?.toString() ?? '—',
+              jobNumber: hunterJobDisplayNumber(widget.job['id']?.toString()),
             ),
           ),
         );
@@ -170,7 +179,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
     }
     return Scaffold(
       appBar: AppBar(
-        title: Text('Process job ${widget.job['job_number'] ?? '—'}'),
+        title: Text('Process job ${hunterJobDisplayNumber(widget.job['id']?.toString())}'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),

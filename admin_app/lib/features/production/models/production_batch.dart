@@ -47,7 +47,8 @@ extension ProductionBatchStatusExt on ProductionBatchStatus {
 }
 
 class ProductionBatch extends BaseModel {
-  final String batchNumber;
+  /// Display label: DB has no batch_number column; use id (first 8 chars).
+  String get batchNumber => 'Batch #${id.length >= 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase()}';
   final String recipeId;
   final int plannedQuantity;
   final int? actualQuantity;
@@ -66,7 +67,6 @@ class ProductionBatch extends BaseModel {
 
   const ProductionBatch({
     required super.id,
-    required this.batchNumber,
     required this.recipeId,
     required this.plannedQuantity,
     this.actualQuantity,
@@ -87,7 +87,6 @@ class ProductionBatch extends BaseModel {
   Map<String, dynamic> toJson() {
     return {
       'id': id,
-      'batch_number': batchNumber,
       'recipe_id': recipeId,
       'planned_quantity': plannedQuantity,
       'actual_quantity': actualQuantity,
@@ -108,7 +107,6 @@ class ProductionBatch extends BaseModel {
   factory ProductionBatch.fromJson(Map<String, dynamic> json) {
     return ProductionBatch(
       id: json['id'] as String,
-      batchNumber: json['batch_number'] as String? ?? json['id']?.toString() ?? '',
       recipeId: json['recipe_id'] as String? ?? '',
       plannedQuantity: ((json['planned_quantity'] ?? json['qty_produced']) as num?)?.toInt() ?? 0,
       actualQuantity: (json['actual_quantity'] as num?)?.toInt(),
@@ -135,15 +133,11 @@ class ProductionBatch extends BaseModel {
   }
 
   @override
-  bool validate() =>
-      batchNumber.trim().isNotEmpty &&
-      recipeId.isNotEmpty &&
-      plannedQuantity > 0;
+  bool validate() => recipeId.isNotEmpty && plannedQuantity > 0;
 
   @override
   List<String> getValidationErrors() {
     final errors = <String>[];
-    if (batchNumber.trim().isEmpty) errors.add('Batch number is required');
     if (recipeId.isEmpty) errors.add('Recipe is required');
     if (plannedQuantity <= 0) errors.add('Planned quantity must be positive');
     return errors;

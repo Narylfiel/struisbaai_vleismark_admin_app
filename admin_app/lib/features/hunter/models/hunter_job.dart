@@ -65,6 +65,13 @@ extension HunterJobStatusExt on HunterJobStatus {
   }
 }
 
+/// Display job reference: HJ-{first 8 chars of id}. DB has no job_number column.
+String hunterJobDisplayNumber(String? id) {
+  if (id == null || id.isEmpty) return '—';
+  final s = id.length >= 8 ? id.substring(0, 8).toUpperCase() : id.toUpperCase();
+  return 'HJ-$s';
+}
+
 /// Normalize raw DB/legacy status string to allowed DB value (lowercase).
 String hunterJobStatusToDbValue(String? status) {
   if (status == null || status.isEmpty) return 'intake';

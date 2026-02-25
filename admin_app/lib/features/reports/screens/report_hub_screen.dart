@@ -69,11 +69,22 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
       final fileName = '${safeTitle}_${start.toIso8601String().substring(0, 10)}_${end.toIso8601String().substring(0, 10)}';
       File file;
       if (format == 'csv') {
-        file = await _export.exportToCsv(
-          fileName: fileName,
+        final path = await _export.saveCsvToFile(
+          suggestedFileName: '$fileName.csv',
           data: reportData.data,
           columns: reportData.columns,
         );
+        if (mounted && path != null) {
+          final shortName = path.split(RegExp(r'[/\\]')).last;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(isEmpty ? 'Report generated — no data. Exported to $shortName' : 'Exported to Downloads/$shortName'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        if (mounted) setState(() => _isExporting = false);
+        return;
       } else if (format == 'xlsx') {
         file = await _export.exportToExcel(
           fileName: fileName,

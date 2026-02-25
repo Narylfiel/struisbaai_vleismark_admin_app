@@ -4,9 +4,9 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_intake_screen.dart';
+import 'package:admin_app/features/hunter/services/parked_sale_repository.dart';
 import 'package:admin_app/features/hunter/screens/job_process_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
-import 'dart:math';
 
 class JobListScreen extends StatefulWidget {
   const JobListScreen({super.key});
@@ -136,7 +136,7 @@ class _JobsTabState extends State<_JobsTab> {
       );
       return;
     }
-    final name = job['job_number']?.toString() ?? job['hunter_name']?.toString() ?? 'Job';
+    final name = hunterJobDisplayNumber(job['id']?.toString()) ?? job['hunter_name']?.toString() ?? 'Job';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -249,7 +249,7 @@ class _JobsTabState extends State<_JobsTab> {
                         final rowContent = Padding(
                           padding: const EdgeInsets.symmetric(vertical: 8),
                           child: Row(children: [
-                            SizedBox(width: 120, child: Text(job['job_number'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
+                            SizedBox(width: 120, child: Text(hunterJobDisplayNumber(job['id']?.toString()), style: const TextStyle(fontWeight: FontWeight.bold))),
                             const SizedBox(width: 16),
                             Expanded(
                               flex: 2, 
@@ -357,8 +357,6 @@ class _JobFormDialogState extends State<_JobFormDialog> {
 
     setState(() => _isSaving = true);
     try {
-      final jobNo = 'HNT-${DateTime.now().year}${DateTime.now().month.toString().padLeft(2,'0')}${DateTime.now().day.toString().padLeft(2,'0')}-${Random().nextInt(999).toString().padLeft(3,'0')}';
-      
       final w = double.tryParse(_weightCtrl.text) ?? 0.0;
       double estTotal = 0;
       for (final sId in _selectedServices) {
@@ -369,7 +367,6 @@ class _JobFormDialogState extends State<_JobFormDialog> {
       }
 
       final res = await _supabase.from('hunter_jobs').insert({
-        'job_number': jobNo,
         'hunter_name': _nameCtrl.text.trim(),
         'contact_phone': _phoneCtrl.text.trim(),
         'customer_name': _nameCtrl.text,
@@ -519,6 +516,14 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
     try {
       await _supabase.from('hunter_jobs').update({'status': newStatusDb}).eq('id', widget.job['id']);
       setState(() => _status = newStatusDb);
+      if (newStatusDb == 'ready') {
+        final ref = await createParkedSaleForJob(widget.job['id'] as String);
+        if (mounted && ref != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Job ready — parked sale $ref created for POS')),
+          );
+        }
+      }
       widget.onSaved();
     } catch (e) {
       debugPrint('$e');
@@ -528,7 +533,7 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Job: ${widget.job['job_number']}'),
+      title: Text('Job: ${hunterJobDisplayNumber(widget.job['id']?.toString())}'),
       content: SizedBox(
         width: 600,
         height: 500,
@@ -623,6 +628,33 @@ class _ServicesTabState extends State<_ServicesTab> {
     );
   }
 
+  Future<void> _confirmDeleteService(Map<String, dynamic> s) async {
+    final name = s['name']?.toString() ?? 'Service';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete service?'),
+        content: Text('Delete $name? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await _supabase.from('hunter_services').update({'is_active': false}).eq('id', s['id']);
+      _load();
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service deleted')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -653,7 +685,7 @@ class _ServicesTabState extends State<_ServicesTab> {
             SizedBox(width: 16),
             SizedBox(width: 80, child: Text('STATUS', style: _h)),
             SizedBox(width: 16),
-            SizedBox(width: 60, child: Text('ACTIONS', style: _h)),
+            SizedBox(width: 100, child: Text('ACTIONS', style: _h)),
           ]),
         ),
         const Divider(height: 1, color: AppColors.border),
@@ -684,8 +716,14 @@ class _ServicesTabState extends State<_ServicesTab> {
                             SizedBox(width: 80, child: Text(active ? 'Active' : 'Inactive', style: TextStyle(color: active ? AppColors.success : AppColors.error, fontSize: 12))),
                             const SizedBox(width: 16),
                             SizedBox(
-                              width: 60,
-                              child: IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: () => _openService(s)),
+                              width: 100,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(icon: const Icon(Icons.edit, size: 16), onPressed: () => _openService(s), tooltip: 'Edit'),
+                                  IconButton(icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.danger), onPressed: () => _confirmDeleteService(s), tooltip: 'Delete'),
+                                ],
+                              ),
                             ),
                           ]),
                         );
@@ -716,27 +754,86 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
 
   bool _isActive = true;
   bool _isSaving = false;
+  String? _linkedProductId;
+  Map<String, dynamic>? _linkedProduct; // {id, name, plu_code, sell_price} for display
+  String? _serviceCategory;
+  List<Map<String, dynamic>> _inventoryItems = [];
+  final _productSearchCtrl = TextEditingController();
+  List<Map<String, dynamic>> _cutOptions = []; // [{"name": "Chops"}, {"name": "Steaks"}]
+
+  static const List<String> _serviceCategoryOptions = [
+    'processing', 'packaging', 'spice', 'extra', 'casing', 'other',
+  ];
 
   @override
   void initState() {
     super.initState();
+    _loadInventoryItems();
     if (widget.service != null) {
       final s = widget.service!;
       _nameCtrl.text = s['name'] ?? '';
       _basePriceCtrl.text = (s['base_price'] ?? '').toString();
       _pricePerKgCtrl.text = (s['price_per_kg'] ?? '').toString();
       _isActive = s['is_active'] ?? true;
+      _linkedProductId = s['inventory_item_id']?.toString();
+      _serviceCategory = s['service_category']?.toString();
+      final opts = s['cut_options'];
+      if (opts is List) {
+        for (final o in opts) {
+          if (o is Map && o['name'] != null) {
+            _cutOptions.add({'name': o['name'].toString()});
+          } else if (o is String && o.isNotEmpty) {
+            _cutOptions.add({'name': o});
+          }
+        }
+      }
+      if (_cutOptions.isEmpty) _cutOptions.add({'name': ''});
+    } else {
+      _cutOptions.add({'name': ''});
     }
+  }
+
+  @override
+  void dispose() {
+    _productSearchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadInventoryItems() async {
+    try {
+      final res = await _supabase
+          .from('inventory_items')
+          .select('id, name, plu_code, sell_price')
+          .eq('is_active', true)
+          .order('name');
+      setState(() => _inventoryItems = List<Map<String, dynamic>>.from(res));
+      if (_linkedProductId != null && _linkedProduct == null) {
+        final match = _inventoryItems.cast<Map<String, dynamic>?>().firstWhere(
+          (x) => x!['id']?.toString() == _linkedProductId,
+          orElse: () => null,
+        );
+        if (match != null) setState(() => _linkedProduct = match);
+      }
+    } catch (_) {}
   }
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
+    final cutOptionsPayload = _cutOptions
+        .map((c) => c['name']?.toString()?.trim())
+        .whereType<String>()
+        .where((s) => s.isNotEmpty)
+        .map((s) => {'name': s})
+        .toList();
     final payload = {
       'name': _nameCtrl.text.trim(),
       'base_price': double.tryParse(_basePriceCtrl.text) ?? 0.0,
       'price_per_kg': double.tryParse(_pricePerKgCtrl.text),
       'is_active': _isActive,
+      'inventory_item_id': _linkedProductId,
+      'service_category': _serviceCategory,
+      'cut_options': cutOptionsPayload.isEmpty ? null : cutOptionsPayload,
     };
 
     try {
@@ -764,12 +861,90 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               TextFormField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Service name'), validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null),
               const SizedBox(height: 8),
               TextFormField(controller: _basePriceCtrl, decoration: const InputDecoration(labelText: 'Base price (R)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
               const SizedBox(height: 8),
               TextFormField(controller: _pricePerKgCtrl, decoration: const InputDecoration(labelText: 'Price per kg (R) — optional'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+              const SizedBox(height: 12),
+              const Text('Linked Product', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String?>(
+                value: _linkedProductId,
+                decoration: const InputDecoration(
+                  hintText: 'Search by name or PLU — link to product so pricing stays in sync',
+                  isDense: true,
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ..._inventoryItems.map((i) => DropdownMenuItem<String?>(
+                    value: i['id']?.toString(),
+                    child: Text('${i['plu_code'] ?? '—'} ${i['name'] ?? '—'}', overflow: TextOverflow.ellipsis),
+                  )),
+                ],
+                onChanged: (v) {
+                  setState(() {
+                    _linkedProductId = v;
+                    _linkedProduct = v == null ? null : _inventoryItems.cast<Map<String, dynamic>?>().firstWhere(
+                      (x) => x!['id']?.toString() == v,
+                      orElse: () => null,
+                    );
+                  });
+                },
+              ),
+              if (_linkedProduct != null) ...[
+                const SizedBox(height: 4),
+                Text('PLU ${_linkedProduct!['plu_code'] ?? '—'} • R ${(_linkedProduct!['sell_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+              ],
+              const SizedBox(height: 12),
+              const Text('Cut options', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(height: 4),
+              ..._cutOptions.asMap().entries.map((e) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        initialValue: e.value['name']?.toString(),
+                        decoration: const InputDecoration(hintText: 'e.g. Chops, Steaks, Mince', isDense: true),
+                        onChanged: (v) => _cutOptions[e.key]['name'] = v,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.remove_circle_outline, size: 20, color: AppColors.danger),
+                      onPressed: () {
+                        setState(() {
+                          final idx = e.key;
+                          if (idx < _cutOptions.length) {
+                            _cutOptions.removeAt(idx);
+                            if (_cutOptions.isEmpty) _cutOptions.add({'name': ''});
+                          }
+                        });
+                      },
+                    ),
+                  ],
+                ),
+              )),
+              OutlinedButton.icon(
+                onPressed: () => setState(() => _cutOptions.add({'name': ''})),
+                icon: const Icon(Icons.add, size: 18),
+                label: const Text('Add cut option'),
+              ),
+              const SizedBox(height: 12),
+              const Text('Service Category', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+              const SizedBox(height: 4),
+              DropdownButtonFormField<String?>(
+                value: _serviceCategory,
+                decoration: const InputDecoration(isDense: true),
+                hint: const Text('Select category'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ..._serviceCategoryOptions.map((c) => DropdownMenuItem<String?>(value: c, child: Text(c[0].toUpperCase() + c.substring(1)))),
+                ],
+                onChanged: (v) => setState(() => _serviceCategory = v),
+              ),
               const SizedBox(height: 8),
               SwitchListTile(title: const Text('Active'), value: _isActive, onChanged: (v) => setState(() => _isActive = v!)),
             ],

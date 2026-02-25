@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -272,16 +270,12 @@ class _LedgerScreenState extends State<LedgerScreen> {
           'Running Balance': balance != null ? balance.toStringAsFixed(2) : '',
         });
       }
-      final fileName = 'ledger_${_start.toIso8601String().substring(0, 10)}_${_end.toIso8601String().substring(0, 10)}';
-      final file = await _export.exportToCsv(fileName: fileName, data: data, columns: columns);
-      if (mounted) {
-        try {
-          await Share.shareXFiles([XFile(file.path)], text: 'Ledger export');
-        } catch (_) {}
-        final dir = await getApplicationDocumentsDirectory();
-        final shortPath = file.path.startsWith(dir.path) ? file.path.substring(dir.path.length) : file.path;
+      final fileName = 'ledger_${_start.toIso8601String().substring(0, 10)}_${_end.toIso8601String().substring(0, 10)}.csv';
+      final path = await _export.saveCsvToFile(suggestedFileName: fileName, data: data, columns: columns);
+      if (mounted && path != null) {
+        final shortName = path.split(RegExp(r'[/\\]')).last;
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported. $shortPath'), backgroundColor: AppColors.success),
+          SnackBar(content: Text('Exported to Downloads/$shortName'), backgroundColor: AppColors.success),
         );
       }
     } catch (e) {

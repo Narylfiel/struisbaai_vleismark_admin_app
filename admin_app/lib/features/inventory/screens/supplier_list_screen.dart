@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:csv/csv.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/export_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/action_buttons.dart';
@@ -25,6 +25,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
   List<Supplier> _suppliers = [];
   bool _loading = true;
   bool _exporting = false;
+  bool _showInactive = false;
   String? _error;
 
   static const _csvColumns = ['name', 'contact_name', 'phone', 'email', 'account_number', 'notes'];
@@ -35,7 +36,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
       _error = null;
     });
     try {
-      final list = await _repo.getSuppliers();
+      final list = await _repo.getSuppliers(activeOnly: !_showInactive);
       if (mounted) {
         setState(() {
           _suppliers = list;
@@ -85,16 +86,19 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
         'account_number': r['account_number']?.toString() ?? '',
         'notes': r['notes']?.toString() ?? '',
       }).toList();
-      final file = await _export.exportToCsv(
-        fileName: 'suppliers_export',
+      final dateStr = DateTime.now().toIso8601String().split('T')[0];
+      final path = await _export.saveCsvToFile(
+        suggestedFileName: 'suppliers_$dateStr.csv',
         data: data,
         columns: _csvColumns,
       );
       if (mounted) {
-        await Share.shareXFiles([XFile(file.path)], text: 'Suppliers export');
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Exported ${data.length} suppliers'), backgroundColor: AppColors.success),
-        );
+        if (path != null) {
+          final fileName = path.split(RegExp(r'[/\\]')).last;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Exported to Downloads/$fileName'), backgroundColor: AppColors.success),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -345,6 +349,12 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                   style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary),
                 ),
                 const SizedBox(width: 12),
+                if (AuthService().currentRole == 'owner') ...[
+                  Switch(value: _showInactive, onChanged: (v) { setState(() => _showInactive = v); _load(); }, activeThumbColor: AppColors.primary),
+                  const SizedBox(width: 8),
+                  const Text('Show inactive', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  const SizedBox(width: 12),
+                ],
                 ElevatedButton.icon(
                   onPressed: () => _navigateToForm(),
                   icon: const Icon(Icons.add),
@@ -379,6 +389,23 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                 style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary, side: const BorderSide(color: AppColors.primary)),
               ),
               const SizedBox(width: 16),
+              if (AuthService().currentRole == 'owner')
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Switch(
+                      value: _showInactive,
+                      onChanged: (v) {
+                        setState(() => _showInactive = v);
+                        _load();
+                      },
+                      activeThumbColor: AppColors.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text('Show inactive', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                  ],
+                ),
+              if (AuthService().currentRole == 'owner') const SizedBox(width: 16),
               const Expanded(child: SizedBox()),
               ElevatedButton.icon(
                 onPressed: () => _navigateToForm(),

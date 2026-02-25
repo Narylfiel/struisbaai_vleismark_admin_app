@@ -89,29 +89,9 @@ class _PinScreenState extends State<PinScreen> {
   @override
   void initState() {
     super.initState();
-    _tryRestoreSession();
-    // Silently refresh cache in background on startup
+    // Do not auto-restore session on launch — PIN is required every time.
+    // Silently refresh cache in background on startup.
     _refreshCacheIfOnline();
-  }
-
-  /// Restore session from cache with Supabase validation. If valid, navigate to MainShell.
-  Future<void> _tryRestoreSession() async {
-    final staff = await AuthService().restoreSessionFromCache();
-    if (!mounted) return;
-    if (staff != null) {
-      final staffId = staff['id'] as String;
-      final staffName = staff['full_name'] as String;
-      final role = staff['role'] as String;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => MainShell(
-            staffId: staffId,
-            staffName: staffName,
-            role: role,
-          ),
-        ),
-      );
-    }
   }
 
   /// Try to pull fresh staff data from Supabase and cache it.

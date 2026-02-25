@@ -1,12 +1,13 @@
 import '../../../core/models/base_model.dart';
 
-/// Category model for inventory categorization
+/// Category model for inventory categorization. parentId null = top-level.
 class Category extends BaseModel {
   final String name;
   final String colorCode;
   final String? notes;
   final int sortOrder;
   final bool isActive;
+  final String? parentId;
 
   const Category({
     required super.id,
@@ -15,6 +16,7 @@ class Category extends BaseModel {
     this.notes,
     required this.sortOrder,
     required this.isActive,
+    this.parentId,
     super.createdAt,
     super.updatedAt,
   });
@@ -27,7 +29,8 @@ class Category extends BaseModel {
       'color_code': colorCode,
       'notes': notes,
       'sort_order': sortOrder,
-      'is_active': isActive,
+      'active': isActive,
+      'parent_id': parentId,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -37,15 +40,16 @@ class Category extends BaseModel {
     return Category(
       id: json['id'] as String,
       name: json['name'] as String,
-      colorCode: json['color_code'] as String,
+      colorCode: (json['color_code'] ?? json['colour_code']) as String? ?? '#808080',
       notes: json['notes'] as String?,
-      sortOrder: json['sort_order'] as int,
-      isActive: json['is_active'] as bool,
+      sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
+      isActive: (json['active'] ?? json['is_active']) as bool? ?? true,
+      parentId: json['parent_id'] as String?,
       createdAt: json['created_at'] != null
-          ? DateTime.parse(json['created_at'] as String)
+          ? DateTime.tryParse(json['created_at'] as String)
           : null,
       updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
+          ? DateTime.tryParse(json['updated_at'] as String)
           : null,
     );
   }
@@ -57,6 +61,7 @@ class Category extends BaseModel {
     String? notes,
     int? sortOrder,
     bool? isActive,
+    String? parentId,
     DateTime? createdAt,
     DateTime? updatedAt,
   }) {
@@ -67,6 +72,7 @@ class Category extends BaseModel {
       notes: notes ?? this.notes,
       sortOrder: sortOrder ?? this.sortOrder,
       isActive: isActive ?? this.isActive,
+      parentId: parentId ?? this.parentId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );

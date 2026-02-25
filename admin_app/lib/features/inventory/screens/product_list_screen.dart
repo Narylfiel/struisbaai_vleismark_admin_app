@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
@@ -25,7 +26,9 @@ class ProductListScreenState extends State<ProductListScreen> {
   List<Map<String, dynamic>> _categories = []; // includes {id, name}; first item is All (id: null)
   bool _isLoading = true;
   String? _selectedCategoryFilterId; // null = All
+  String? _selectedChannelFilter; // null = All, 'pos', 'app', 'online'
   bool _showInactive = false;
+  final Set<String> _selectedProductIds = {}; // for bulk channel action
 
   @override
   void initState() {
@@ -43,10 +46,10 @@ class ProductListScreenState extends State<ProductListScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      // Category dropdown: id + name, active only, order by sort_order. Display name, value = id.
+      // Category dropdown: id, name, parent_id; active only (categories table uses 'active' column); order by sort_order.
       final cats = await _supabase
           .from('categories')
-          .select('id, name')
+          .select('id, name, parent_id')
           .eq('active', true)
           .order('sort_order');
       _categories = [
@@ -78,9 +81,27 @@ class ProductListScreenState extends State<ProductListScreen> {
         final matchCat = _selectedCategoryFilterId == null ||
             p['category_id']?.toString() == _selectedCategoryFilterId;
         final matchActive = _showInactive || (p['is_active'] == true);
-        return matchSearch && matchCat && matchActive;
+        final matchChannel = _matchChannelFilter(p);
+        return matchSearch && matchCat && matchActive && matchChannel;
       }).toList();
     });
+  }
+
+  bool _matchChannelFilter(Map<String, dynamic> p) {
+    if (_selectedChannelFilter == null || _selectedChannelFilter == 'all') return true;
+    final pos = p['available_pos'] as bool? ?? true;
+    final app = p['available_loyalty_app'] as bool? ?? false;
+    final online = p['available_online'] as bool? ?? false;
+    switch (_selectedChannelFilter) {
+      case 'pos':
+        return pos;
+      case 'app':
+        return app;
+      case 'online':
+        return online;
+      default:
+        return true;
+    }
   }
 
   /// Resolve category_id to display name. Prefer loaded _categories; fallback to valid mappings.
@@ -114,6 +135,20 @@ class ProductListScreenState extends State<ProductListScreen> {
         product: product,
         categories: _categories.where((c) => c['id'] != null).toList(),
         onSaved: _loadData,
+      ),
+    );
+  }
+
+  Future<void> _openBulkChannelDialog() async {
+    if (_selectedProductIds.isEmpty) return;
+    await showDialog(
+      context: context,
+      builder: (_) => _BulkChannelDialog(
+        productIds: _selectedProductIds.toList(),
+        onSaved: () {
+          _loadData();
+          setState(() => _selectedProductIds.clear());
+        },
       ),
     );
   }
@@ -177,6 +212,26 @@ class ProductListScreenState extends State<ProductListScreen> {
                 ),
                 const SizedBox(width: 12),
 
+                // Channel filter
+                const Text('Channel:', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(width: 6),
+                DropdownButton<String?>(
+                  value: _selectedChannelFilter,
+                  underline: const SizedBox(),
+                  hint: const Text('All'),
+                  items: const [
+                    DropdownMenuItem(value: null, child: Text('All')),
+                    DropdownMenuItem(value: 'pos', child: Text('POS Only')),
+                    DropdownMenuItem(value: 'app', child: Text('App')),
+                    DropdownMenuItem(value: 'online', child: Text('Online')),
+                  ],
+                  onChanged: (v) {
+                    setState(() => _selectedChannelFilter = v);
+                    _filterProducts();
+                  },
+                ),
+                const SizedBox(width: 12),
+
                 // Show inactive toggle
                 Row(
                   children: [
@@ -204,6 +259,16 @@ class ProductListScreenState extends State<ProductListScreen> {
                 ),
                 const SizedBox(width: 16),
 
+                // Bulk channel (owner only)
+                if (AuthService().currentRole == 'owner' && _selectedProductIds.isNotEmpty) ...[
+                  OutlinedButton.icon(
+                    onPressed: () => _openBulkChannelDialog(),
+                    icon: const Icon(Icons.storefront, size: 18),
+                    label: Text('Set channel (${_selectedProductIds.length})'),
+                  ),
+                  const SizedBox(width: 8),
+                ],
+
                 // Add button
                 ElevatedButton.icon(
                   onPressed: () => _openProduct(null),
@@ -219,25 +284,30 @@ class ProductListScreenState extends State<ProductListScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             color: AppColors.surfaceBg,
-            child: const Row(
+            child: Row(
               children: [
-                SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
-                SizedBox(width: 12),
-                Expanded(flex: 3, child: Text('NAME', style: _headerStyle)),
-                SizedBox(width: 12),
-                Expanded(flex: 2, child: Text('CATEGORY', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 90, child: Text('SELL PRICE', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 80, child: Text('COST', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 60, child: Text('GP %', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 80, child: Text('ON HAND', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 60, child: Text('STATUS', style: _headerStyle)),
-                SizedBox(width: 12),
-                SizedBox(width: 120, child: Text('ACTIONS', style: _headerStyle)),
+                if (AuthService().currentRole == 'owner')
+                  const SizedBox(width: 36, child: Text('', style: _headerStyle)),
+                if (AuthService().currentRole == 'owner') const SizedBox(width: 8),
+                const SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const Expanded(flex: 3, child: Text('NAME', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 56, child: Text('CHANNELS', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const Expanded(flex: 2, child: Text('CATEGORY', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 90, child: Text('SELL PRICE', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 80, child: Text('COST', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 60, child: Text('GP %', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 80, child: Text('ON HAND', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 60, child: Text('STATUS', style: _headerStyle)),
+                const SizedBox(width: 12),
+                const SizedBox(width: 120, child: Text('ACTIONS', style: _headerStyle)),
               ],
             ),
           ),
@@ -272,6 +342,12 @@ class ProductListScreenState extends State<ProductListScreen> {
                           final reorder =
                               (p['reorder_level'] as num?)?.toDouble() ?? 0;
 
+                          final availablePos = p['available_pos'] as bool? ?? true;
+                          final availableApp = p['available_loyalty_app'] as bool? ?? false;
+                          final availableOnline = p['available_online'] as bool? ?? false;
+                          final productId = p['id']?.toString() ?? '';
+                          final isSelected = _selectedProductIds.contains(productId);
+
                           return InkWell(
                             onTap: () => _openProduct(p),
                             child: Container(
@@ -282,6 +358,27 @@ class ProductListScreenState extends State<ProductListScreen> {
                                   : AppColors.border.withOpacity(0.3),
                               child: Row(
                                 children: [
+                                  // Checkbox (owner only)
+                                  if (AuthService().currentRole == 'owner') ...[
+                                    SizedBox(
+                                      width: 36,
+                                      child: Checkbox(
+                                        value: isSelected,
+                                        onChanged: (v) {
+                                          setState(() {
+                                            if (v == true) {
+                                              _selectedProductIds.add(productId);
+                                            } else {
+                                              _selectedProductIds.remove(productId);
+                                            }
+                                          });
+                                        },
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                        activeColor: AppColors.primary,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                  ],
                                   // PLU
                                   SizedBox(
                                     width: 60,
@@ -320,6 +417,27 @@ class ProductListScreenState extends State<ProductListScreen> {
                                               color: AppColors.textSecondary,
                                             ),
                                           ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+
+                                  // Channel indicators
+                                  SizedBox(
+                                    width: 56,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        if (availablePos)
+                                          Icon(Icons.receipt, size: 14, color: AppColors.textSecondary),
+                                        if (availablePos && (availableApp || availableOnline)) const SizedBox(width: 4),
+                                        if (availableApp)
+                                          Icon(Icons.phone_android, size: 14, color: AppColors.textSecondary),
+                                        if (availableApp && availableOnline) const SizedBox(width: 4),
+                                        if (availableOnline)
+                                          Icon(Icons.public, size: 14, color: AppColors.textSecondary),
+                                        if (!availablePos && !availableApp && !availableOnline)
+                                          const Text('—', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                       ],
                                     ),
                                   ),
@@ -545,7 +663,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _lookupController = TextEditingController();
   String? _selectedCategoryId;
   String? _selectedCategoryName; // display name; kept in sync with _selectedCategoryId for DB category column
-  String? _subCategory;
+  String? _selectedSubCategoryId; // subcategory category id (child of main category)
+  String? _subCategoryName; // display name for subcategory; saved as sub_category on inventory_items
   String _itemType = 'own_cut';
   /// H9: Raw (no processing), Portioned, Manufactured (recipe-based)
   String _productType = 'raw';
@@ -554,6 +673,34 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   bool _isActive = true;
   List<String> _supplierIds = [];
   List<Map<String, dynamic>> _allSuppliers = [];
+
+  /// Top-level categories only (parent_id null or empty) for main Category dropdown.
+  List<Map<String, dynamic>> get _topLevelCategories {
+    return widget.categories
+        .where((c) =>
+            c['id'] != null &&
+            (c['parent_id'] == null || c['parent_id'].toString().isEmpty))
+        .toList();
+  }
+
+  /// Subcategories of selected main category for Sub-Category dropdown. None if no children.
+  List<DropdownMenuItem<String?>> get _subCategoryDropdownItems {
+    final none = DropdownMenuItem<String?>(value: null, child: Text('None'));
+    if (_selectedCategoryId == null || _selectedCategoryId!.isEmpty) {
+      return [none];
+    }
+    final children = widget.categories
+        .where((c) => c['parent_id']?.toString() == _selectedCategoryId)
+        .toList();
+    if (children.isEmpty) return [none];
+    return [
+      none,
+      ...children.map((c) => DropdownMenuItem<String?>(
+            value: c['id']?.toString(),
+            child: Text((c['name'] as String? ?? ''), overflow: TextOverflow.ellipsis),
+          )),
+    ];
+  }
 
   // Section B
   final _sellPriceController = TextEditingController();
@@ -592,7 +739,15 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   List<Map<String, dynamic>> _recipes = [];
   List<Map<String, dynamic>> _dryerTypes = [];
 
-  // Section G
+  // Section G — Channels
+  bool _availablePos = true;
+  bool _availableLoyaltyApp = false;
+  bool _availableOnline = false;
+  final _onlineDescriptionController = TextEditingController();
+  final _onlineImageUrlController = TextEditingController();
+  final _onlineSortOrderController = TextEditingController();
+
+  // Section H — Media & Notes
   final _internalNotesController = TextEditingController();
   List<String> _dietaryTags = [];
   List<String> _allergenInfo = [];
@@ -603,7 +758,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
     if (widget.product != null) {
       _populateForm(widget.product!);
       _loadProductSuppliers();
@@ -657,7 +812,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _lookupController.text = p['text_lookup_code'] ?? '';
     _selectedCategoryId = p['category_id']?.toString();
     _selectedCategoryName = p['category'] as String? ?? (_selectedCategoryId != null ? kCategoryIdToName[_selectedCategoryId] : null);
-    _subCategory = p['sub_category'] as String?;
+    _selectedSubCategoryId = p['sub_category_id']?.toString();
+    _subCategoryName = p['sub_category'] as String?;
     _itemType = p['item_type'] ?? 'own_cut';
     _productType = p['product_type'] ?? 'raw';
     _scaleItem = p['scale_item'] ?? false;
@@ -692,6 +848,13 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _dietaryTags = List<String>.from(p['dietary_tags'] ?? []);
     _allergenInfo = List<String>.from(p['allergen_info'] ?? []);
     _imageUrlController.text = p['image_url']?.toString() ?? '';
+    // Channel availability — defaults: available_pos = true, others = false
+    _availablePos = p['available_pos'] as bool? ?? true;
+    _availableLoyaltyApp = p['available_loyalty_app'] as bool? ?? false;
+    _availableOnline = p['available_online'] as bool? ?? false;
+    _onlineDescriptionController.text = p['online_description']?.toString() ?? '';
+    _onlineImageUrlController.text = p['online_image_url']?.toString() ?? '';
+    _onlineSortOrderController.text = p['online_sort_order']?.toString() ?? '';
   }
 
   Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
@@ -746,7 +909,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'text_lookup_code': _lookupController.text.trim().toLowerCase().isEmpty ? null : _lookupController.text.trim().toLowerCase(),
       'category_id': _selectedCategoryId,
       'category': _selectedCategoryName ?? (_selectedCategoryId != null ? kCategoryIdToName[_selectedCategoryId] : null),
-      'sub_category': _subCategory,
+      'sub_category_id': _selectedSubCategoryId,
+      'sub_category': _subCategoryName,
       'item_type': _itemType,
       'product_type': _productType,
       'scale_item': _scaleItem,
@@ -778,6 +942,12 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'dietary_tags': _dietaryTags.isEmpty ? null : _dietaryTags,
       'allergen_info': _allergenInfo.isEmpty ? null : _allergenInfo,
       'internal_notes': _internalNotesController.text.trim().isEmpty ? null : _internalNotesController.text.trim(),
+      'available_pos': _availablePos,
+      'available_loyalty_app': _availableLoyaltyApp,
+      'available_online': _availableOnline,
+      'online_description': _onlineDescriptionController.text.trim().isEmpty ? null : _onlineDescriptionController.text.trim(),
+      'online_image_url': _onlineImageUrlController.text.trim().isEmpty ? null : _onlineImageUrlController.text.trim(),
+      'online_sort_order': int.tryParse(_onlineSortOrderController.text),
       'price_last_changed': DateTime.now().toIso8601String(),
       'last_edited_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
@@ -825,6 +995,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _packSizeController.dispose();
     _internalNotesController.dispose();
     _imageUrlController.dispose();
+    _onlineDescriptionController.dispose();
+    _onlineImageUrlController.dispose();
+    _onlineSortOrderController.dispose();
     super.dispose();
   }
 
@@ -885,8 +1058,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 Tab(text: 'D — Barcode/Scale'),
                 Tab(text: 'E — Modifiers'),
                 Tab(text: 'F — Production'),
-                Tab(text: 'G — Media/Notes'),
-                Tab(text: 'H — Activity'),
+                Tab(text: 'G — Channels'),
+                Tab(text: 'H — Media/Notes'),
+                Tab(text: 'I — Activity'),
               ],
             ),
             const Divider(height: 1, color: AppColors.border),
@@ -904,8 +1078,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     _buildTabD(),
                     _buildTabE(),
                     _buildTabF(),
-                    _buildTabG(),
+                    _buildTabChannels(),
                     _buildTabH(),
+                    _buildTabI(),
                   ],
                 ),
               ),
@@ -1031,7 +1206,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       hint: const Text('Select category'),
-                      items: widget.categories
+                      items: _topLevelCategories
                           .map((c) => DropdownMenuItem<String?>(
                                 value: c['id']?.toString(),
                                 child: Text((c['name'] as String? ?? ''), overflow: TextOverflow.ellipsis),
@@ -1040,6 +1215,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       onChanged: (v) {
                         setState(() {
                           _selectedCategoryId = v;
+                          _selectedSubCategoryId = null;
+                          _subCategoryName = null;
                           if (v == null) {
                             _selectedCategoryName = null;
                           } else {
@@ -1069,20 +1246,27 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             fontWeight: FontWeight.w600,
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: _subCategory,
+                    DropdownButtonFormField<String?>(
+                      value: _selectedSubCategoryId,
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
-                      hint: const Text('Optional'),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('—')),
-                        DropdownMenuItem(value: 'Steaks', child: Text('Steaks')),
-                        DropdownMenuItem(value: 'Mince', child: Text('Mince')),
-                        DropdownMenuItem(value: 'Stew', child: Text('Stew')),
-                        DropdownMenuItem(value: 'Ribs', child: Text('Ribs')),
-                        DropdownMenuItem(value: 'Other', child: Text('Other')),
-                      ],
-                      onChanged: (v) => setState(() => _subCategory = v),
+                      hint: const Text('None'),
+                      items: _subCategoryDropdownItems,
+                      onChanged: (v) {
+                        setState(() {
+                          _selectedSubCategoryId = v;
+                          if (v == null) {
+                            _subCategoryName = null;
+                          } else {
+                            for (final c in widget.categories) {
+                              if (c['id']?.toString() == v) {
+                                _subCategoryName = c['name'] as String?;
+                                break;
+                              }
+                            }
+                          }
+                        });
+                      },
                     ),
                   ],
                 ),
@@ -1810,7 +1994,112 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     );
   }
 
-  Widget _buildTabG() {
+  Widget _buildTabChannels() {
+    final showAppListing = _availableLoyaltyApp || _availableOnline;
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Channel availability',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _channelToggle(
+                  label: 'POS / Till',
+                  value: _availablePos,
+                  onChanged: (v) => setState(() => _availablePos = v),
+                  hint: 'Show this product on the point of sale screen',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _channelToggle(
+                  label: 'Loyalty App',
+                  value: _availableLoyaltyApp,
+                  onChanged: (v) => setState(() => _availableLoyaltyApp = v),
+                  hint: 'Customers can order this via the loyalty app',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _channelToggle(
+                  label: 'Online Orders',
+                  value: _availableOnline,
+                  onChanged: (v) => setState(() => _availableOnline = v),
+                  hint: 'Available when online ordering is launched',
+                ),
+              ),
+            ],
+          ),
+          if (showAppListing) ...[
+            const SizedBox(height: 24),
+            const Text('App listing',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+            const SizedBox(height: 12),
+            _field(
+              label: 'App Description',
+              controller: _onlineDescriptionController,
+              hint: 'Describe this product for customers in the app. Can be more detailed than the POS name.',
+              maxLength: 2000,
+              maxLines: 4,
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _field(
+                    label: 'App Display Order',
+                    controller: _onlineSortOrderController,
+                    hint: 'Lower numbers appear first in app listings',
+                    keyboardType: TextInputType.number,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  flex: 2,
+                  child: _field(
+                    label: 'Product Image URL',
+                    controller: _onlineImageUrlController,
+                    hint: 'Link to product photo for app display (Image upload will be added when app is built)',
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _channelToggle({
+    required String label,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+    required String hint,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Switch(
+              value: value,
+              onChanged: onChanged,
+              activeThumbColor: AppColors.primary,
+            ),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(hint, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+
+  Widget _buildTabH() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
@@ -1881,7 +2170,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     );
   }
 
-  Widget _buildTabH() {
+  Widget _buildTabI() {
     final lastEdited = widget.product?['last_edited_at'] != null
         ? DateTime.tryParse(widget.product!['last_edited_at'] as String)
         : null;
@@ -1953,6 +2242,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     TextInputType? keyboardType,
     bool enabled = true,
     int? maxLength,
+    int maxLines = 1,
     String? Function(String?)? validator,
     void Function(String)? onChanged,
   }) {
@@ -1970,9 +2260,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           enabled: enabled,
           keyboardType: keyboardType,
           maxLength: maxLength,
+          maxLines: maxLines,
           decoration: InputDecoration(
             hintText: hint,
-            isDense: true,
+            isDense: maxLines <= 1,
             counterText: '',
             filled: !enabled,
             fillColor:
@@ -2195,6 +2486,112 @@ class _ProductSupplierMappingDialogState extends State<_ProductSupplierMappingDi
           child: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
               : const Text('Save'),
+        ),
+      ],
+    );
+  }
+}
+
+// ── Bulk channel availability (owner only) ─────────────────────────────
+class _BulkChannelDialog extends StatefulWidget {
+  final List<String> productIds;
+  final VoidCallback onSaved;
+
+  const _BulkChannelDialog({
+    required this.productIds,
+    required this.onSaved,
+  });
+
+  @override
+  State<_BulkChannelDialog> createState() => _BulkChannelDialogState();
+}
+
+class _BulkChannelDialogState extends State<_BulkChannelDialog> {
+  final _supabase = SupabaseService.client;
+  bool _availablePos = true;
+  bool _availableLoyaltyApp = false;
+  bool _availableOnline = false;
+  bool _saving = false;
+
+  Future<void> _apply() async {
+    setState(() => _saving = true);
+    try {
+      final data = {
+        'available_pos': _availablePos,
+        'available_loyalty_app': _availableLoyaltyApp,
+        'available_online': _availableOnline,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      await _supabase
+          .from('inventory_items')
+          .update(data)
+          .inFilter('id', widget.productIds);
+      widget.onSaved();
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Updated channel availability for ${widget.productIds.length} products')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Set channel availability'),
+      content: SizedBox(
+        width: 360,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Apply to ${widget.productIds.length} selected products.',
+              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Switch(value: _availablePos, onChanged: (v) => setState(() => _availablePos = v), activeThumbColor: AppColors.primary),
+                const Text('POS / Till'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Switch(value: _availableLoyaltyApp, onChanged: (v) => setState(() => _availableLoyaltyApp = v), activeThumbColor: AppColors.primary),
+                const Text('Loyalty App'),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Switch(value: _availableOnline, onChanged: (v) => setState(() => _availableOnline = v), activeThumbColor: AppColors.primary),
+                const Text('Online Orders'),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: _saving ? null : _apply,
+          child: _saving
+              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('Apply'),
         ),
       ],
     );

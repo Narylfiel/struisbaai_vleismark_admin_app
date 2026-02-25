@@ -28,6 +28,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
   late String _selectedColor;
   late bool _isActive;
   late int _sortOrder;
+  String? _selectedParentId;
 
   bool _isLoading = false;
 
@@ -45,10 +46,12 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
       _selectedColor = widget.category!.colorCode;
       _isActive = widget.category!.isActive;
       _sortOrder = widget.category!.sortOrder;
+      _selectedParentId = widget.category!.parentId;
     } else {
       _selectedColor = CategoryColors.grey;
       _isActive = true;
-      _sortOrder = 0; // Will be set to next available
+      _sortOrder = 0;
+      _selectedParentId = null;
     }
   }
 
@@ -110,6 +113,32 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
 
                 const SizedBox(height: 24),
 
+                // Parent category (optional — blank = top-level)
+                BlocBuilder<CategoryBloc, CategoryState>(
+                  buildWhen: (prev, curr) => curr is CategoryLoaded,
+                  builder: (context, state) {
+                    final topLevel = state is CategoryLoaded
+                        ? (state.categories.where((c) => c.parentId == null || c.parentId!.isEmpty).toList()
+                          ..sort((a, b) {
+                            final o = a.sortOrder.compareTo(b.sortOrder);
+                            return o != 0 ? o : a.name.compareTo(b.name);
+                          }))
+                        : <Category>[];
+                    return FormWidgets.dropdownFormField<String?>(
+                      value: _selectedParentId,
+                      label: 'Parent category (optional)',
+                      hint: '— Top level —',
+                      items: [
+                        const DropdownMenuItem<String?>(value: null, child: Text('— Top level —')),
+                        ...topLevel
+                            .where((c) => c.id != widget.category?.id)
+                            .map((c) => DropdownMenuItem<String?>(value: c.id, child: Text(c.name))),
+                      ],
+                      onChanged: (v) => setState(() => _selectedParentId = v),
+                    );
+                  },
+                ),
+                const SizedBox(height: 16),
                 // Form Fields
                 FormWidgets.textFormField(
                   controller: _nameController,
@@ -323,6 +352,7 @@ class _CategoryFormScreenState extends State<CategoryFormScreen> {
       notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
       sortOrder: sortOrder,
       isActive: _isActive,
+      parentId: _selectedParentId,
       createdAt: widget.category?.createdAt,
       updatedAt: DateTime.now(),
     );

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
+import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:admin_app/features/inventory/screens/inventory_navigation_screen.dart';
+import 'package:admin_app/features/promotions/screens/promotion_list_screen.dart';
 import 'package:admin_app/features/production/screens/carcass_intake_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_list_screen.dart';
 import 'package:admin_app/features/hr/screens/staff_list_screen.dart';
@@ -33,14 +35,45 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  DateTime? _lastPausedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      _lastPausedAt = DateTime.now();
+    } else if (state == AppLifecycleState.resumed) {
+      if (_lastPausedAt != null && DateTime.now().difference(_lastPausedAt!) > const Duration(minutes: 5)) {
+        AuthService().logout();
+        if (mounted) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const PinScreen()),
+            (route) => false,
+          );
+        }
+      }
+    }
+  }
 
   List<_NavItem> get _navItems {
     final isOwner = widget.role == 'owner';
     return [
       _NavItem(icon: Icons.dashboard,     label: 'Dashboard',   screen: const DashboardScreen()),
       _NavItem(icon: Icons.inventory_2,   label: 'Inventory',   screen: const InventoryNavigationScreen()),
+      _NavItem(icon: Icons.local_offer,    label: 'Promotions',  screen: const PromotionListScreen()),
       _NavItem(icon: Icons.cut,           label: 'Production',  screen: const CarcassIntakeScreen()),
       _NavItem(icon: Icons.forest,        label: 'Hunter',      screen: const JobListScreen()),
       _NavItem(icon: Icons.people,        label: 'HR / Staff',  screen: const StaffListScreen()),

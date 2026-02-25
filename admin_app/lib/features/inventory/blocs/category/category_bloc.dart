@@ -23,10 +23,14 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
     try {
       emit(const CategoryLoading());
 
+      // Only active categories (column is 'active'); after soft delete, LoadCategories() refreshes and deleted item disappears.
       final response = await SupabaseService.client
           .from('categories')
           .select()
-          .order('sort_order', ascending: true);
+          .eq('active', true)
+          .order('parent_id', ascending: true)
+          .order('sort_order', ascending: true)
+          .order('name');
 
       final categories = (response as List)
           .map((json) => Category.fromJson(json as Map<String, dynamic>))
@@ -85,12 +89,23 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
     Emitter<CategoryState> emit,
   ) async {
     try {
+      // Cannot delete if any products use this category
+      final list = await SupabaseService.client
+          .from('inventory_items')
+          .select('id')
+          .eq('category_id', event.categoryId);
+      final count = (list as List).length;
+      if (count > 0) {
+        emit(CategoryError('Cannot delete — $count products use this category'));
+        return;
+      }
+      // Soft delete: set active = false (categories table uses 'active' column)
       await SupabaseService.client
           .from('categories')
-          .delete()
+          .update({'active': false})
           .eq('id', event.categoryId);
 
-      emit(const CategoryOperationSuccess('Category deleted successfully'));
+      emit(const CategoryOperationSuccess('Deleted'));
       add(const LoadCategories());
     } catch (e) {
       emit(CategoryError('Failed to delete category: ${e.toString()}'));

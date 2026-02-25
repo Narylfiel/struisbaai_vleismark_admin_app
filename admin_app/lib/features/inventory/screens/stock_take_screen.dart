@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/stock_take_entry.dart';
 import '../models/stock_take_session.dart';
@@ -34,7 +35,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   final FocusNode _scanFocusNode = FocusNode();
   final GlobalKey _scrollToKey = GlobalKey();
 
-  String? get _userId => _supabase.auth.currentUser?.id;
+  /// PIN-based auth: use AuthService, not Supabase auth.
+  String get _staffId => AuthService().getCurrentStaffId();
 
   @override
   void initState() {
@@ -208,7 +210,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   }
 
   Future<void> _startStockTake() async {
-    if (_userId == null) {
+    if (!AuthService().isLoggedIn || _staffId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('You must be signed in to start a stock-take')),
       );
@@ -216,7 +218,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     }
     setState(() => _saving = true);
     try {
-      final session = await _repo.createSession(startedBy: _userId);
+      final session = await _repo.createSession(startedBy: _staffId);
       await _repo.setSessionStatus(session.id, StockTakeSessionStatus.inProgress.dbValue);
       if (mounted) {
         await _loadSessionsAndOpen();
@@ -255,7 +257,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
           locationId: _selectedLocationId,
           expectedQuantity: expected,
           actualQuantity: actual,
-          countedBy: _userId,
+          countedBy: _staffId,
           deviceId: null,
         );
         saved++;
@@ -301,10 +303,10 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   }
 
   Future<void> _approveSession() async {
-    if (_currentSession == null || _userId == null) return;
+    if (_currentSession == null || _staffId.isEmpty) return;
     setState(() => _saving = true);
     try {
-      await _repo.approveSession(_currentSession!.id, _userId!);
+      await _repo.approveSession(_currentSession!.id, _staffId);
       if (mounted) {
         await _loadSessionsAndOpen();
         ScaffoldMessenger.of(context).showSnackBar(
