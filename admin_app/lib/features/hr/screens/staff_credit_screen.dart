@@ -293,8 +293,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
             ),
           ],
         ],
-      ),
-    );
+      );
 
     if (widget.isEmbedded) {
       return Stack(

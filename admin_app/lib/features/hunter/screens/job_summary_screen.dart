@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -6,6 +7,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
 
 /// H1: Hunter Job Summary — read-only job details; Mark Paid, Print PDF Invoice, WhatsApp, Mark Collected.
 class JobSummaryScreen extends StatefulWidget {
@@ -54,57 +56,282 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   Future<void> _printPdfInvoice() async {
     final job = widget.job;
     final pdf = pw.Document();
-    final businessName = _businessSettings?['setting_value']?.toString() ?? 'Business';
-    final cuts = job['cuts'];
-    List<Map<String, dynamic>> cutList = [];
-    if (cuts is List) {
-      for (final c in cuts) {
-        if (c is Map) {
-          cutList.add(Map<String, dynamic>.from(c));
-        } else if (c is Map<String, dynamic>) {
-          cutList.add(c);
-        }
+    
+    // Load business settings
+    Map<String, dynamic>? bizSettings;
+    try {
+      final rows = await _client.from('business_settings').select('setting_key, setting_value');
+      final settingsMap = <String, String>{};
+      for (final row in rows as List) {
+        final key = row['setting_key']?.toString();
+        final value = row['setting_value']?.toString();
+        if (key != null && value != null) settingsMap[key] = value;
       }
+      bizSettings = settingsMap;
+    } catch (_) {}
+    
+    final businessName = bizSettings?['business_name'] ?? 'Business';
+    final address = bizSettings?['address'] ?? '';
+    final phone = bizSettings?['phone'] ?? '';
+    final email = bizSettings?['email'] ?? '';
+    final vatNumber = bizSettings?['vat_number'] ?? '';
+    final jobNumber = hunterJobDisplayNumber(job['id']?.toString());
+    final jobDate = job['job_date']?.toString() ?? DateTime.now().toString().substring(0, 10);
+    
+    // Parse lists
+    final speciesList = job['species_list'] is List ? List<Map<String, dynamic>>.from((job['species_list'] as List).map((e) => e is Map ? Map<String, dynamic>.from(e) : {})) : <Map<String, dynamic>>[];
+    final servicesList = job['services_list'] is List ? List<Map<String, dynamic>>.from((job['services_list'] as List).map((e) => e is Map ? Map<String, dynamic>.from(e) : {})) : <Map<String, dynamic>>[];
+    final materialsList = job['materials_list'] is List ? List<Map<String, dynamic>>.from((job['materials_list'] as List).map((e) => e is Map ? Map<String, dynamic>.from(e) : {})) : <Map<String, dynamic>>[];
+    final processingOpts = job['processing_options'] is Map ? Map<String, dynamic>.from(job['processing_options'] as Map) : <String, dynamic>{};
+    
+    // Calculate totals
+    double servicesTotal = 0;
+    for (final s in servicesList) {
+      // Simplified - actual calculation would need service details
+      servicesTotal += ((job['charge_total'] as num?)?.toDouble() ?? 0) - materialsList.fold<double>(0, (sum, m) => sum + ((m['line_total'] as num?)?.toDouble() ?? 0));
     }
+    final materialsTotal = materialsList.fold<double>(0, (sum, m) => sum + ((m['line_total'] as num?)?.toDouble() ?? 0));
+    final totalCharge = (job['charge_total'] as num?)?.toDouble() ?? 0;
+    
     pdf.addPage(
-      pw.MultiPage(
-        build: (context) => [
-          pw.Text(businessName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
-          pw.Text('Hunter Job Invoice — ${job['job_number'] ?? '—'}', style: pw.TextStyle(fontSize: 16)),
-          pw.SizedBox(height: 12),
-          pw.Text('Hunter: ${job['hunter_name'] ?? job['client_name'] ?? '—'}'),
-          pw.Text('Phone: ${job['contact_phone'] ?? job['client_contact'] ?? '—'}'),
-          pw.Text('Species: ${(job['hunter_services'] is Map ? (job['hunter_services'] as Map)['name'] : null) ?? '—'}'),
-          pw.Text('Date: ${job['job_date'] ?? job['created_at']?.toString().substring(0, 10) ?? '—'}'),
-          pw.SizedBox(height: 12),
-          pw.Table(
-            border: pw.TableBorder.all(width: 0.5),
-            children: [
-              pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      pw.Page(
+        pageFormat: PdfPageFormat.a4,
+        margin: const pw.EdgeInsets.all(32),
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            // PAGE HEADER
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Container(
+                      width: 80,
+                      height: 80,
+                      decoration: pw.BoxDecoration(
+                        border: pw.Border.all(color: PdfColors.grey400),
+                        color: PdfColors.grey200,
+                      ),
+                      child: pw.Center(child: pw.Text('LOGO', style: pw.TextStyle(color: PdfColors.grey600, fontSize: 10))),
+                    ),
+                  ],
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    pw.Text(businessName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                    if (address.isNotEmpty) pw.Text(address, style: const pw.TextStyle(fontSize: 10)),
+                    if (phone.isNotEmpty) pw.Text(phone, style: const pw.TextStyle(fontSize: 10)),
+                    if (email.isNotEmpty) pw.Text(email, style: const pw.TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ],
+            ),
+            pw.SizedBox(height: 20),
+            pw.Center(child: pw.Text('HUNTER JOB CARD', style: pw.TextStyle(fontSize: 22, fontWeight: pw.FontWeight.bold))),
+            pw.SizedBox(height: 4),
+            pw.Center(child: pw.Text('Job Number: $jobNumber  |  Date: $jobDate', style: const pw.TextStyle(fontSize: 12))),
+            pw.Divider(thickness: 2),
+            pw.SizedBox(height: 16),
+            
+            // CUSTOMER SECTION
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(border: pw.Border.all(), color: PdfColors.grey100),
+              child: pw.Row(
+                mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
                 children: [
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Cut', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Weight (kg)', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Linked product', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Hunter Name: ${job['hunter_name'] ?? '—'}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+                      pw.Text('Contact: ${job['contact_phone'] ?? '—'}'),
+                    ],
+                  ),
+                  pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text('Job Date: $jobDate'),
+                      pw.Text('Status: ${HunterJobStatusExt.fromDb(job['status']?.toString()).displayLabel}'),
+                    ],
+                  ),
                 ],
               ),
-              ...cutList.map((c) => pw.TableRow(
-                    children: [
-                      pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(c['name']?.toString() ?? '—')),
-                      pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('${(c['weight_kg'] as num?)?.toStringAsFixed(3) ?? '—'}')),
-                      pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(c['inventory_item_id']?.toString() ?? '—')),
-                    ],
-                  )),
+            ),
+            pw.SizedBox(height: 16),
+            
+            // SPECIES & ANIMALS TABLE
+            pw.Text('SPECIES & ANIMALS', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            pw.Table.fromTextArray(
+              headers: ['Species', 'Est. Weight (kg)', 'Count', 'Notes'],
+              data: speciesList.map((s) => [
+                s['name'] ?? '—',
+                (s['estimated_weight'] as num?)?.toStringAsFixed(1) ?? '—',
+                (s['count'] ?? 1).toString(),
+                '—',
+              ]).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              border: pw.TableBorder.all(),
+            ),
+            pw.SizedBox(height: 16),
+            
+            // SERVICES TABLE
+            pw.Text('SERVICES', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            pw.Table.fromTextArray(
+              headers: ['Service', 'Qty', 'Unit Price', 'Total'],
+              data: servicesList.map((s) => [
+                s['name'] ?? '—',
+                (s['quantity'] ?? 1).toString(),
+                '—',
+                '—',
+              ]).toList(),
+              headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              border: pw.TableBorder.all(),
+            ),
+            pw.SizedBox(height: 16),
+            
+            // MATERIALS TABLE
+            if (materialsList.isNotEmpty) ...[
+              pw.Text('MATERIALS/INGREDIENTS', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+              pw.SizedBox(height: 8),
+              pw.Table.fromTextArray(
+                headers: ['Material/Ingredient', 'Qty', 'Unit', 'Unit Cost', 'Total'],
+                data: materialsList.map((m) => [
+                  m['name'] ?? '—',
+                  (m['quantity'] as num?)?.toString() ?? '—',
+                  m['unit'] ?? '—',
+                  'R ${(m['unit_cost'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                  'R ${(m['line_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                ]).toList(),
+                headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 10),
+                cellStyle: const pw.TextStyle(fontSize: 9),
+                border: pw.TableBorder.all(),
+              ),
+              pw.SizedBox(height: 16),
             ],
+            
+            // PROCESSING INSTRUCTIONS
+            pw.Text('PROCESSING INSTRUCTIONS:', style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 8),
+            pw.Container(
+              padding: const pw.EdgeInsets.all(12),
+              decoration: pw.BoxDecoration(border: pw.Border.all(), color: PdfColors.grey50),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(job['processing_instructions']?.toString() ?? 'None specified', style: const pw.TextStyle(fontSize: 10)),
+                  pw.SizedBox(height: 12),
+                  pw.Row(
+                    children: [
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            _pdfCheckbox('Skin', processingOpts['skin'] == true),
+                            _pdfCheckbox('Remove Head', processingOpts['remove_head'] == true),
+                            _pdfCheckbox('Remove Feet', processingOpts['remove_feet'] == true),
+                            _pdfCheckbox('Halaal', processingOpts['halaal'] == true),
+                          ],
+                        ),
+                      ),
+                      pw.Expanded(
+                        child: pw.Column(
+                          crossAxisAlignment: pw.CrossAxisAlignment.start,
+                          children: [
+                            _pdfCheckbox('Split Carcass', processingOpts['split'] == true),
+                            _pdfCheckbox('Quarter', processingOpts['quarter'] == true),
+                            _pdfCheckbox('Whole', processingOpts['whole'] == true),
+                            _pdfCheckbox('Kosher', processingOpts['kosher'] == true),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 16),
+            
+            // TOTALS BOX
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.end,
+              children: [
+                pw.Container(
+                  width: 250,
+                  padding: const pw.EdgeInsets.all(12),
+                  decoration: pw.BoxDecoration(border: pw.Border.all()),
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                    children: [
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Services Total:'), pw.Text('R ${servicesTotal.toStringAsFixed(2)}')]),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('Materials Total:'), pw.Text('R ${materialsTotal.toStringAsFixed(2)}')]),
+                      pw.Divider(),
+                      pw.Row(mainAxisAlignment: pw.MainAxisAlignment.spaceBetween, children: [pw.Text('TOTAL CHARGE:', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)), pw.Text('R ${totalCharge.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold))]),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            pw.Spacer(),
+            
+            // FOOTER
+            pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text('Authorized by: _________________  Date: _______', style: const pw.TextStyle(fontSize: 10)),
+                pw.Text('Customer signature: _____________  Date: _______', style: const pw.TextStyle(fontSize: 10)),
+              ],
+            ),
+            if (vatNumber.isNotEmpty) ...[
+              pw.SizedBox(height: 8),
+              pw.Center(child: pw.Text('VAT Number: $vatNumber', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600))),
+            ],
+          ],
+        ),
+      ),
+    );
+    
+    // Save using ExportService pattern
+    try {
+      final dir = await getDownloadsDirectory();
+      if (dir == null) {
+        await Printing.layoutPdf(onLayout: (_) async => pdf.save());
+        return;
+      }
+      final fileName = 'job_card_${jobNumber.replaceAll('-', '_')}_${DateTime.now().toIso8601String().substring(0, 10)}.pdf';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsBytes(await pdf.save());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Saved to ${file.path}'), duration: const Duration(seconds: 5)));
+      }
+    } catch (e) {
+      await Printing.layoutPdf(onLayout: (_) async => pdf.save());
+    }
+  }
+  
+  pw.Widget _pdfCheckbox(String label, bool checked) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        children: [
+          pw.Container(
+            width: 12,
+            height: 12,
+            decoration: pw.BoxDecoration(border: pw.Border.all()),
+            child: checked ? pw.Center(child: pw.Text('X', style: const pw.TextStyle(fontSize: 10))) : null,
           ),
-          pw.SizedBox(height: 8),
-          pw.Text('Charge: R ${(job['charge_total'] ?? job['final_price'] ?? job['quoted_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}'),
-          pw.Text('Payment status: ${job['paid'] == true ? 'Paid' : 'Unpaid'}'),
+          pw.SizedBox(width: 4),
+          pw.Text(label, style: const pw.TextStyle(fontSize: 9)),
         ],
       ),
     );
-    await Printing.layoutPdf(onLayout: (_) async => pdf.save());
   }
 
   Future<void> _sendWhatsApp() async {

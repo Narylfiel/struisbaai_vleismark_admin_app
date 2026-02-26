@@ -8,7 +8,9 @@ import 'package:printing/printing.dart';
 
 /// Hunter Job Intake — species (hunter_species), services, materials, processing options.
 class JobIntakeScreen extends StatefulWidget {
-  const JobIntakeScreen({super.key});
+  final Map<String, dynamic>? existingJob;
+  
+  const JobIntakeScreen({super.key, this.existingJob});
 
   @override
   State<JobIntakeScreen> createState() => _JobIntakeScreenState();
@@ -29,8 +31,10 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
   final List<Map<String, dynamic>> _speciesRows = [];
   // Service rows: {service_id, name, quantity, notes}
   final List<Map<String, dynamic>> _serviceRows = [];
-  // Material rows: {item_id, name, quantity, unit}
+  // Material rows: {item_id, name, quantity, unit, unit_cost, line_total}
   final List<Map<String, dynamic>> _materialRows = [];
+
+  static const List<String> _unitOptions = ['kg', 'g', 'units', 'packs', 'litres', 'ml'];
 
   // Processing options checkboxes
   bool _optSkin = false;
@@ -54,8 +58,103 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
   void initState() {
     super.initState();
     _loadData();
-    if (_speciesRows.isEmpty) _speciesRows.add({'species_id': null, 'name': null, 'estimated_weight': null, 'count': 1});
-    if (_serviceRows.isEmpty) _serviceRows.add({'service_id': null, 'name': null, 'quantity': 1, 'notes': ''});
+    
+    // Pre-fill data if editing existing job
+    if (widget.existingJob != null) {
+      _prefillFromExistingJob();
+    } else {
+      // Initialize empty rows for new job
+      if (_speciesRows.isEmpty) _speciesRows.add({'species_id': null, 'name': null, 'estimated_weight': null, 'count': 1});
+      if (_serviceRows.isEmpty) _serviceRows.add({'service_id': null, 'name': null, 'quantity': 1, 'notes': ''});
+    }
+  }
+  
+  void _prefillFromExistingJob() {
+    final job = widget.existingJob!;
+    
+    // Basic fields
+    _nameCtrl.text = job['hunter_name']?.toString() ?? job['customer_name']?.toString() ?? '';
+    _phoneCtrl.text = job['contact_phone']?.toString() ?? job['customer_phone']?.toString() ?? '';
+    _processingNotesCtrl.text = job['processing_instructions']?.toString() ?? '';
+    
+    // Job date
+    if (job['job_date'] != null) {
+      try {
+        _jobDate = DateTime.parse(job['job_date'].toString());
+      } catch (_) {}
+    }
+    
+    // Species list
+    final speciesList = job['species_list'];
+    if (speciesList is List && speciesList.isNotEmpty) {
+      _speciesRows.clear();
+      for (final s in speciesList) {
+        if (s is Map) {
+          _speciesRows.add({
+            'species_id': s['species_id'],
+            'name': s['name'],
+            'estimated_weight': s['estimated_weight'],
+            'count': s['count'] ?? 1,
+          });
+        }
+      }
+    } else {
+      _speciesRows.add({'species_id': null, 'name': null, 'estimated_weight': null, 'count': 1});
+    }
+    
+    // Services list
+    final servicesList = job['services_list'];
+    if (servicesList is List && servicesList.isNotEmpty) {
+      _serviceRows.clear();
+      for (final s in servicesList) {
+        if (s is Map) {
+          _serviceRows.add({
+            'service_id': s['service_id'],
+            'name': s['name'],
+            'quantity': s['quantity'] ?? 1,
+            'notes': s['notes'] ?? '',
+          });
+        }
+      }
+    } else {
+      _serviceRows.add({'service_id': null, 'name': null, 'quantity': 1, 'notes': ''});
+    }
+    
+    // Materials list
+    final materialsList = job['materials_list'];
+    if (materialsList is List && materialsList.isNotEmpty) {
+      _materialRows.clear();
+      for (final m in materialsList) {
+        if (m is Map) {
+          _materialRows.add({
+            'item_id': m['item_id'],
+            'name': m['name'],
+            'quantity': m['quantity'] ?? 1,
+            'unit': m['unit'] ?? 'kg',
+            'unit_cost': m['unit_cost'] ?? 0,
+            'line_total': m['line_total'] ?? 0,
+          });
+        }
+      }
+    }
+    
+    // Processing options
+    final opts = job['processing_options'];
+    if (opts is Map) {
+      _optSkin = opts['skin'] == true;
+      _optRemoveHead = opts['remove_head'] == true;
+      _optRemoveFeet = opts['remove_feet'] == true;
+      _optHalaal = opts['halaal'] == true;
+      _optKosher = opts['kosher'] == true;
+      _optSplit = opts['split'] == true;
+      _optQuarter = opts['quarter'] == true;
+      _optWhole = opts['whole'] == true;
+      final selectedCuts = opts['selected_cuts'];
+      if (selectedCuts is List) {
+        _selectedCutOptions.clear();
+        _selectedCutOptions.addAll(selectedCuts.map((c) => c.toString()));
+      }
+    }
   }
 
   @override
@@ -70,7 +169,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
     try {
       final speciesRes = await _client.from('hunter_species').select('id, name, typical_weight_min, typical_weight_max').eq('is_active', true).order('sort_order');
       final servicesRes = await _client.from('hunter_services').select('id, name, base_price, price_per_kg, cut_options').eq('is_active', true).order('name');
-      final invRes = await _client.from('inventory_items').select('id, name, plu_code, unit_type').eq('is_active', true).order('name');
+      final invRes = await _client.from('inventory_items').select('id, name, plu_code, unit_type, cost_price').eq('is_active', true).order('name');
       if (mounted) {
         setState(() {
           _speciesOptions = List<Map<String, dynamic>>.from(speciesRes as List);
@@ -140,6 +239,8 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
   double get _estimatedCharge {
     double total = 0;
     final totalWeight = _totalEstimatedWeight;
+    
+    // Services charges
     for (final row in _serviceRows) {
       final serviceId = row['service_id']?.toString();
       if (serviceId == null) continue;
@@ -153,6 +254,13 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
       final qty = (row['quantity'] as num?)?.toDouble() ?? 1;
       total += (base + (totalWeight * perKg)) * qty;
     }
+    
+    // Materials costs
+    for (final row in _materialRows) {
+      final lineTotal = (row['line_total'] as num?)?.toDouble() ?? 0;
+      total += lineTotal;
+    }
+    
     return total;
   }
 
@@ -193,6 +301,8 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
           'name': r['name']?.toString() ?? '',
           'quantity': (r['quantity'] as num?)?.toDouble() ?? 1,
           'unit': r['unit']?.toString() ?? 'kg',
+          'unit_cost': (r['unit_cost'] as num?)?.toDouble() ?? 0,
+          'line_total': (r['line_total'] as num?)?.toDouble() ?? 0,
         });
       }
       final processingOptions = {
@@ -221,10 +331,10 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         'weight_in': totalWeight,
         'estimated_weight': totalWeight,
         'processing_instructions': _processingNotesCtrl.text.trim().isEmpty ? null : _processingNotesCtrl.text.trim(),
-        'status': 'intake',
+        'status': widget.existingJob?['status'] ?? 'intake', // Preserve status when editing
         'charge_total': chargeTotal,
         'total_amount': chargeTotal,
-        'paid': false,
+        'paid': widget.existingJob?['paid'] ?? false, // Preserve paid status
         'animal_count': animalCount,
         'animal_type': firstSpeciesName,
         'customer_name': _nameCtrl.text.trim(),
@@ -235,7 +345,20 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         'processing_options': processingOptions,
       };
       
-      final row = await _client.from('hunter_jobs').insert(payload).select().single();
+      final dynamic row;
+      if (widget.existingJob != null) {
+        // UPDATE existing job
+        row = await _client
+            .from('hunter_jobs')
+            .update(payload)
+            .eq('id', widget.existingJob!['id'])
+            .select()
+            .single();
+      } else {
+        // INSERT new job
+        row = await _client.from('hunter_jobs').insert(payload).select().single();
+      }
+      
       if (mounted) {
         final id = row['id']?.toString();
         setState(() {
@@ -297,7 +420,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
       );
     }
     return Scaffold(
-      appBar: AppBar(title: const Text('New Hunter Job Intake'), backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+      appBar: AppBar(title: Text(widget.existingJob != null ? 'Edit Hunter Job — ${hunterJobDisplayNumber(widget.existingJob!['id']?.toString())}' : 'New Hunter Job Intake'), backgroundColor: AppColors.primary, foregroundColor: Colors.white),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: _loading
@@ -347,7 +470,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
                     const SizedBox(height: 8),
                     ..._materialRows.asMap().entries.map((e) => _buildMaterialRow(e.key)),
                     const SizedBox(height: 8),
-                    OutlinedButton.icon(onPressed: () => setState(() => _materialRows.add({'item_id': null, 'name': null, 'quantity': 1, 'unit': 'kg'})), icon: const Icon(Icons.add, size: 18), label: const Text('Add material')),
+                    OutlinedButton.icon(onPressed: () => setState(() => _materialRows.add({'item_id': null, 'name': null, 'quantity': 1, 'unit': 'kg', 'unit_cost': 0, 'line_total': 0})), icon: const Icon(Icons.add, size: 18), label: const Text('Add material')),
                     const SizedBox(height: 20),
                     const Text('D) Processing instructions', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
@@ -568,54 +691,109 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
   Widget _buildMaterialRow(int index) {
     final row = _materialRows[index];
     final itemId = row['item_id']?.toString();
+    final quantity = (row['quantity'] as num?)?.toDouble() ?? 1;
+    final unitCost = (row['unit_cost'] as num?)?.toDouble() ?? 0;
+    final lineTotal = quantity * unitCost;
+    
+    // Auto-update line total when qty or unit cost changes
+    if (row['line_total'] != lineTotal) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        setState(() => _materialRows[index]['line_total'] = lineTotal);
+      });
+    }
+    
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              flex: 2,
-              child: DropdownButtonFormField<String?>(
-                value: itemId,
-                decoration: const InputDecoration(labelText: 'Product', isDense: true),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('Select product')),
-                  ..._inventoryItems.map((i) => DropdownMenuItem<String?>(value: i['id']?.toString(), child: Text('${i['plu_code'] ?? '—'} ${i['name'] ?? '—'}', overflow: TextOverflow.ellipsis))),
-                ],
-                onChanged: (v) {
-                  setState(() {
-                    Map<String, dynamic>? i;
-                    if (v != null) i = _inventoryItems.cast<Map<String, dynamic>?>().firstWhere((x) => x!['id']?.toString() == v, orElse: () => null);
-                    _materialRows[index]['item_id'] = v;
-                    _materialRows[index]['name'] = i?['name']?.toString();
-                    _materialRows[index]['unit'] = i?['unit_type']?.toString() ?? 'kg';
-                  });
-                },
-              ),
+            Row(
+              children: [
+                Expanded(
+                  flex: 3,
+                  child: DropdownButtonFormField<String?>(
+                    value: itemId,
+                    decoration: const InputDecoration(labelText: 'Product', isDense: true),
+                    items: [
+                      const DropdownMenuItem(value: null, child: Text('Select product')),
+                      ..._inventoryItems.map((i) => DropdownMenuItem<String?>(
+                        value: i['id']?.toString(), 
+                        child: Text('${i['plu_code'] ?? '—'} ${i['name'] ?? '—'}', overflow: TextOverflow.ellipsis),
+                      )),
+                    ],
+                    onChanged: (v) {
+                      setState(() {
+                        Map<String, dynamic>? i;
+                        if (v != null) i = _inventoryItems.cast<Map<String, dynamic>?>().firstWhere((x) => x!['id']?.toString() == v, orElse: () => null);
+                        _materialRows[index]['item_id'] = v;
+                        _materialRows[index]['name'] = i?['name']?.toString();
+                        _materialRows[index]['unit'] = i?['unit_type']?.toString() ?? 'kg';
+                        _materialRows[index]['unit_cost'] = (i?['cost_price'] as num?)?.toDouble() ?? 0;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    initialValue: (row['quantity'] ?? 1).toString(),
+                    decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => setState(() => _materialRows[index]['quantity'] = double.tryParse(v) ?? 1),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 90,
+                  child: DropdownButtonFormField<String>(
+                    value: row['unit']?.toString() ?? 'kg',
+                    decoration: const InputDecoration(labelText: 'Unit', isDense: true),
+                    items: _unitOptions.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
+                    onChanged: (v) => setState(() => _materialRows[index]['unit'] = v ?? 'kg'),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
+                  onPressed: () => setState(() => _materialRows.removeAt(index)),
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 80,
-              child: TextFormField(
-                initialValue: (row['quantity'] ?? 1).toString(),
-                decoration: const InputDecoration(labelText: 'Qty', isDense: true),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (v) => setState(() => _materialRows[index]['quantity'] = double.tryParse(v) ?? 1),
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 70,
-              child: TextFormField(
-                initialValue: row['unit']?.toString() ?? 'kg',
-                decoration: const InputDecoration(labelText: 'Unit', isDense: true),
-                onChanged: (v) => setState(() => _materialRows[index]['unit'] = v),
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
-              onPressed: () => setState(() => _materialRows.removeAt(index)),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    key: ValueKey('material_unit_cost_$index\_${row['item_id']}_${row['unit_cost']}'),
+                    initialValue: unitCost.toStringAsFixed(2),
+                    decoration: const InputDecoration(
+                      labelText: 'Unit Cost (R)',
+                      isDense: true,
+                      helperText: 'Auto-filled from inventory',
+                      helperMaxLines: 1,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) => setState(() => _materialRows[index]['unit_cost'] = double.tryParse(v) ?? 0),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceBg,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: AppColors.border),
+                    ),
+                    child: Text(
+                      'Line Total: R ${lineTotal.toStringAsFixed(2)}',
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ],
         ),

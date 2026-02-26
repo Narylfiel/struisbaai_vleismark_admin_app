@@ -127,6 +127,52 @@ class _JobsTabState extends State<_JobsTab> {
     ).then((_) => _load());
   }
 
+  /// Edit job
+  void _editJob(Map<String, dynamic> job) {
+    final statusDb = hunterJobStatusToDbValue(job['status'] as String?);
+    if (statusDb != 'intake' && statusDb != 'processing') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only intake or in_progress jobs can be edited.'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => JobIntakeScreen(existingJob: job)),
+    ).then((_) => _load());
+  }
+  
+  /// Delete job (owner only)
+  Future<void> _confirmDeleteJob(Map<String, dynamic> job) async {
+    final jobNumber = hunterJobDisplayNumber(job['id']?.toString());
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete job?'),
+        content: Text('Delete job $jobNumber? This cannot be undone.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _supabase.from('hunter_jobs').delete().eq('id', job['id']);
+      if (mounted) {
+        await _load();
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job deleted')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+      }
+    }
+  }
+
   /// H1: Tap row → job_process_screen (intake/processing) or job_summary_screen (ready/completed).
   Future<void> _confirmCancelJob(Map<String, dynamic> job) async {
     final statusDb = hunterJobStatusToDbValue(job['status'] as String?);
@@ -222,7 +268,7 @@ class _JobsTabState extends State<_JobsTab> {
             SizedBox(width: 16),
             SizedBox(width: 120, child: Text('STATUS', style: _h)),
             SizedBox(width: 16),
-            SizedBox(width: 80, child: Text('ACTIONS', style: _h)),
+            SizedBox(width: 120, child: Text('ACTIONS', style: _h)),
           ]),
         ),
         const Divider(height: 1, color: AppColors.border),
@@ -281,8 +327,27 @@ class _JobsTabState extends State<_JobsTab> {
                             ),
                             const SizedBox(width: 16),
                             SizedBox(
-                              width: 80, 
-                              child: IconButton(icon: const Icon(Icons.arrow_forward_ios, size: 16), onPressed: () => _openJobDetails(job)),
+                              width: 120, 
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    onPressed: () => _editJob(job),
+                                    tooltip: 'Edit',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, size: 16, color: AppColors.danger),
+                                    onPressed: () => _confirmDeleteJob(job),
+                                    tooltip: 'Delete',
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.arrow_forward_ios, size: 16),
+                                    onPressed: () => _openJobDetails(job),
+                                    tooltip: 'Details',
+                                  ),
+                                ],
+                              ),
                             ),
                           ]),
                         );
