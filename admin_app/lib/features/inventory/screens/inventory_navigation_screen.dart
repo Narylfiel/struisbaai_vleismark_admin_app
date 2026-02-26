@@ -10,6 +10,7 @@ import 'supplier_list_screen.dart';
 import 'stock_take_screen.dart';
 import 'stock_levels_screen.dart';
 import 'waste_log_screen.dart';
+import 'stock_movements_screen.dart';
 
 /// Inventory module: layout matches dominant app pattern (no AppBar, TabBar in body).
 /// Add actions live inside each tab screen (Categories, Products, Modifiers, Suppliers).
@@ -27,7 +28,7 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
   }
 
   @override
@@ -60,6 +61,7 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
                   Tab(icon: Icon(Icons.checklist, size: 18), text: 'Stock-Take'),
                   Tab(icon: Icon(Icons.warehouse, size: 18), text: 'Stock Levels'),
                   Tab(icon: Icon(Icons.warning_amber_outlined, size: 18), text: 'Waste Log'),
+                  Tab(icon: Icon(Icons.swap_vert, size: 18), text: 'Movements'),
                 ],
               ),
             ),
@@ -75,6 +77,7 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
                   StockTakeScreen(),
                   StockLevelsScreen(),
                   WasteLogScreen(),
+                  StockMovementsScreen(),
                 ],
               ),
             ),

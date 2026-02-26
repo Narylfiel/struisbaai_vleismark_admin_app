@@ -33,7 +33,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
   }
 
   @override
@@ -60,6 +60,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Ledger'),
                 Tab(icon: Icon(Icons.account_balance_wallet, size: 18), text: 'Chart of Accounts'),
                 Tab(icon: Icon(Icons.bar_chart, size: 18), text: 'P&L / Reports'),
+                Tab(icon: Icon(Icons.receipt_long, size: 18), text: 'VAT Report'),
+                Tab(icon: Icon(Icons.waterfall_chart, size: 18), text: 'Cash Flow'),
                 Tab(icon: Icon(Icons.build, size: 18), text: 'Equipment'),
                 Tab(icon: Icon(Icons.business, size: 18), text: 'PTY Conversion'),
               ],
@@ -74,6 +76,8 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 LedgerScreen(embedded: true),
                 ChartOfAccountsScreen(embedded: true),
                 _ReportsHubTab(),
+                VatReportScreen(embedded: true),
+                CashFlowScreen(embedded: true),
                 EquipmentRegisterScreen(embedded: true),
                 PtyConversionScreen(embedded: true),
               ],

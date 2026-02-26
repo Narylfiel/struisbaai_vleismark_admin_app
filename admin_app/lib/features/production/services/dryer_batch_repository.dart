@@ -96,7 +96,7 @@ class DryerBatchRepository {
       if (plannedHours != null && plannedHours > 0) 'planned_hours': plannedHours,
       'input_product_id': inputProductId?.isEmpty == true ? null : inputProductId,
       'output_product_id': outputProductId?.isEmpty == true ? null : outputProductId,
-      'recipe_id': recipeId?.isEmpty == true ? null : recipeId,
+      if (recipeId != null && recipeId.isNotEmpty) 'recipe_id': recipeId,
       'notes': notes,
     };
     final row = await _client
@@ -121,7 +121,9 @@ class DryerBatchRepository {
             quantity: ing.quantityUsed,
             referenceType: 'production',
             referenceId: batch.id,
-            performedBy: performedBy ?? processedBy ?? '',
+            performedBy: (performedBy != null && performedBy.isNotEmpty) 
+                ? performedBy 
+                : (processedBy != null && processedBy.isNotEmpty ? processedBy : 'SYSTEM'),
             notes: 'Dryer batch ${batch.batchNumber}',
           );
         }
@@ -138,7 +140,9 @@ class DryerBatchRepository {
         quantity: inputWeightKg,
         referenceType: 'production',
         referenceId: batch.id,
-        performedBy: performedBy ?? processedBy ?? '',
+        performedBy: (performedBy != null && performedBy.isNotEmpty) 
+            ? performedBy 
+            : (processedBy != null && processedBy.isNotEmpty ? processedBy : 'SYSTEM'),
         notes: 'Dryer batch ${batch.batchNumber}',
       );
     }

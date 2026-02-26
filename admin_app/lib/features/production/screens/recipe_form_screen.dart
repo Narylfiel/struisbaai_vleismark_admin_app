@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/admin_config.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/form_widgets.dart';
@@ -27,8 +28,12 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   final _categoryController = TextEditingController();
   final _expectedYieldController = TextEditingController();
   final _batchSizeController = TextEditingController();
+  final _prepTimeController = TextEditingController();
   late bool _isActive;
   String? _outputProductId;
+  String? _requiredRole;
+  double _avgLabourRate = 0.0;
+  bool _loadingLabourRate = false;
   /// C5: Explicit choice — link to existing product or create new (no auto-create, no duplicate).
   bool _outputProductLinkExisting = true;
   List<_IngredientRow> _ingredients = [];
@@ -48,15 +53,20 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       _categoryController.text = widget.recipe!.category ?? '';
       _expectedYieldController.text = widget.recipe!.expectedYieldPct.toString();
       _batchSizeController.text = widget.recipe!.batchSizeKg.toString();
+      _prepTimeController.text = (widget.recipe!.prepTimeMinutes ?? 0).toString();
       _isActive = widget.recipe!.isActive;
       _outputProductId = widget.recipe!.outputProductId;
+      _requiredRole = widget.recipe!.requiredRole ?? 'butchery_assistant';
     } else {
       _expectedYieldController.text = '95';
       _batchSizeController.text = '10';
+      _prepTimeController.text = '0';
       _isActive = true;
+      _requiredRole = 'butchery_assistant';
     }
     _loadInventory();
     _loadCategories();
+    _loadLabourRate(_requiredRole ?? 'butchery_assistant');
     if (widget.recipe != null) _loadIngredients();
   }
 
@@ -190,6 +200,39 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           .order('sort_order');
       if (mounted) setState(() => _categories = List<Map<String, dynamic>>.from(r as List));
     } catch (_) {}
+  }
+
+  Future<void> _loadLabourRate(String role) async {
+    setState(() => _loadingLabourRate = true);
+    try {
+      final rows = await _client
+          .from('staff_profiles')
+          .select('hourly_rate')
+          .eq('role', role)
+          .eq('is_active', true);
+      final list = List<Map<String, dynamic>>.from(rows as List);
+      double avg = 0.0;
+      if (list.isNotEmpty) {
+        final rates = list
+            .map((r) => (r['hourly_rate'] as num?)?.toDouble() ?? 0.0)
+            .where((r) => r > 0)
+            .toList();
+        if (rates.isNotEmpty) {
+          avg = rates.reduce((a, b) => a + b) / rates.length;
+        }
+      }
+      // Fallback to SA minimum wage if no staff data
+      if (avg == 0.0) avg = AdminConfig.minimumWagePerHour;
+      if (mounted) setState(() {
+        _avgLabourRate = avg;
+        _loadingLabourRate = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() {
+        _avgLabourRate = AdminConfig.minimumWagePerHour; // SA minimum wage fallback
+        _loadingLabourRate = false;
+      });
+    }
   }
 
   /// C5: Create new output product (minimal) — no auto-create; explicit user action only.
@@ -327,6 +370,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     _categoryController.dispose();
     _expectedYieldController.dispose();
     _batchSizeController.dispose();
+    _prepTimeController.dispose();
     super.dispose();
   }
 
@@ -409,13 +453,14 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           instructions: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? null : _categoryController.text.trim(),
           servings: widget.recipe!.servings,
-          prepTimeMinutes: widget.recipe!.prepTimeMinutes,
+          prepTimeMinutes: int.tryParse(_prepTimeController.text) ?? 0,
           cookTimeMinutes: widget.recipe!.cookTimeMinutes,
           difficulty: widget.recipe!.difficulty,
           isActive: _isActive,
           outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
+          requiredRole: _requiredRole,
           createdBy: widget.recipe!.createdBy,
           createdAt: widget.recipe!.createdAt,
           updatedAt: DateTime.now(),
@@ -454,10 +499,12 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           instructions: _descriptionController.text.trim().isEmpty ? null : _descriptionController.text.trim(),
           category: _categoryController.text.trim().isEmpty ? null : _categoryController.text.trim(),
           servings: 1,
+          prepTimeMinutes: int.tryParse(_prepTimeController.text) ?? 0,
           isActive: _isActive,
           outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
+          requiredRole: _requiredRole,
           createdBy: staffId.isEmpty ? null : staffId,
         );
         final saved = await _repo.createRecipe(created);
@@ -655,6 +702,77 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                   return null;
                 },
                 prefixIcon: const Icon(Icons.scale),
+              ),
+              const SizedBox(height: 16),
+              FormWidgets.textFormField(
+                controller: _prepTimeController,
+                label: 'Prep time (minutes)',
+                hint: 'e.g. 60 for 1 hour of labour',
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d]'))],
+                prefixIcon: const Icon(Icons.timer_outlined),
+              ),
+              const SizedBox(height: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Required staff role (for labour cost)',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: _requiredRole,
+                    decoration: const InputDecoration(
+                      labelText: 'Staff role',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.person_outline),
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'owner', child: Text('Owner')),
+                      DropdownMenuItem(value: 'manager', child: Text('Manager')),
+                      DropdownMenuItem(value: 'blockman', child: Text('Blockman')),
+                      DropdownMenuItem(value: 'butchery_assistant', child: Text('Butchery Assistant')),
+                      DropdownMenuItem(value: 'cashier', child: Text('Cashier')),
+                    ],
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setState(() => _requiredRole = v);
+                      _loadLabourRate(v);
+                    },
+                  ),
+                  const SizedBox(height: 6),
+                  if (_loadingLabourRate)
+                    const Text(
+                      'Loading rate...',
+                      style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    )
+                  else
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.06),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline, size: 14, color: AppColors.primary),
+                          const SizedBox(width: 6),
+                          Flexible(
+                            child: Text(
+                              _avgLabourRate > 0
+                                  ? 'Avg rate for ${AdminConfig.roleDisplayLabel(_requiredRole ?? '')}: '
+                                    'R${_avgLabourRate.toStringAsFixed(2)}/hr '
+                                    '(from staff records${_avgLabourRate == AdminConfig.minimumWagePerHour ? " — using SA minimum wage fallback" : ""})'
+                                  : 'No staff data — using SA minimum wage: R${AdminConfig.minimumWagePerHour.toStringAsFixed(2)}/hr',
+                              style: const TextStyle(fontSize: 12, color: AppColors.primary),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 16),
               SwitchListTile(

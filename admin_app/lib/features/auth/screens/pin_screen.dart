@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/permission_service.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import 'package:admin_app/features/dashboard/screens/main_shell.dart';
@@ -100,7 +101,7 @@ class _PinScreenState extends State<PinScreen> {
     try {
       final supabase = SupabaseService.client;
       final data = await supabase
-          .from('staff_profiles')
+          .from('profiles')
           .select('id, full_name, role, pin_hash, is_active')
           .eq('is_active', true)
           .timeout(const Duration(seconds: 6));
@@ -152,7 +153,7 @@ class _PinScreenState extends State<PinScreen> {
     try {
       final supabase = SupabaseService.client;
       final response = await supabase
-          .from('staff_profiles')
+          .from('profiles')
           .select('id, full_name, role, pin_hash, is_active')
           .eq('pin_hash', pinHash)
           .inFilter('role', AdminConfig.allowedRoles)
@@ -210,6 +211,15 @@ class _PinScreenState extends State<PinScreen> {
       staff['full_name'] as String,
       role,
     );
+
+    // Load permissions BEFORE navigating to MainShell
+    // This ensures PermissionService._isOwner is set correctly
+    // before MainShell builds the sidebar
+    await PermissionService().loadPermissions(
+      role: role,
+      staffId: staff!['id'] as String,
+    );
+
     if (mounted) {
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(

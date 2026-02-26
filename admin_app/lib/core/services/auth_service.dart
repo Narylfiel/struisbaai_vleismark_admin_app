@@ -3,6 +3,7 @@ import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/services/permission_service.dart';
 import 'base_service.dart';
 import '../constants/admin_config.dart';
 
@@ -53,6 +54,12 @@ class AuthService extends BaseService {
         _setCurrentUser(onlineResult);
         await _cacheStaffProfile(onlineResult);
         
+        // Load permissions for the session
+        await PermissionService().loadPermissions(
+          role: onlineResult['role'],
+          staffId: onlineResult['id'],
+        );
+        
         // Audit log - successful login
         await AuditService.logLogin(
           success: true,
@@ -67,6 +74,12 @@ class AuthService extends BaseService {
       final offlineResult = await _authenticateOffline(pinHash);
       if (offlineResult != null) {
         _setCurrentUser(offlineResult);
+        
+        // Load permissions for the session
+        await PermissionService().loadPermissions(
+          role: offlineResult['role'],
+          staffId: offlineResult['id'],
+        );
         
         // Audit log - successful offline login
         await AuditService.logLogin(
@@ -200,7 +213,7 @@ class AuthService extends BaseService {
       // Validate via Supabase: staff exists and is active
       final response = await executeQuery(
         () => client
-            .from('staff_profiles')
+            .from('profiles')
             .select('id, full_name, role, is_active')
             .eq('id', id)
             .maybeSingle(),
@@ -229,6 +242,13 @@ class AuthService extends BaseService {
         'name': response['full_name'],
         'role': role,
       });
+      
+      // Load permissions for restored session
+      await PermissionService().loadPermissions(
+        role: role,
+        staffId: id,
+      );
+      
       return {
         'id': id,
         'full_name': response['full_name'],
@@ -261,6 +281,9 @@ class AuthService extends BaseService {
     
     // Audit log - logout
     await AuditService.logLogout(email: staffName);
+    
+    // Clear permissions cache
+    PermissionService().clear();
     
     _currentStaffId = null;
     _currentStaffName = null;

@@ -21,6 +21,7 @@ class Recipe extends BaseModel {
   /// Blueprint: Ingredient quantities are per this batch size (e.g. 10 kg)
   final double batchSizeKg;
   final String? createdBy;
+  final String? requiredRole;
 
   const Recipe({
     required super.id,
@@ -36,6 +37,7 @@ class Recipe extends BaseModel {
     this.expectedYieldPct = 100,
     this.batchSizeKg = 1,
     this.createdBy,
+    this.requiredRole,
     super.createdAt,
     super.updatedAt,
   });
@@ -47,12 +49,14 @@ class Recipe extends BaseModel {
       'name': name,
       'instructions': instructions,
       'category': category,
+      'prep_time_minutes': prepTimeMinutes,
       'cook_time_minutes': cookTimeMinutes,
       'is_active': isActive,
       'output_product_id': outputProductId,
       'expected_yield_pct': expectedYieldPct,
       'batch_size_kg': batchSizeKg,
       'created_by': createdBy,
+      if (requiredRole != null) 'required_role': requiredRole,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -65,7 +69,7 @@ class Recipe extends BaseModel {
       instructions: json['instructions'] as String? ?? json['description'] as String?,
       category: json['category'] as String?,
       servings: (json['servings'] as num?)?.toInt() ?? 1,
-      prepTimeMinutes: (json['prep_time_minutes'] as num?)?.toInt(),
+      prepTimeMinutes: (json['prep_time_minutes'] as num?)?.toInt() ?? 0,
       cookTimeMinutes: (json['cook_time_minutes'] as num?)?.toInt(),
       difficulty: json['difficulty'] as String?,
       isActive: json['is_active'] as bool? ?? true,
@@ -73,6 +77,7 @@ class Recipe extends BaseModel {
       expectedYieldPct: (json['expected_yield_pct'] as num?)?.toDouble() ?? 100,
       batchSizeKg: (json['batch_size_kg'] as num?)?.toDouble() ?? 1,
       createdBy: json['created_by'] as String?,
+      requiredRole: json['required_role'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

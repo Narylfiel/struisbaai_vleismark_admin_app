@@ -22,6 +22,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
   final _settingsRepo = SettingsRepository();
   List<DryerBatch> _batches = [];
   List<Map<String, dynamic>> _inventoryItems = [];
+  List<Map<String, dynamic>> _recipes = [];
   bool _loading = true;
   String? _error;
   double _electricityRate = 2.5;
@@ -39,10 +40,16 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
           .select('id, name')
           .eq('is_active', true)
           .order('name');
+      final recipeData = await _client
+          .from('recipes')
+          .select('id, name, expected_yield_pct, batch_size_kg, prep_time_minutes')
+          .eq('is_active', true)
+          .order('name');
       if (mounted) {
         setState(() {
           _batches = batches;
           _inventoryItems = List<Map<String, dynamic>>.from(inv as List);
+          _recipes = List<Map<String, dynamic>>.from(recipeData as List);
           _loading = false;
         });
       }
@@ -83,6 +90,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
       builder: (ctx) => _NewDryerBatchDialog(
         repo: _repo,
         inventoryItems: _inventoryItems,
+        recipes: _recipes,
         onDone: () {
           Navigator.pop(ctx);
           _load();
@@ -460,11 +468,13 @@ class _DryerBatchDetailPanel extends StatelessWidget {
 class _NewDryerBatchDialog extends StatefulWidget {
   final DryerBatchRepository repo;
   final List<Map<String, dynamic>> inventoryItems;
+  final List<Map<String, dynamic>> recipes;
   final VoidCallback onDone;
 
   const _NewDryerBatchDialog({
     required this.repo,
     required this.inventoryItems,
+    required this.recipes,
     required this.onDone,
   });
 
@@ -473,7 +483,9 @@ class _NewDryerBatchDialog extends StatefulWidget {
 }
 
 class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
-  final _productNameController = TextEditingController();
+  String? _selectedRecipeId;
+  String? _selectedRecipeName;
+  double? _selectedExpectedYieldPct;
   final _inputWeightController = TextEditingController();
   final _plannedHoursController = TextEditingController();
   String _dryerType = 'biltong';
@@ -484,16 +496,14 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
 
   @override
   void dispose() {
-    _productNameController.dispose();
     _inputWeightController.dispose();
     _plannedHoursController.dispose();
     super.dispose();
   }
 
   Future<void> _create() async {
-    final name = _productNameController.text.trim();
-    if (name.isEmpty) {
-      setState(() => _error = 'Product name required');
+    if (_selectedRecipeId == null || _selectedRecipeId!.isEmpty) {
+      setState(() => _error = 'Select a recipe');
       return;
     }
     final weight = double.tryParse(_inputWeightController.text);
@@ -501,35 +511,35 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
       setState(() => _error = 'Input weight must be positive');
       return;
     }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    setState(() { _loading = true; _error = null; });
     try {
       final plannedH = double.tryParse(_plannedHoursController.text);
+      final staffId = AuthService().getCurrentStaffId();
+      final performedBy = staffId.isEmpty ? null : staffId;
       await widget.repo.createBatch(
-        productName: name,
+        productName: _selectedRecipeName ?? 'Dryer Batch',
         inputWeightKg: weight,
         dryerType: _dryerType,
         plannedHours: plannedH != null && plannedH > 0 ? plannedH : null,
-        inputProductId: _inputProductId?.isEmpty == true ? null : _inputProductId,
-        outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
+        inputProductId: _inputProductId?.isEmpty == true
+            ? null : _inputProductId,
+        outputProductId: _outputProductId?.isEmpty == true
+            ? null : _outputProductId,
         deductInputNow: true,
-        performedBy: null,
+        performedBy: performedBy,
+        recipeId: _selectedRecipeId,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Dryer batch created — raw material deducted'), backgroundColor: AppColors.success),
+          const SnackBar(
+            content: Text('Dryer batch created'),
+            backgroundColor: AppColors.success,
+          ),
         );
         widget.onDone();
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
@@ -542,14 +552,53 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            TextFormField(
-              controller: _productNameController,
+            DropdownButtonFormField<String>(
+              value: _selectedRecipeId,
               decoration: const InputDecoration(
-                labelText: 'Product name',
-                hintText: 'e.g. Beef Biltong',
+                labelText: 'Recipe *',
                 border: OutlineInputBorder(),
+                isDense: true,
               ),
+              items: [
+                const DropdownMenuItem<String>(
+                    value: null, child: Text('— Select recipe —')),
+                ...widget.recipes.map((r) {
+                  final id = r['id'] as String;
+                  final name = r['name'] as String? ?? '';
+                  final yieldPct =
+                      (r['expected_yield_pct'] as num?)?.toDouble() ?? 0;
+                  return DropdownMenuItem<String>(
+                    value: id,
+                    child: Text('$name  (${yieldPct.toStringAsFixed(0)}% yield)'),
+                  );
+                }),
+              ],
+              onChanged: (v) {
+                if (v == null) return;
+                final recipe =
+                    widget.recipes.firstWhere((r) => r['id'] == v);
+                setState(() {
+                  _selectedRecipeId = v;
+                  _selectedRecipeName = recipe['name'] as String?;
+                  _selectedExpectedYieldPct =
+                      (recipe['expected_yield_pct'] as num?)?.toDouble();
+                  final prepMins =
+                      (recipe['prep_time_minutes'] as num?)?.toInt() ?? 0;
+                  if (prepMins > 0 && _plannedHoursController.text.isEmpty) {
+                    _plannedHoursController.text =
+                        (prepMins / 60.0).toStringAsFixed(1);
+                  }
+                });
+              },
             ),
+            if (_selectedExpectedYieldPct != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                'Expected yield: ${_selectedExpectedYieldPct!.toStringAsFixed(0)}%',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
               value: _dryerType,

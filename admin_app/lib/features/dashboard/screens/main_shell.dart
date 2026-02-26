@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/permission_service.dart';
+import 'package:admin_app/core/constants/permissions.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:admin_app/features/inventory/screens/inventory_navigation_screen.dart';
@@ -37,11 +39,120 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   DateTime? _lastPausedAt;
+  bool _permissionsReady = false;
+  List<_NavItem> _navItems = [];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _waitForPermissions();
+  }
+
+  Future<void> _waitForPermissions() async {
+    if (PermissionService().isLoaded) {
+      _buildNavItems();
+      if (mounted) setState(() => _permissionsReady = true);
+      return;
+    }
+    for (int i = 0; i < 30; i++) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      if (PermissionService().isLoaded) break;
+    }
+    _buildNavItems();
+    if (mounted) setState(() => _permissionsReady = true);
+  }
+
+  void _buildNavItems() {
+    final ps = PermissionService();
+    setState(() {
+      _navItems = [
+        _NavItem(
+          icon: Icons.dashboard,
+          label: 'Dashboard',
+          screen: const DashboardScreen(),
+          locked: false,
+        ),
+        _NavItem(
+          icon: Icons.inventory_2,
+          label: 'Inventory',
+          screen: const InventoryNavigationScreen(),
+          locked: !ps.can(Permissions.manageInventory),
+        ),
+        _NavItem(
+          icon: Icons.local_offer,
+          label: 'Promotions',
+          screen: const PromotionListScreen(),
+          locked: !ps.can(Permissions.managePromotions),
+        ),
+        _NavItem(
+          icon: Icons.cut,
+          label: 'Production',
+          screen: const CarcassIntakeScreen(),
+          locked: !ps.can(Permissions.manageProduction),
+        ),
+        _NavItem(
+          icon: Icons.forest,
+          label: 'Hunter',
+          screen: const JobListScreen(),
+          locked: !ps.can(Permissions.manageHunters),
+        ),
+        _NavItem(
+          icon: Icons.people,
+          label: 'HR / Staff',
+          screen: const StaffListScreen(),
+          locked: !ps.can(Permissions.manageHr),
+        ),
+        _NavItem(
+          icon: Icons.fact_check,
+          label: 'Compliance',
+          screen: const ComplianceScreen(),
+          locked: !ps.can(Permissions.manageHr),
+        ),
+        _NavItem(
+          icon: Icons.credit_card,
+          label: 'Accounts',
+          screen: const AccountListScreen(),
+          locked: !ps.can(Permissions.manageAccounts),
+        ),
+        _NavItem(
+          icon: Icons.book,
+          label: 'Bookkeeping',
+          screen: const InvoiceListScreen(),
+          locked: !ps.can(Permissions.manageBookkeeping),
+        ),
+        _NavItem(
+          icon: Icons.analytics,
+          label: 'Analytics',
+          screen: const ShrinkageScreen(),
+          locked: !ps.can(Permissions.manageInventory),
+        ),
+        _NavItem(
+          icon: Icons.summarize,
+          label: 'Reports',
+          screen: const ReportHubScreen(),
+          locked: !ps.can(Permissions.manageInventory),
+        ),
+        _NavItem(
+          icon: Icons.person_search,
+          label: 'Customers',
+          screen: const CustomerListScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
+          icon: Icons.history,
+          label: 'Audit Log',
+          screen: const AuditLogScreen(),
+          locked: !ps.can(Permissions.viewAuditLog),
+        ),
+        _NavItem(
+          icon: Icons.settings,
+          label: 'Settings',
+          screen: const BusinessSettingsScreen(),
+          locked: !ps.can(Permissions.manageSettings),
+        ),
+      ];
+    });
   }
 
   @override
@@ -67,48 +178,49 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     }
   }
 
-  List<_NavItem> get _navItems {
-    final isOwner = widget.role == 'owner';
-    final isLimitedRole = widget.role == 'blockman' || widget.role == 'butchery_assistant';
-
-    final allItems = [
-      _NavItem(icon: Icons.dashboard,     label: 'Dashboard',   screen: const DashboardScreen()),
-      _NavItem(icon: Icons.inventory_2,   label: 'Inventory',   screen: const InventoryNavigationScreen()),
-      _NavItem(icon: Icons.local_offer,    label: 'Promotions',  screen: const PromotionListScreen()),
-      _NavItem(icon: Icons.cut,           label: 'Production',  screen: const CarcassIntakeScreen()),
-      _NavItem(icon: Icons.forest,        label: 'Hunter',      screen: const JobListScreen()),
-      _NavItem(icon: Icons.people,        label: 'HR / Staff',  screen: const StaffListScreen()),
-      _NavItem(icon: Icons.fact_check,    label: 'Compliance', screen: const ComplianceScreen()),
-      _NavItem(icon: Icons.credit_card,   label: 'Accounts',    screen: const AccountListScreen()),
-      _NavItem(icon: Icons.book,          label: 'Bookkeeping', screen: const InvoiceListScreen()),
-      _NavItem(icon: Icons.analytics,     label: 'Analytics',   screen: const ShrinkageScreen()),
-      _NavItem(icon: Icons.summarize,     label: 'Reports',     screen: const ReportHubScreen()),
-      _NavItem(icon: Icons.person_search, label: 'Customers',   screen: const CustomerListScreen()),
-      _NavItem(icon: Icons.history,       label: 'Audit Log',   screen: const AuditLogScreen()),
-      _NavItem(icon: Icons.settings,      label: 'Settings',    screen: const BusinessSettingsScreen()),
-    ];
-
-    if (isLimitedRole) {
-      const allowedLabels = ['Dashboard', 'Inventory', 'Production', 'Hunter'];
-      return allItems.where((i) => allowedLabels.contains(i.label)).toList();
-    }
-
-    return [
-      ...allItems.take(8),
-      if (isOwner) allItems[8],
-      ...allItems.skip(9).take(4),
-      if (isOwner) allItems[13],
-    ];
-  }
-
   void _logout() {
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(builder: (_) => const PinScreen()),
     );
   }
 
+  Widget _buildAccessDenied(String screenName) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.lock_outline, size: 64, color: Colors.grey[400]),
+          const SizedBox(height: 16),
+          Text(
+            'Access Restricted',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey[600],
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You do not have permission to access $screenName',
+            style: TextStyle(color: Colors.grey[500]),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // Show minimal loading until permissions are confirmed loaded
+    if (!_permissionsReady) {
+      return const Scaffold(
+        backgroundColor: AppColors.scaffoldBg,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primary),
+        ),
+      );
+    }
+
     final items = _navItems;
     final selected = _selectedIndex.clamp(0, items.length - 1);
 
@@ -214,7 +326,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                           icon: item.icon,
                           label: item.label,
                           isSelected: isSelected,
-                          onTap: () => setState(() => _selectedIndex = i),
+                          locked: item.locked,
+                          onTap: item.locked
+                              ? () {}  // blocked — no navigation
+                              : () => setState(() => _selectedIndex = i),
                         );
                       },
                     ),
@@ -269,8 +384,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 ),
                 const Divider(height: 1, color: AppColors.border),
 
-                // Screen content
-                Expanded(child: items[selected].screen),
+                // Screen content — protected
+                Expanded(
+                  child: items[selected].locked
+                      ? _buildAccessDenied(items[selected].label)
+                      : items[selected].screen,
+                ),
               ],
             ),
           ),
@@ -294,7 +413,14 @@ class _NavItem {
   final IconData icon;
   final String label;
   final Widget screen;
-  _NavItem({required this.icon, required this.label, required this.screen});
+  final bool locked;
+  
+  _NavItem({
+    required this.icon,
+    required this.label,
+    required this.screen,
+    this.locked = false,
+  });
 }
 
 class _SidebarItem extends StatelessWidget {
@@ -303,6 +429,7 @@ class _SidebarItem extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
   final bool isDestructive;
+  final bool locked;
 
   const _SidebarItem({
     required this.icon,
@@ -310,10 +437,50 @@ class _SidebarItem extends StatelessWidget {
     required this.isSelected,
     required this.onTap,
     this.isDestructive = false,
+    this.locked = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    // Locked style: grey text, grey icon, lock overlay, no tap response
+    if (locked) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Tooltip(
+          message: 'Access restricted',
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                Icon(icon, size: 18, color: AppColors.sidebarText.withOpacity(0.3)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.sidebarText.withOpacity(0.3),
+                      fontWeight: FontWeight.normal,
+                    ),
+                  ),
+                ),
+                Icon(
+                  Icons.lock_outline,
+                  size: 12,
+                  color: AppColors.sidebarText.withOpacity(0.3),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    // Normal style
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 2),
       child: InkWell(

@@ -1351,6 +1351,47 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
     try {
       if (widget.product == null) {
+        // Ensure PLU is unique before insert
+        var pluCode = int.tryParse(_pluController.text);
+        if (pluCode != null) {
+          final existing = await _supabase
+              .from('inventory_items')
+              .select('id')
+              .eq('plu_code', pluCode)
+              .maybeSingle();
+          if (existing != null) {
+            // Find next available PLU
+            int candidate = pluCode + 1;
+            bool found = false;
+            while (candidate <= 9999) {
+              final check = await _supabase
+                  .from('inventory_items')
+                  .select('id')
+                  .eq('plu_code', candidate)
+                  .maybeSingle();
+              if (check == null) {
+                pluCode = candidate;
+                data['plu_code'] = pluCode;
+                found = true;
+                break;
+              }
+              candidate++;
+            }
+            if (!found) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('No available PLU codes under 9999. Please assign manually.'),
+                    backgroundColor: AppColors.danger,
+                  ),
+                );
+              }
+              setState(() => _isSaving = false);
+              return;
+            }
+          }
+        }
+        
         final result = await _supabase.from('inventory_items').insert(data).select().single();
         
         // Audit log - product creation
@@ -1362,6 +1403,15 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           entityId: result['id'],
           newValues: data,
         );
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Product saved — PLU: ${data['plu_code']}'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
       } else {
         await _supabase
             .from('inventory_items')

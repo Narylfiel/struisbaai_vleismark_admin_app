@@ -3,6 +3,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/permission_service.dart';
+import 'package:admin_app/core/constants/permissions.dart';
 import '../services/dashboard_repository.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -15,8 +17,17 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _supabase = SupabaseService.client;
   final _dashboardRepo = DashboardRepository();
+  final _ps = PermissionService();
 
   bool _isLoading = true;
+
+  // Permission getters
+  bool get _canSeeFinancials   => _ps.can(Permissions.seeFinancials);
+  bool get _canSeeChartAmounts => _ps.can(Permissions.seeChartAmounts);
+  bool get _canSeeChartCounts  => _ps.can(Permissions.seeChartCounts);
+  bool get _canSeeAlerts       => _ps.can(Permissions.seeAlerts);
+  bool get _canSeeTopProducts  => _ps.can(Permissions.seeTopProducts);
+  bool get _canSeeTopRevenue   => _ps.can(Permissions.seeTopRevenue);
 
   // Stats from transactions (blueprint §3.2: Today's Sales, Transaction Count, Avg Basket, Gross Margin)
   double _todaySales = 0;
@@ -37,13 +48,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   // H5: 7-day sales chart
   List<Map<String, dynamic>> _sevenDaySales = [];
+  Map<String, int> _weeklyTransactionCounts = {};
   RealtimeChannel? _transactionsChannel;
+
+  // Top products
+  List<Map<String,dynamic>> _topProducts = [];
+  bool _isLoadingTopProducts = false;
+  String _topProductsMode = 'revenue';
 
   @override
   void initState() {
     super.initState();
     _loadDashboard();
     _subscribeTransactions();
+    
+    // Load top products if permitted
+    if (_canSeeTopProducts) {
+      if (!_canSeeTopRevenue) _topProductsMode = 'quantity';
+      _loadTopProducts();
+    }
   }
 
   @override
@@ -230,6 +253,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.scaffoldBg,
+      appBar: AppBar(
+        backgroundColor: AppColors.cardBg,
+        elevation: 0,
+        title: Row(
+          children: [
+            const Spacer(),
+            Text(
+              _formattedDate(),
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 18),
+              tooltip: 'Refresh dashboard',
+              onPressed: _refreshDashboard,
+              color: AppColors.textSecondary,
+            ),
+          ],
+        ),
+      ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : RefreshIndicator(
@@ -243,24 +289,50 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     _buildStatsRow(),
                     const SizedBox(height: 24),
 
-                    // H5: 7-day sales chart
-                    _build7DayChart(),
-                    const SizedBox(height: 24),
+                    // H5: 7-day chart
+                    if (_canSeeChartAmounts)
+                      _build7DayChart()
+                    else if (_canSeeChartCounts)
+                      _buildTransactionCountChart(),
+                    if (_canSeeChartAmounts || _canSeeChartCounts)
+                      const SizedBox(height: 24),
+
+                    // Top products widget
+                    if (_canSeeTopProducts)
+                      _buildTopProductsWidget(),
+                    if (_canSeeTopProducts)
+                      const SizedBox(height: 24),
 
                     // Alerts + Clock-in
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(flex: 3, child: _buildAlerts()),
-                        const SizedBox(width: 16),
-                        Expanded(flex: 2, child: _buildClockInStatus()),
+                        if (_canSeeAlerts) ...[
+                          Expanded(flex: 3, child: _buildAlerts()),
+                          const SizedBox(width: 16),
+                        ],
+                        Expanded(
+                          flex: _canSeeAlerts ? 2 : 1,
+                          child: _buildClockInStatus(),
+                        ),
                       ],
                     ),
+                    const SizedBox(height: 24),
                   ],
                 ),
               ),
             ),
     );
+  }
+
+  String _formattedDate() {
+    final now = DateTime.now();
+    const months = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+    return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
   }
 
   Widget _build7DayChart() {
@@ -334,17 +406,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget _buildStatsRow() {
     return Row(
       children: [
-        Expanded(
-          child: _StatCard(
-            title: "TODAY'S SALES",
-            value: 'R ${_todaySales.toStringAsFixed(2)}',
-            sub: '${_salesChange >= 0 ? '+' : ''}${_salesChange.toStringAsFixed(1)}% vs yesterday',
-            subColor: _salesChange >= 0 ? AppColors.success : AppColors.error,
-            icon: Icons.point_of_sale,
-            color: AppColors.dashSales,
+        if (_canSeeFinancials)
+          Expanded(
+            child: _StatCard(
+              title: "TODAY'S SALES",
+              value: 'R ${_todaySales.toStringAsFixed(2)}',
+              sub: '${_salesChange >= 0 ? '+' : ''}${_salesChange.toStringAsFixed(1)}% vs yesterday',
+              subColor: _salesChange >= 0 ? AppColors.success : AppColors.error,
+              icon: Icons.point_of_sale,
+              color: AppColors.dashSales,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
+        if (_canSeeFinancials)
+          const SizedBox(width: 12),
         Expanded(
           child: _StatCard(
             title: 'TRANSACTIONS',
@@ -355,28 +429,32 @@ class _DashboardScreenState extends State<DashboardScreen> {
             color: AppColors.info,
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            title: 'AVG BASKET',
-            value: 'R ${_avgBasket.toStringAsFixed(2)}',
-            sub: 'per transaction',
-            subColor: AppColors.textSecondary,
-            icon: Icons.shopping_basket,
-            color: AppColors.accent,
+        if (_canSeeFinancials)
+          const SizedBox(width: 12),
+        if (_canSeeFinancials)
+          Expanded(
+            child: _StatCard(
+              title: 'AVG BASKET',
+              value: 'R ${_avgBasket.toStringAsFixed(2)}',
+              sub: 'per transaction',
+              subColor: AppColors.textSecondary,
+              icon: Icons.shopping_basket,
+              color: AppColors.accent,
+            ),
           ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: _StatCard(
-            title: 'GROSS MARGIN',
-            value: '${_grossMargin.toStringAsFixed(1)}%',
-            sub: 'today',
-            subColor: _grossMargin >= 30 ? AppColors.success : AppColors.warning,
-            icon: Icons.trending_up,
-            color: AppColors.dashMargin,
+        if (_canSeeFinancials)
+          const SizedBox(width: 12),
+        if (_canSeeFinancials)
+          Expanded(
+            child: _StatCard(
+              title: 'GROSS MARGIN',
+              value: '${_grossMargin.toStringAsFixed(1)}%',
+              sub: 'today',
+              subColor: _grossMargin >= 30 ? AppColors.success : AppColors.warning,
+              icon: Icons.trending_up,
+              color: AppColors.dashMargin,
+            ),
           ),
-        ),
       ],
     );
   }
@@ -467,6 +545,295 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
     );
   }
+
+  Widget _buildTransactionCountChart() {
+    if (_weeklyTransactionCounts.isEmpty) return const SizedBox.shrink();
+    
+    final data = _weeklyTransactionCounts.entries.map((e) => _DayCountPoint(
+      e.key.substring(8, 10), // Extract day from YYYY-MM-DD
+      e.value,
+    )).toList();
+    
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(10),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.show_chart, color: AppColors.info, size: 20),
+              const SizedBox(width: 8),
+              const Text(
+                'TRANSACTIONS (LAST 7 DAYS)',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 200,
+            child: SfCartesianChart(
+              primaryXAxis: CategoryAxis(
+                labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              ),
+              primaryYAxis: NumericAxis(
+                labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 11),
+              ),
+              series: <CartesianSeries>[
+                ColumnSeries<_DayCountPoint, String>(
+                  dataSource: data,
+                  xValueMapper: (_DayCountPoint p, _) => p.label,
+                  yValueMapper: (_DayCountPoint p, _) => p.count,
+                  color: AppColors.info,
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadWeeklyTransactionCounts() async {
+    try {
+      final sevenDaysAgo = DateTime.now().subtract(const Duration(days: 7));
+      final data = await _supabase
+          .from('transactions')
+          .select('created_at')
+          .gte('created_at', sevenDaysAgo.toIso8601String());
+
+      final Map<String, int> counts = {};
+      for (final t in (data as List)) {
+        final date = DateTime.parse(t['created_at']).toLocal();
+        final key = '${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}';
+        counts[key] = (counts[key] ?? 0) + 1;
+      }
+      if (mounted) setState(() => _weeklyTransactionCounts = counts);
+    } catch (e) {
+      debugPrint('[DASHBOARD] Transaction count chart error: $e');
+    }
+  }
+
+  Widget _buildTopProductsWidget() {
+    return Card(
+      color: AppColors.cardBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.trending_up, color: Colors.orange, size: 18),
+                const SizedBox(width: 8),
+                const Text('TOP 5 PRODUCTS',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 12,
+                        letterSpacing: 0.5)),
+                const Spacer(),
+                if (_canSeeTopRevenue)
+                  SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'revenue', label: Text('Revenue')),
+                      ButtonSegment(value: 'quantity', label: Text('Qty')),
+                    ],
+                    selected: {_topProductsMode},
+                    onSelectionChanged: (val) {
+                      setState(() => _topProductsMode = val.first);
+                      _loadTopProducts();
+                    },
+                    style: ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  )
+                else
+                  Text('By Quantity',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (_isLoadingTopProducts)
+              const Center(child: CircularProgressIndicator())
+            else if (_topProducts.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text('No sales data for today',
+                      style: TextStyle(color: Colors.grey[500])),
+                ),
+              )
+            else
+              ..._topProducts.asMap().entries.map((entry) {
+                return _buildTopProductRow(entry.key + 1, entry.value);
+              }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTopProductRow(int rank, Map<String,dynamic> product) {
+    final rankColors = {
+      1: Colors.amber,
+      2: Colors.grey[400]!,
+      3: Colors.brown[300]!,
+    };
+    final rankColor = rankColors[rank] ?? Colors.grey[200]!;
+    final isTopThree = rank <= 3;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: rankColor,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                '$rank',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12,
+                  color: isTopThree ? Colors.white : Colors.grey[700],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  product['name']?.toString() ?? 'Unknown',
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  'PLU ${product['plu_code']}',
+                  style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                ),
+              ],
+            ),
+          ),
+          if (_canSeeTopRevenue && _topProductsMode == 'revenue')
+            Text(
+              'R ${((product['total_revenue'] as num?) ?? 0).toStringAsFixed(2)}',
+              style: TextStyle(
+                  fontWeight: FontWeight.bold, color: Colors.green[700]),
+            )
+          else
+            Text(
+              '${((product['total_qty'] as num?) ?? 0).toStringAsFixed(1)} ${product['unit_type'] ?? ''}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _loadTopProducts() async {
+    if (!_canSeeTopProducts) return;
+    setState(() => _isLoadingTopProducts = true);
+    try {
+      final today = DateTime.now();
+      final startOfDay = DateTime(today.year, today.month, today.day);
+
+      // Step 1: Get today's transaction IDs
+      final txData = await _supabase
+          .from('transactions')
+          .select('id')
+          .gte('created_at', startOfDay.toIso8601String());
+
+      final txIds = (txData as List).map((t) => t['id'] as String).toList();
+
+      if (txIds.isEmpty) {
+        setState(() {
+          _topProducts = [];
+          _isLoadingTopProducts = false;
+        });
+        return;
+      }
+
+      // Step 2: Get transaction items for those transactions
+      final itemData = await _supabase
+          .from('transaction_items')
+          .select('''
+            quantity, line_total,
+            inventory_items(plu_code, name, unit_type)
+          ''')
+          .inFilter('transaction_id', txIds);
+
+      // Step 3: Group by product client-side
+      final Map<String, Map<String,dynamic>> grouped = {};
+      for (final item in (itemData as List)) {
+        final inv = item['inventory_items'] as Map<String,dynamic>?;
+        if (inv == null) continue;
+        final plu = inv['plu_code']?.toString() ?? 'unknown';
+        grouped.putIfAbsent(plu, () => {
+          'plu_code': inv['plu_code'],
+          'name': inv['name'] ?? 'Unknown',
+          'unit_type': inv['unit_type'] ?? '',
+          'total_qty': 0.0,
+          'total_revenue': 0.0,
+        });
+        grouped[plu]!['total_qty'] =
+            (grouped[plu]!['total_qty'] as double) +
+            ((item['quantity'] as num?)?.toDouble() ?? 0.0);
+        grouped[plu]!['total_revenue'] =
+            (grouped[plu]!['total_revenue'] as double) +
+            ((item['line_total'] as num?)?.toDouble() ?? 0.0);
+      }
+
+      // Step 4: Sort and take top 5
+      final list = grouped.values.toList();
+      if (_topProductsMode == 'revenue') {
+        list.sort((a, b) => (b['total_revenue'] as double)
+            .compareTo(a['total_revenue'] as double));
+      } else {
+        list.sort((a, b) =>
+            (b['total_qty'] as double).compareTo(a['total_qty'] as double));
+      }
+
+      setState(() => _topProducts = list.take(5).toList());
+    } catch (e) {
+      debugPrint('[TOP PRODUCTS] Error: $e');
+      setState(() => _topProducts = []);
+    } finally {
+      setState(() => _isLoadingTopProducts = false);
+    }
+  }
+
+  void _refreshDashboard() {
+    _loadSalesStats();
+    if (_canSeeChartAmounts) _load7DaySales();
+    if (_canSeeChartCounts && !_canSeeChartAmounts) _loadWeeklyTransactionCounts();
+    if (_canSeeAlerts) _loadAlerts();
+    _loadClockInStatus();
+    if (_canSeeTopProducts) _loadTopProducts();
+  }
 }
 
 // ── Reusable widgets ──────────────────────────────────────────
@@ -475,6 +842,12 @@ class _DaySalesPoint {
   final String label;
   final double total;
   _DaySalesPoint(this.label, this.total);
+}
+
+class _DayCountPoint {
+  final String label;
+  final int count;
+  _DayCountPoint(this.label, this.count);
 }
 
 class _StatCard extends StatelessWidget {

@@ -61,7 +61,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
             balance_after, reason, staff_id, photo_url, notes,
             reference_type, reference_id, created_at,
             inventory_items(plu_code, name, cost_price),
-            staff_profiles(full_name)
+            profiles(full_name)
           ''')
           .inFilter('movement_type', ['waste', 'sponsorship'])
           .gte('created_at', _dateFrom.toIso8601String())
@@ -378,7 +378,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
 
   void _showMovementDetails(Map<String, dynamic> movement) {
     final item = movement['inventory_items'] as Map<String, dynamic>?;
-    final staff = movement['staff_profiles'] as Map<String, dynamic>?;
+    final staff = movement['profiles'] as Map<String, dynamic>?;
     final qty = (movement['quantity'] as num?)?.toDouble() ?? 0;
     final costPrice = (item?['cost_price'] as num?)?.toDouble() ?? 0;
     final estValue = qty.abs() * costPrice;
@@ -537,8 +537,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
                 const SizedBox(width: 8),
                 
                 // Type filter dropdown
-                SizedBox(
-                  width: 160,
+                Flexible(
                   child: DropdownButtonFormField<String>(
                     value: _typeFilter,
                     decoration: const InputDecoration(
@@ -650,7 +649,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
 
   Widget _buildMovementCard(Map<String, dynamic> movement) {
     final item = movement['inventory_items'] as Map<String, dynamic>?;
-    final staff = movement['staff_profiles'] as Map<String, dynamic>?;
+    final staff = movement['profiles'] as Map<String, dynamic>?;
     final qty = (movement['quantity'] as num?)?.toDouble() ?? 0;
     final costPrice = (item?['cost_price'] as num?)?.toDouble() ?? 0;
     final estValue = qty.abs() * costPrice;

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/models/ledger_entry.dart';
@@ -232,6 +233,23 @@ class _LedgerScreenState extends State<LedgerScreen> {
                               metadata: null,
                               recordedBy: AuthService().getCurrentStaffId(),
                             );
+                            // AUDIT LOG — fire and forget
+                            try {
+                              AuditService.log(
+                                action: 'CREATE',
+                                module: 'Bookkeeping',
+                                description: 'Journal entry: Dr $debitName / Cr $creditName — R ${debitAmt.toStringAsFixed(2)}',
+                                entityType: 'LedgerEntry',
+                                entityId: null,
+                                newValues: {
+                                  'debit_account': debitName,
+                                  'credit_account': creditName,
+                                  'amount': debitAmt,
+                                  'description': descCtrl.text.trim(),
+                                  'date': pickedDate.toIso8601String().substring(0, 10),
+                                },
+                              );
+                            } catch (_) {}
                             if (context.mounted) {
                               Navigator.pop(ctx);
                               _load();

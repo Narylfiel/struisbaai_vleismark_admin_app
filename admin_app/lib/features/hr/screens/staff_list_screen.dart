@@ -1918,8 +1918,26 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
     try {
       if (widget.staff == null) {
-        final result = await _supabase.from('staff_profiles').insert(data).select().single();
-        
+        final result = await _supabase
+            .from('staff_profiles')
+            .insert(data)
+            .select()
+            .single();
+
+        // Sync to profiles table (used for admin app login)
+        try {
+          await _supabase.from('profiles').insert({
+            'id': result['id'],
+            'full_name': data['full_name'],
+            'role': data['role'],
+            'pin_hash': data['pin_hash'],
+            'is_active': data['is_active'] ?? true,
+            'active': data['is_active'] ?? true,
+          });
+        } catch (e) {
+          debugPrint('profiles sync failed (insert): $e');
+        }
+
         // Audit log - staff creation
         await AuditService.log(
           action: 'CREATE',
@@ -1935,7 +1953,28 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
             .from('staff_profiles')
             .update(data)
             .eq('id', widget.staff!['id']);
-        
+
+        // Sync to profiles table (used for admin app login)
+        // Only sync fields that profiles cares about
+        try {
+          final profileSync = <String, dynamic>{
+            'full_name': data['full_name'],
+            'role': data['role'],
+            'is_active': data['is_active'],
+            'active': data['is_active'],
+          };
+          // Only sync pin_hash if PIN was changed
+          if (_pinController.text.isNotEmpty && data['pin_hash'] != null) {
+            profileSync['pin_hash'] = data['pin_hash'];
+          }
+          await _supabase
+              .from('profiles')
+              .update(profileSync)
+              .eq('id', widget.staff!['id']);
+        } catch (e) {
+          debugPrint('profiles sync failed (update): $e');
+        }
+
         // Audit log - staff update
         await AuditService.log(
           action: 'UPDATE',

@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 
 /// M7: Equipment Register — list assets, add/edit, depreciation (Dart), service log.
 class EquipmentRegisterScreen extends StatefulWidget {
@@ -113,6 +114,23 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
       }
       log.add({'date': DateTime.now().toIso8601String().substring(0, 10), 'notes': notes});
       await _client.from('equipment_register').update({'service_log': log}).eq('id', id);
+      try {
+        final item = _items.firstWhere(
+          (e) => e['id'] == id,
+          orElse: () => <String, dynamic>{},
+        );
+        AuditService.log(
+          action: 'UPDATE',
+          module: 'Bookkeeping',
+          description: 'Service recorded for: ${item['description'] ?? id}',
+          entityType: 'Equipment',
+          entityId: id,
+          newValues: {
+            'service_notes': notes,
+            'service_date': DateTime.now().toIso8601String().substring(0, 10),
+          },
+        );
+      } catch (_) {}
       if (mounted) _load();
     } catch (e, stack) {
       debugPrint('DATABASE WRITE FAILED: equipment_register service log update');
@@ -376,10 +394,54 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
         'status': _status,
         'category': 'Equipment',
       };
+      String? entityId;
       if (widget.item != null) {
-        await widget.client.from('equipment_register').update(data).eq('id', widget.item!['id']);
+        await widget.client
+            .from('equipment_register')
+            .update(data)
+            .eq('id', widget.item!['id']);
+        entityId = widget.item!['id'] as String?;
+        try {
+          AuditService.log(
+            action: 'UPDATE',
+            module: 'Bookkeeping',
+            description: 'Equipment updated: ${data['description']}',
+            entityType: 'Equipment',
+            entityId: entityId,
+            oldValues: {
+              'description': widget.item!['description'],
+              'status': widget.item!['status'],
+              'purchase_price': widget.item!['purchase_price'],
+            },
+            newValues: {
+              'description': data['description'],
+              'status': data['status'],
+              'purchase_price': data['purchase_price'],
+            },
+          );
+        } catch (_) {}
       } else {
-        await widget.client.from('equipment_register').insert(data);
+        final result = await widget.client
+            .from('equipment_register')
+            .insert(data)
+            .select('id')
+            .single();
+        entityId = result['id'] as String?;
+        try {
+          AuditService.log(
+            action: 'CREATE',
+            module: 'Bookkeeping',
+            description: 'Equipment added: ${data['description']}',
+            entityType: 'Equipment',
+            entityId: entityId,
+            newValues: {
+              'description': data['description'],
+              'purchase_price': data['purchase_price'],
+              'purchase_date': data['purchase_date'],
+              'status': data['status'],
+            },
+          );
+        } catch (_) {}
       }
       if (mounted) {
         Navigator.pop(context, true);

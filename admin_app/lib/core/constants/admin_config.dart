@@ -101,6 +101,9 @@ class AdminConfig {
   // Event spike detection
   static const double eventSpikeMultiplier = 2.0;  // 200% of rolling average
 
+  // South African minimum wage fallback (update annually)
+  static const double minimumWagePerHour = 28.79;
+
   // Rolling averages
   static const int yieldRollingBreakdowns = 10;    // last 10 breakdowns
   static const int avgCostRollingPurchases = 5;    // last 5 purchases

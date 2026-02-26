@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/constants/admin_config.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/production_batch.dart';
@@ -796,6 +797,14 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
   Map<String, RecipeIngredient> _ingredientById = {};
   List<Map<String, dynamic>> _inventoryItems = [];
   Map<String, double> _availableStockByItemId = {};
+  double _calculatedIngredientCost = 0.0;
+  double _calculatedLabourCost = 0.0;
+  double _calculatedTotalCost = 0.0;
+  int _recipePrepTimeMinutes = 0;
+  String _recipeRequiredRole = 'butchery_assistant';
+  double _labourRatePerHour = 28.79;
+  Map<String, double> _ingredientCostPrices = {};
+  bool _costCalculated = false;
   bool _loading = true;
   bool _saving = false;
   String? _error;
@@ -834,6 +843,55 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         }
         if (mounted) _availableStockByItemId = map;
       }
+      // Load cost prices for all linked inventory items
+      final costItemIds = _ingredientById.values
+          .map((ri) => ri.inventoryItemId)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+      if (costItemIds.isNotEmpty) {
+        final costRows = await _client
+            .from('inventory_items')
+            .select('id, cost_price')
+            .inFilter('id', costItemIds);
+        for (final row in costRows as List) {
+          final id = (row as Map)['id']?.toString();
+          final price = (row['cost_price'] as num?)?.toDouble() ?? 0.0;
+          if (id != null) _ingredientCostPrices[id] = price;
+        }
+      }
+
+      // Load recipe prep time and required role
+      try {
+        final recipeRow = await _client
+            .from('recipes')
+            .select('prep_time_minutes, required_role')
+            .eq('id', widget.batch.recipeId)
+            .maybeSingle();
+        if (recipeRow != null) {
+          _recipePrepTimeMinutes =
+              (recipeRow['prep_time_minutes'] as num?)?.toInt() ?? 0;
+          _recipeRequiredRole =
+              recipeRow['required_role'] as String? ?? 'butchery_assistant';
+        }
+      } catch (_) {}
+
+      // Load avg hourly rate for required role from staff_profiles
+      try {
+        final staffRows = await _client
+            .from('staff_profiles')
+            .select('hourly_rate')
+            .eq('role', _recipeRequiredRole)
+            .eq('is_active', true);
+        final rates = (staffRows as List)
+            .map((r) => (r['hourly_rate'] as num?)?.toDouble() ?? 0.0)
+            .where((r) => r > 0)
+            .toList();
+        if (rates.isNotEmpty) {
+          _labourRatePerHour = rates.reduce((a, b) => a + b) / rates.length;
+        }
+      } catch (_) {}
       final inv = await _client
           .from('inventory_items')
           .select('id, name, unit_type')
@@ -849,6 +907,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
           }
           _loading = false;
         });
+        _calculateCost();
       }
     } catch (e) {
       if (mounted) {
@@ -858,6 +917,30 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         });
       }
     }
+  }
+
+  void _calculateCost() {
+    double ingredientTotal = 0.0;
+    for (final bi in _batchIngredients) {
+      final ri = _ingredientById[bi.ingredientId];
+      if (ri?.inventoryItemId == null) continue;
+      final actualQty = double.tryParse(
+        _actualControllers[bi.ingredientId]?.text ?? '',
+      ) ?? bi.plannedQuantity;
+      final costPrice =
+          _ingredientCostPrices[ri!.inventoryItemId] ?? 0.0;
+      ingredientTotal += actualQty * costPrice;
+    }
+    final labourHours = _recipePrepTimeMinutes / 60.0;
+    final labourCost = labourHours * _labourRatePerHour;
+    final total = ingredientTotal + labourCost;
+    setState(() {
+      _calculatedIngredientCost = ingredientTotal;
+      _calculatedLabourCost = labourCost;
+      _calculatedTotalCost = total;
+      _costCalculated = true;
+      _costTotalController.text = total.toStringAsFixed(2);
+    });
   }
 
   @override
@@ -1071,6 +1154,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
                         controller: ctrl,
                         decoration: const InputDecoration(labelText: 'Actual', isDense: true),
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => _calculateCost(),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -1096,12 +1180,93 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
             const SizedBox(height: 8),
             ...List.generate(_outputRows.length, (i) => _buildOutputRow(i)),
             const SizedBox(height: 16),
+            if (_costCalculated) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AUTO-CALCULATED COST',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Ingredients:', style: TextStyle(fontSize: 13)),
+                        Text('R${_calculatedIngredientCost.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Labour (${_recipePrepTimeMinutes}min × '
+                            'R${_labourRatePerHour.toStringAsFixed(2)}/hr '
+                            '[${AdminConfig.roleDisplayLabel(_recipeRequiredRole)}]):',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        Text('R${_calculatedLabourCost.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total:',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          'R${_calculatedTotalCost.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Override below if needed',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
             TextFormField(
               controller: _costTotalController,
-              decoration: const InputDecoration(
-                labelText: 'Total cost (optional)',
+              decoration: InputDecoration(
+                labelText: _costCalculated
+                    ? 'Override total cost (optional)'
+                    : 'Total cost (optional)',
                 hintText: 'e.g. 1250.00',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
+                suffixIcon: _costCalculated
+                    ? IconButton(
+                        icon: const Icon(Icons.refresh, size: 18),
+                        tooltip: 'Reset to calculated',
+                        onPressed: () => setState(() =>
+                            _costTotalController.text =
+                                _calculatedTotalCost.toStringAsFixed(2)),
+                      )
+                    : null,
               ),
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
             ),

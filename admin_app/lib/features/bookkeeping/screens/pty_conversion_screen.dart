@@ -3,6 +3,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 
 /// M7: PTY Conversion checklist — 8 steps, status, upload, notes; stored in business_settings.
 class PtyConversionScreen extends StatefulWidget {
@@ -94,6 +95,21 @@ class _PtyConversionScreenState extends State<PtyConversionScreen> {
     setState(() {
       _stepData[slug] = {...d, 'status': next};
     });
+    try {
+      final stepTitle = _steps
+          .firstWhere((s) => s.slug == slug,
+              orElse: () => const _StepDef('', 'Unknown step'))
+          .title;
+      AuditService.log(
+        action: 'UPDATE',
+        module: 'Bookkeeping',
+        description: 'PTY step status changed: $stepTitle → $next',
+        entityType: 'PtyConversion',
+        entityId: slug,
+        oldValues: {'status': current},
+        newValues: {'status': next},
+      );
+    } catch (_) {}
     _save();
   }
 
@@ -111,6 +127,23 @@ class _PtyConversionScreenState extends State<PtyConversionScreen> {
         _stepData[slug] = {...?_stepData[slug], 'file_path': path, 'file_url': url};
         _loading = false;
       });
+      try {
+        final stepTitle = _steps
+            .firstWhere((s) => s.slug == slug,
+                orElse: () => const _StepDef('', 'Unknown step'))
+            .title;
+        AuditService.log(
+          action: 'UPDATE',
+          module: 'Bookkeeping',
+          description: 'PTY document uploaded: $stepTitle — ${path.split('/').last}',
+          entityType: 'PtyConversion',
+          entityId: slug,
+          newValues: {
+            'file_path': path,
+            'step': stepTitle,
+          },
+        );
+      } catch (_) {}
       _save();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('File uploaded'), backgroundColor: AppColors.success));
     } catch (e) {
