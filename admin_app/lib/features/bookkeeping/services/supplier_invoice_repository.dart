@@ -72,6 +72,16 @@ class SupplierInvoiceRepository {
     return SupplierInvoice.fromJson(row as Map<String, dynamic>);
   }
 
+  /// Create from raw payload (for direct column control)
+  Future<Map<String, dynamic>> createFromRawPayload(Map<String, dynamic> payload) async {
+    final row = await _client
+        .from('supplier_invoices')
+        .insert(payload)
+        .select()
+        .single();
+    return row as Map<String, dynamic>;
+  }
+
   Future<SupplierInvoice> update(SupplierInvoice invoice) async {
     final data = Map<String, dynamic>.from(invoice.toJson())
       ..remove('supplier_name');

@@ -193,6 +193,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Only draft invoices can be edited'), backgroundColor: AppColors.warning),
           );
+          setState(() => _saving = false);
           return;
         }
         final updated = SupplierInvoice(
@@ -213,27 +214,41 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
         );
         await _repo.update(updated);
       } else {
-        final created = SupplierInvoice(
-          id: '',
-          invoiceNumber: _invoiceNumberController.text.trim(),
-          supplierId: _selectedSupplierId,
-          invoiceDate: _invoiceDate,
-          dueDate: _dueDate,
-          lineItems: lineItems,
-          subtotal: subtotal,
-          taxAmount: taxAmount,
-          total: total,
-          status: SupplierInvoiceStatus.draft,
-          notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-          createdBy: createdBy,
-        );
-        await _repo.create(created);
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success),
-        );
-        Navigator.pop(context, true);
+        // Build payload using ONLY confirmed supplier_invoices columns
+        final invoiceNumber = _invoiceNumberController.text.trim().isNotEmpty
+            ? _invoiceNumberController.text.trim()
+            : 'INV-${DateTime.now().millisecondsSinceEpoch}';
+        
+        final payload = <String, dynamic>{
+          'invoice_number': invoiceNumber,
+          'supplier_id': _selectedSupplierId,
+          'invoice_date': _invoiceDate.toIso8601String().substring(0, 10),
+          'due_date': _dueDate.toIso8601String().substring(0, 10),
+          'line_items': lineItems,
+          'subtotal': subtotal,
+          'tax_amount': taxAmount,
+          'total': total,
+          'status': 'draft',
+          'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+          'created_by': createdBy,
+        };
+        
+        // Remove null values before sending
+        payload.removeWhere((key, value) => value == null);
+        
+        try {
+          final row = await _repo.createFromRawPayload(payload);
+          debugPrint('Supplier invoice created: ${row['id']}');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success),
+            );
+            Navigator.pop(context, true);
+          }
+        } catch (e) {
+          print('Supplier invoice save error: $e');
+          rethrow;
+        }
       }
     } catch (e) {
       if (mounted) {
