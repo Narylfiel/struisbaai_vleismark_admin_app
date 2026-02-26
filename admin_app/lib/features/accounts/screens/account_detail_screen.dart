@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/bookkeeping/screens/invoice_form_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:pdf/pdf.dart';
@@ -297,8 +298,9 @@ class _TransactionsTabState extends State<_TransactionsTab> {
     final newBalance = (balance - amt).clamp(0.0, double.infinity);
     final ref = refCtrl.text.trim().isEmpty ? 'PMT-${DateTime.now().millisecondsSinceEpoch}' : refCtrl.text.trim();
     final description = notesCtrl.text.trim().isEmpty ? 'Payment received' : notesCtrl.text.trim();
+    final customerName = widget.account['account_name'] ?? 'Unknown';
     try {
-      await _client.from('account_transactions').insert({
+      final txResult = await _client.from('account_transactions').insert({
         'account_id': widget.accountId,
         'transaction_type': 'payment',
         'reference': ref,
@@ -307,11 +309,22 @@ class _TransactionsTabState extends State<_TransactionsTab> {
         'running_balance': newBalance,
         'payment_method': 'EFT',
         'transaction_date': date.toIso8601String().substring(0, 10),
-      });
+      }).select().single();
+      
       await _client.from('business_accounts').update({
         'balance': newBalance,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.accountId);
+      
+      // Audit log - payment recorded
+      await AuditService.log(
+        action: 'CREATE',
+        module: 'Accounts',
+        description: 'Payment recorded: R${amt.toStringAsFixed(2)} for $customerName - $ref',
+        entityType: 'Payment',
+        entityId: txResult['id'],
+      );
+      
       try {
         await LedgerRepository().createDoubleEntry(
           date: date,

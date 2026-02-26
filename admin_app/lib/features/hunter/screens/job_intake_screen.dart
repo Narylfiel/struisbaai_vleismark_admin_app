@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -354,9 +355,30 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
             .eq('id', widget.existingJob!['id'])
             .select()
             .single();
+        
+        // Audit log - job update
+        await AuditService.log(
+          action: 'UPDATE',
+          module: 'Hunter',
+          description: 'Hunter job updated: ${payload['hunter_name'] ?? payload['client_name']} - Job #${hunterJobDisplayNumber(widget.existingJob!['id'])}',
+          entityType: 'HunterJob',
+          entityId: widget.existingJob!['id'],
+          oldValues: widget.existingJob,
+          newValues: payload,
+        );
       } else {
         // INSERT new job
         row = await _client.from('hunter_jobs').insert(payload).select().single();
+        
+        // Audit log - job creation
+        await AuditService.log(
+          action: 'CREATE',
+          module: 'Hunter',
+          description: 'Hunter job created: ${payload['hunter_name'] ?? payload['client_name']} - ${firstSpeciesName} (${totalWeight.toStringAsFixed(1)}kg)',
+          entityType: 'HunterJob',
+          entityId: row['id'],
+          newValues: payload,
+        );
       }
       
       if (mounted) {

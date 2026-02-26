@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_intake_screen.dart';
 import 'package:admin_app/features/hunter/services/parked_sale_repository.dart';
@@ -144,6 +145,9 @@ class _JobsTabState extends State<_JobsTab> {
   /// Delete job (owner only)
   Future<void> _confirmDeleteJob(Map<String, dynamic> job) async {
     final jobNumber = hunterJobDisplayNumber(job['id']?.toString());
+    final hunterName = job['hunter_name'] ?? job['client_name'] ?? 'Unknown';
+    final jobId = job['id'];
+    
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -162,6 +166,16 @@ class _JobsTabState extends State<_JobsTab> {
     if (confirm != true || !mounted) return;
     try {
       await _supabase.from('hunter_jobs').delete().eq('id', job['id']);
+      
+      // Audit log - job deletion
+      await AuditService.log(
+        action: 'DELETE',
+        module: 'Hunter',
+        description: 'Hunter job deleted: $hunterName - Job #$jobNumber',
+        entityType: 'HunterJob',
+        entityId: jobId,
+      );
+      
       if (mounted) {
         await _load();
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Job deleted')));

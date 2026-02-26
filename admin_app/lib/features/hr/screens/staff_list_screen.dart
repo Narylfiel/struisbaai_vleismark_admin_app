@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
@@ -1835,6 +1836,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
   Future<void> _confirmDeactivateStaff(Map<String, dynamic> staff) async {
     final name = staff['full_name'] as String? ?? 'this staff member';
+    final staffId = staff['id'];
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1859,6 +1861,16 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
           .from('staff_profiles')
           .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', staff['id']);
+      
+      // Audit log - staff deactivation
+      await AuditService.log(
+        action: 'DELETE',
+        module: 'HR',
+        description: 'Staff member deactivated: $name',
+        entityType: 'Staff',
+        entityId: staffId,
+      );
+      
       widget.onSaved();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
@@ -1906,13 +1918,34 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
     try {
       if (widget.staff == null) {
-        await _supabase.from('staff_profiles').insert(data);
+        final result = await _supabase.from('staff_profiles').insert(data).select().single();
+        
+        // Audit log - staff creation
+        await AuditService.log(
+          action: 'CREATE',
+          module: 'HR',
+          description: 'Staff member created: ${data['full_name']} (${data['role']})',
+          entityType: 'Staff',
+          entityId: result['id'],
+          newValues: data,
+        );
         // Create leave balance record for new staff
       } else {
         await _supabase
             .from('staff_profiles')
             .update(data)
             .eq('id', widget.staff!['id']);
+        
+        // Audit log - staff update
+        await AuditService.log(
+          action: 'UPDATE',
+          module: 'HR',
+          description: 'Staff member updated: ${data['full_name']}',
+          entityType: 'Staff',
+          entityId: widget.staff!['id'],
+          oldValues: widget.staff,
+          newValues: data,
+        );
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);

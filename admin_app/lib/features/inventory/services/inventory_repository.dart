@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import '../../../core/models/stock_movement.dart';
 
 /// Blueprint §4.5: Stock lifecycle — every stock change MUST create a movement record;
@@ -50,6 +51,23 @@ class InventoryRepository {
         .select()
         .single();
     final movement = StockMovement.fromJson(response as Map<String, dynamic>);
+
+    // Get product name for audit log
+    final item = await _client
+        .from('inventory_items')
+        .select('name')
+        .eq('id', itemId)
+        .maybeSingle();
+    final productName = item?['name'] ?? 'Unknown Product';
+
+    // Audit log - stock movement
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Inventory',
+      description: 'Stock movement: ${movementType.dbValue} - ${quantity.toStringAsFixed(2)} x $productName${notes != null ? " ($notes)" : ""}',
+      entityType: 'StockMovement',
+      entityId: movement.id,
+    );
 
     // Update inventory_items stock: use current_stock if present; else no-op (caller may update fresh/frozen separately)
     await _applyStockChange(
@@ -133,15 +151,19 @@ class InventoryRepository {
   }) async {
     final item = await _client
         .from('inventory_items')
-        .select('id, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
+        .select('id, name, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
         .eq('id', itemId)
         .single();
+    
+    // Get product name for audit
+    final productName = item['name'] ?? 'Unknown Product';
+    
     // C1: Single source of truth — use current_stock only for previous value.
     final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
     final variance = actualQuantity - cur;
     if (variance == 0) {
       // Still record zero-quantity adjustment for audit
-      return recordMovement(
+      final movement = await recordMovement(
         itemId: itemId,
         movementType: MovementType.adjustment,
         quantity: 0,
@@ -149,6 +171,17 @@ class InventoryRepository {
         notes: notes ?? 'Stock take: no change ($actualQuantity)',
         metadata: {'previous': cur, 'actual': actualQuantity},
       );
+      
+      // Audit log - stock adjustment (zero variance)
+      await AuditService.log(
+        action: 'UPDATE',
+        module: 'Inventory',
+        description: 'Stock adjustment: $productName - no change ($actualQuantity)',
+        entityType: 'StockMovement',
+        entityId: movement.id,
+      );
+      
+      return movement;
     }
     final row = {
       'item_id': itemId,
@@ -171,7 +204,18 @@ class InventoryRepository {
       }).eq('id', itemId);
     }
 
-    return StockMovement.fromJson(response as Map<String, dynamic>);
+    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
+    
+    // Audit log - stock adjustment
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Inventory',
+      description: 'Stock adjustment: $productName - ${variance > 0 ? "+" : ""}${variance.toStringAsFixed(2)} (${cur.toStringAsFixed(2)} → ${actualQuantity.toStringAsFixed(2)})',
+      entityType: 'StockMovement',
+      entityId: movement.id,
+    );
+
+    return movement;
   }
 
   /// Transfer between locations: record one transfer movement; total on-hand unchanged.
@@ -184,7 +228,15 @@ class InventoryRepository {
     required String performedBy,
     String? notes,
   }) async {
-    return recordMovement(
+    // Get product name for audit
+    final item = await _client
+        .from('inventory_items')
+        .select('name')
+        .eq('id', itemId)
+        .maybeSingle();
+    final productName = item?['name'] ?? 'Unknown Product';
+    
+    final movement = await recordMovement(
       itemId: itemId,
       movementType: MovementType.transfer,
       quantity: quantity,
@@ -193,6 +245,17 @@ class InventoryRepository {
       performedBy: performedBy,
       notes: notes,
     );
+    
+    // Audit log - stock transfer
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Inventory',
+      description: 'Stock transferred: ${quantity.toStringAsFixed(2)} x $productName between locations',
+      entityType: 'StockMovement',
+      entityId: movement.id,
+    );
+    
+    return movement;
   }
 
   /// Movement history for a product (item_id).

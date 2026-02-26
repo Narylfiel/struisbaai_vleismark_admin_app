@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import '../../../core/models/ledger_entry.dart';
 
 /// Blueprint §9: ledger_entries as single financial truth.
@@ -91,6 +92,15 @@ class LedgerRepository {
       source: source,
       metadata: metadata,
       recordedBy: recordedBy,
+    );
+    
+    // Audit log - ledger entry posted
+    await AuditService.log(
+      action: 'CREATE',
+      module: 'Bookkeeping',
+      description: 'Ledger entry posted: $description - DR $debitAccountCode / CR $creditAccountCode R${amount.toStringAsFixed(2)}',
+      entityType: 'LedgerEntry',
+      entityId: referenceId,
     );
   }
 

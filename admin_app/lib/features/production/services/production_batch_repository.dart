@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import '../../inventory/services/inventory_repository.dart';
 import '../../../core/models/stock_movement.dart';
 import '../models/production_batch.dart';
@@ -191,6 +192,7 @@ class ProductionBatchRepository {
     }
 
     double totalQty = 0;
+    String outputProductNames = '';
     for (final out in outputs) {
       final itemId = out['inventory_item_id'] as String?;
       final qty = (out['qty_produced'] as num?)?.toDouble();
@@ -198,6 +200,15 @@ class ProductionBatchRepository {
       final notes = out['notes'] as String?;
       if (itemId == null || itemId.isEmpty || qty == null || qty <= 0) continue;
       totalQty += qty;
+
+      // Get product name for audit
+      final item = await _client
+          .from('inventory_items')
+          .select('name')
+          .eq('id', itemId)
+          .maybeSingle();
+      if (outputProductNames.isNotEmpty) outputProductNames += ', ';
+      outputProductNames += item?['name'] ?? 'Unknown';
 
       await _client.from('production_batch_outputs').insert({
         'batch_id': batchId,
@@ -231,6 +242,16 @@ class ProductionBatchRepository {
         .eq('id', batchId)
         .select()
         .single();
+    
+    // Audit log - production batch completed
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Production',
+      description: 'Production batch completed: ${batch.batchNumber} - ${totalQty.toStringAsFixed(2)}kg → $outputProductNames',
+      entityType: 'ProductionBatch',
+      entityId: batchId,
+    );
+    
     return ProductionBatch.fromJson(response as Map<String, dynamic>);
   }
 

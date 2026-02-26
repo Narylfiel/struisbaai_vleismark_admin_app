@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import '../models/supplier_invoice.dart';
 import 'ledger_repository.dart';
 
@@ -69,7 +70,20 @@ class SupplierInvoiceRepository {
         .insert(data)
         .select()
         .single();
-    return SupplierInvoice.fromJson(row as Map<String, dynamic>);
+    
+    final created = SupplierInvoice.fromJson(row as Map<String, dynamic>);
+    
+    // Audit log - invoice creation
+    await AuditService.log(
+      action: 'CREATE',
+      module: 'Bookkeeping',
+      description: 'Supplier invoice created: ${created.invoiceNumber} - ${invoice.supplierName ?? "Unknown"} R${created.total.toStringAsFixed(2)}',
+      entityType: 'SupplierInvoice',
+      entityId: created.id,
+      newValues: data,
+    );
+    
+    return created;
   }
 
   /// Create from raw payload (for direct column control)
@@ -91,6 +105,17 @@ class SupplierInvoiceRepository {
         .eq('id', invoice.id)
         .select()
         .single();
+    
+    // Audit log - invoice update
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Bookkeeping',
+      description: 'Supplier invoice updated: ${invoice.invoiceNumber}',
+      entityType: 'SupplierInvoice',
+      entityId: invoice.id,
+      newValues: data,
+    );
+    
     return SupplierInvoice.fromJson(row as Map<String, dynamic>);
   }
 
@@ -184,5 +209,14 @@ class SupplierInvoiceRepository {
       recordedBy: approvedBy,
     );
     await setStatus(invoiceId, SupplierInvoiceStatus.approved);
+    
+    // Audit log - invoice approval
+    await AuditService.log(
+      action: 'APPROVE',
+      module: 'Bookkeeping',
+      description: 'Supplier invoice approved and posted to ledger: ${invoice.invoiceNumber} - ${invoice.supplierName ?? "Unknown"} R${invoice.total.toStringAsFixed(2)}',
+      entityType: 'SupplierInvoice',
+      entityId: invoiceId,
+    );
   }
 }

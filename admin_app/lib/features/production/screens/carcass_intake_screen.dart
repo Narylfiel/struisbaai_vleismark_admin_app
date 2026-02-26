@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'recipe_list_screen.dart';
 import 'production_batch_screen.dart';
 import 'dryer_batch_screen.dart';
@@ -1282,7 +1283,28 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
     };
 
     try {
-      await _supabase.from('carcass_intakes').insert(data);
+      final result = await _supabase.from('carcass_intakes').insert(data).select().single();
+      
+      // Get supplier name for audit log
+      String supplierName = '';
+      if (_selectedSupplierId != null) {
+        final supplier = _suppliers.firstWhere(
+          (s) => s['id'] == _selectedSupplierId,
+          orElse: () => <String, dynamic>{},
+        );
+        supplierName = supplier['name']?.toString() ?? '';
+      }
+      
+      // Audit log - carcass intake
+      await AuditService.log(
+        action: 'CREATE',
+        module: 'Production',
+        description: 'Carcass intake: ${_carcassType} - ${_actualWeight.toStringAsFixed(2)}kg${supplierName.isNotEmpty ? " from $supplierName" : ""}',
+        entityType: 'CarcassIntake',
+        entityId: result['id'],
+        newValues: data,
+      );
+      
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -1778,6 +1800,15 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
         'remaining_weight': _remaining,
         'updated_at': DateTime.now().toIso8601String(),
       }).eq('id', widget.intake['id']);
+      
+      // Audit log - breakdown completed
+      await AuditService.log(
+        action: 'UPDATE',
+        module: 'Production',
+        description: 'Breakdown ${status == "complete" ? "completed" : "partial"}: Carcass #${widget.intake['carcass_number'] ?? "Unknown"} → ${cutsLogged.length} cuts',
+        entityType: 'CarcassIntake',
+        entityId: widget.intake['id'],
+      );
 
       await _supabase.from('carcass_cuts').insert(
         cutsLogged.map((c) => {

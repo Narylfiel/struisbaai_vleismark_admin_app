@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import '../../inventory/services/inventory_repository.dart';
 import '../../../core/models/stock_movement.dart';
 import '../models/dryer_batch.dart';
@@ -180,7 +181,16 @@ class DryerBatchRepository {
     final electricityCostRounded = (electricityCost * 100).round() / 100;
 
     final outputProductId = batch.outputProductId;
+    String outputProductName = 'Unknown Product';
     if (outputProductId != null && outputProductId.isNotEmpty && outputWeightKg > 0) {
+      // Get product name for audit
+      final item = await _client
+          .from('inventory_items')
+          .select('name')
+          .eq('id', outputProductId)
+          .maybeSingle();
+      outputProductName = item?['name'] ?? outputProductName;
+      
       await _inventoryRepo.recordMovement(
         itemId: outputProductId,
         movementType: MovementType.production,
@@ -203,6 +213,16 @@ class DryerBatchRepository {
         .eq('id', batchId)
         .select()
         .single();
+    
+    // Audit log - dryer batch completed
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Production',
+      description: 'Dryer batch completed: ${batch.batchNumber} - $outputProductName ${outputWeightKg.toStringAsFixed(2)}kg',
+      entityType: 'DryerBatch',
+      entityId: batchId,
+    );
+    
     return DryerBatch.fromJson(response as Map<String, dynamic>);
   }
 

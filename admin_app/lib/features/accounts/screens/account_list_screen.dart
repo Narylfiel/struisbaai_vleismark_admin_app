@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/accounts/screens/account_detail_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 
@@ -175,6 +176,7 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
 
   Future<void> _toggleSuspend(Map<String, dynamic> acc) async {
     final isSuspended = acc['suspended'] as bool? ?? false;
+    final customerName = acc['name'] ?? 'Unknown';
     final confirm = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -200,6 +202,16 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
       'suspended_at': !isSuspended ? DateTime.now().toIso8601String() : null,
       'updated_at': DateTime.now().toIso8601String(),
     }).eq('id', acc['id']);
+    
+    // Audit log - account suspension/reactivation
+    await AuditService.log(
+      action: 'UPDATE',
+      module: 'Accounts',
+      description: isSuspended ? 'Account reactivated: $customerName' : 'Account suspended: $customerName',
+      entityType: 'Account',
+      entityId: acc['id'],
+    );
+    
     _load();
   }
 
@@ -1520,12 +1532,41 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
     try {
       if (widget.account == null) {
         data['balance'] = 0.0;
-        await _supabase.from('business_accounts').insert(data);
+        final result = await _supabase.from('business_accounts').insert(data).select().single();
+        
+        // Audit log - account creation
+        final creditLimit = (data['credit_limit'] as num?)?.toDouble();
+        await AuditService.log(
+          action: 'CREATE',
+          module: 'Accounts',
+          description: 'Business account created: ${data['name']} - Credit limit R${creditLimit?.toStringAsFixed(2) ?? "0.00"}',
+          entityType: 'Account',
+          entityId: result['id'],
+          newValues: data,
+        );
       } else {
+        final oldCreditLimit = (widget.account!['credit_limit'] as num?)?.toDouble();
+        final newCreditLimit = (data['credit_limit'] as num?)?.toDouble();
+        
         await _supabase
             .from('business_accounts')
             .update(data)
             .eq('id', widget.account!['id']);
+        
+        // Audit log - account update (with credit limit tracking)
+        String desc = 'Business account updated: ${data['name']}';
+        if (oldCreditLimit != newCreditLimit) {
+          desc += ' - Credit limit changed: R${oldCreditLimit?.toStringAsFixed(2) ?? "0.00"} → R${newCreditLimit?.toStringAsFixed(2) ?? "0.00"}';
+        }
+        await AuditService.log(
+          action: 'UPDATE',
+          module: 'Accounts',
+          description: desc,
+          entityType: 'Account',
+          entityId: widget.account!['id'],
+          oldValues: widget.account,
+          newValues: data,
+        );
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);

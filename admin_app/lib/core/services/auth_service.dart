@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'base_service.dart';
 import '../constants/admin_config.dart';
 
@@ -51,6 +52,14 @@ class AuthService extends BaseService {
       if (onlineResult != null) {
         _setCurrentUser(onlineResult);
         await _cacheStaffProfile(onlineResult);
+        
+        // Audit log - successful login
+        await AuditService.logLogin(
+          success: true,
+          email: onlineResult['name'] ?? 'Unknown',
+          role: onlineResult['role'],
+        );
+        
         return onlineResult;
       }
 
@@ -58,12 +67,35 @@ class AuthService extends BaseService {
       final offlineResult = await _authenticateOffline(pinHash);
       if (offlineResult != null) {
         _setCurrentUser(offlineResult);
+        
+        // Audit log - successful offline login
+        await AuditService.logLogin(
+          success: true,
+          email: offlineResult['name'] ?? 'Unknown',
+          role: offlineResult['role'],
+        );
+        
         return offlineResult;
       }
+
+      // Failed authentication
+      await AuditService.logLogin(
+        success: false,
+        email: 'PIN: ${pin.substring(0, 1)}***',
+        failureReason: 'Invalid PIN',
+      );
 
       return null;
     } catch (e) {
       print('Authentication error: $e');
+      
+      // Audit log - authentication error
+      await AuditService.logLogin(
+        success: false,
+        email: 'Unknown',
+        failureReason: 'System error: $e',
+      );
+      
       throw Exception('Authentication failed: $e');
     }
   }
@@ -224,6 +256,12 @@ class AuthService extends BaseService {
 
   /// Logout current user
   Future<void> logout() async {
+    // Capture name before clearing session
+    final staffName = _currentStaffName ?? 'Unknown';
+    
+    // Audit log - logout
+    await AuditService.logLogout(email: staffName);
+    
     _currentStaffId = null;
     _currentStaffName = null;
     _currentRole = null;

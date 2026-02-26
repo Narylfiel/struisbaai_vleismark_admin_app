@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
@@ -1237,6 +1238,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
   Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
     final name = product['name']?.toString() ?? 'Product';
+    final pluCode = product['plu_code']?.toString() ?? '';
+    final productId = product['id'];
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -1258,6 +1261,16 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           .from('inventory_items')
           .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', product['id']);
+      
+      // Audit log - product deletion
+      await AuditService.log(
+        action: 'DELETE',
+        module: 'Inventory',
+        description: 'Product "$name" deactivated${pluCode.isNotEmpty ? " (PLU: $pluCode)" : ""}',
+        entityType: 'Product',
+        entityId: productId,
+      );
+      
       if (mounted) {
         widget.onSaved();
         Navigator.pop(context);
@@ -1338,12 +1351,33 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
     try {
       if (widget.product == null) {
-        await _supabase.from('inventory_items').insert(data);
+        final result = await _supabase.from('inventory_items').insert(data).select().single();
+        
+        // Audit log - product creation
+        await AuditService.log(
+          action: 'CREATE',
+          module: 'Inventory',
+          description: 'Product "${data['name']}" created (PLU: ${data['plu_code']})',
+          entityType: 'Product',
+          entityId: result['id'],
+          newValues: data,
+        );
       } else {
         await _supabase
             .from('inventory_items')
             .update(data)
             .eq('id', widget.product!['id']);
+        
+        // Audit log - product update
+        await AuditService.log(
+          action: 'UPDATE',
+          module: 'Inventory',
+          description: 'Product "${data['name']}" updated (PLU: ${data['plu_code']})',
+          entityType: 'Product',
+          entityId: widget.product!['id'],
+          oldValues: widget.product,
+          newValues: data,
+        );
       }
       widget.onSaved();
       if (mounted) Navigator.pop(context);
