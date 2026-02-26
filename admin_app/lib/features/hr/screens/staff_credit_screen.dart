@@ -8,7 +8,8 @@ import 'package:admin_app/shared/widgets/form_widgets.dart';
 
 /// H3: Staff Credit screen — staff selector, balance (green/red), history table with running balance, FAB Add Credit Entry.
 class StaffCreditScreen extends StatefulWidget {
-  const StaffCreditScreen({super.key});
+  const StaffCreditScreen({super.key, this.isEmbedded = false});
+  final bool isEmbedded;
 
   @override
   State<StaffCreditScreen> createState() => _StaffCreditScreenState();
@@ -200,9 +201,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     final balanceColor = balance > 0 ? AppColors.success : (balance < 0 ? AppColors.error : AppColors.textSecondary);
     final entries = _entriesWithRunningBalance;
 
-    return Scaffold(
-      backgroundColor: AppColors.scaffoldBg,
-      body: Column(
+    final bodyContent = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
@@ -295,6 +294,29 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
           ],
         ],
       ),
+    );
+
+    if (widget.isEmbedded) {
+      return Stack(
+        children: [
+          bodyContent,
+          Positioned(
+            right: 16,
+            bottom: 16,
+            child: FloatingActionButton.extended(
+              onPressed: _openAddEntry,
+              icon: const Icon(Icons.add),
+              label: const Text('Add credit entry'),
+              backgroundColor: AppColors.primary,
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: AppColors.scaffoldBg,
+      body: bodyContent,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _openAddEntry,
         icon: const Icon(Icons.add),

@@ -206,28 +206,35 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         'whole': _optWhole,
         'selected_cuts': _selectedCutOptions,
       };
-      final charge = _estimatedCharge;
-      final firstSpeciesName = speciesList.isNotEmpty ? (speciesList.first['name'] ?? '') : '';
-      // service_id column may not exist on hunter_jobs; services are stored in services_list only
-      final payload = <String, dynamic>{
+      
+      final chargeTotal = _estimatedCharge;
+      final totalWeight = _totalEstimatedWeight;
+      final animalCount = _totalAnimalCount;
+      final firstSpeciesName = speciesList.isNotEmpty ? (speciesList.first['name']?.toString() ?? '') : '';
+      
+      // Build payload using ONLY confirmed hunter_jobs columns
+      final payload = {
+        'job_date': _jobDate.toIso8601String().substring(0, 10),
         'hunter_name': _nameCtrl.text.trim(),
         'contact_phone': _phoneCtrl.text.trim(),
+        'species': firstSpeciesName,
+        'weight_in': totalWeight,
+        'estimated_weight': totalWeight,
+        'processing_instructions': _processingNotesCtrl.text.trim().isEmpty ? null : _processingNotesCtrl.text.trim(),
+        'status': 'intake',
+        'charge_total': chargeTotal,
+        'total_amount': chargeTotal,
+        'paid': false,
+        'animal_count': animalCount,
+        'animal_type': firstSpeciesName,
         'customer_name': _nameCtrl.text.trim(),
         'customer_phone': _phoneCtrl.text.trim(),
-        'species': firstSpeciesName,
-        'animal_type': firstSpeciesName,
-        'estimated_weight': _totalEstimatedWeight,
-        'animal_count': _totalAnimalCount,
-        'status': 'intake',
-        'charge_total': charge,
-        'total_amount': charge,
-        'job_date': _jobDate.toIso8601String().substring(0, 10),
-        'processing_instructions': _processingNotesCtrl.text.trim().isEmpty ? null : _processingNotesCtrl.text.trim(),
         'species_list': speciesList,
         'services_list': servicesList,
         'materials_list': materialsList,
         'processing_options': processingOptions,
       };
+      
       final row = await _client.from('hunter_jobs').insert(payload).select().single();
       if (mounted) {
         final id = row['id']?.toString();
@@ -239,6 +246,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         });
       }
     } catch (e) {
+      print('Hunter job save error: $e');
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
