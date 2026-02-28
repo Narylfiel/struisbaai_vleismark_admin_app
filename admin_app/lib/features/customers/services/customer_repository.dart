@@ -81,26 +81,4 @@ class CustomerRepository {
     }
   }
 
-  // ═════════════════════════════════════════════════════════
-  // 3. RECIPE LIBRARY
-  // ═════════════════════════════════════════════════════════
-
-  Future<List<Map<String, dynamic>>> getRecipes() async {
-    try {
-      final response = await _client
-          .from('recipes') // Standard blueprint tag logic
-          .select()
-          .order('title')
-          .limit(50);
-      return List<Map<String, dynamic>>.from(response);
-    } catch (e) {
-      return [];
-    }
-  }
-
-  Future<void> deleteRecipe(String id) async {
-    try {
-      await _client.from('recipes').delete().eq('id', id);
-    } catch (_) {}
-  }
 }

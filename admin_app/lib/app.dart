@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/widgets/session_scope.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 
@@ -12,6 +13,7 @@ class AdminApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return SessionScope(
       authService: AuthService(),
+      connectivityService: ConnectivityService(),
       child: MaterialApp(
       title: AdminConfig.appName,
       debugShowCheckedModeBanner: false,
@@ -30,8 +32,11 @@ class AdminApp extends StatelessWidget {
         ),
         appBarTheme: const AppBarTheme(
           backgroundColor: AppColors.primary,
-          foregroundColor: Colors.white,
           elevation: 0,
+          // Do not set foregroundColor here — screens with light AppBar (e.g. cardBg)
+          // would inherit white and the back button would be invisible. Let default
+          // (ColorScheme) provide contrast; screens using primary bar set foregroundColor
+          // explicitly (e.g. Colors.white) where needed.
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(

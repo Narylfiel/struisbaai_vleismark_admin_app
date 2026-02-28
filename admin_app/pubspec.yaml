@@ -16,6 +16,9 @@ dependencies:
   # Database
   supabase_flutter: ^2.0.0
 
+  # Connectivity (offline detection)
+  connectivity_plus: ^6.0.0
+
   # Offline Cache (Production workflows)
   isar: ^3.1.0
   isar_flutter_libs: ^3.1.0

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/supabase_service.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../../inventory/models/supplier.dart';
@@ -22,6 +23,9 @@ class _LineRow {
   final TextEditingController description = TextEditingController();
   final TextEditingController quantity = TextEditingController(text: '1');
   final TextEditingController unitPrice = TextEditingController(text: '0');
+  /// Optional link to inventory item for stock increase on receive.
+  String? inventoryItemId;
+  String? inventoryItemName;
 
   void dispose() {
     description.dispose();
@@ -76,6 +80,8 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
           row.description.text = item['description']?.toString() ?? '';
           row.quantity.text = (item['quantity'] as num?)?.toString() ?? '1';
           row.unitPrice.text = (item['unit_price'] as num?)?.toStringAsFixed(2) ?? '0';
+          row.inventoryItemId = item['inventory_item_id']?.toString();
+          row.inventoryItemName = item['inventory_item_name']?.toString();
           _lineRows.add(row);
         }
       } else {
@@ -107,6 +113,110 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     setState(() => _lineRows.removeAt(index));
   }
 
+  /// Optional product picker for draft invoices: link line to inventory item for stock on receive.
+  Future<void> _showProductPicker(int rowIndex) async {
+    List<Map<String, dynamic>> items = [];
+    try {
+      final list = await SupabaseService.client
+          .from('inventory_items')
+          .select('id, name, plu_code')
+          .order('name');
+      items = List<Map<String, dynamic>>.from(list);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not load products: $e'), backgroundColor: AppColors.error),
+        );
+      }
+      return;
+    }
+    if (!mounted) return;
+    final queryController = TextEditingController();
+    List<Map<String, dynamic>> filtered = List.from(items);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: const Text('Link to product'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: queryController,
+                      decoration: const InputDecoration(
+                        labelText: 'Search',
+                        hintText: 'Name or PLU',
+                        isDense: true,
+                      ),
+                      onChanged: (v) {
+                        final q = v.trim().toLowerCase();
+                        setDialogState(() {
+                          filtered = q.isEmpty
+                              ? List.from(items)
+                              : items.where((p) {
+                                  final name = (p['name'] as String? ?? '').toLowerCase();
+                                  final plu = (p['plu_code']?.toString() ?? '').toLowerCase();
+                                  return name.contains(q) || plu.contains(q);
+                                }).toList();
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    Flexible(
+                      child: SizedBox(
+                        height: 280,
+                        child: ListView.builder(
+                          itemCount: filtered.length + 1,
+                          itemBuilder: (context, i) {
+                            if (i == 0) {
+                              return ListTile(
+                                title: const Text('— None —', style: TextStyle(color: AppColors.textSecondary)),
+                                onTap: () {
+                                  setState(() {
+                                    _lineRows[rowIndex].inventoryItemId = null;
+                                    _lineRows[rowIndex].inventoryItemName = null;
+                                  });
+                                  Navigator.pop(ctx);
+                                },
+                              );
+                            }
+                            final p = filtered[i - 1];
+                            final id = p['id'] as String?;
+                            final name = p['name'] as String? ?? '—';
+                            final plu = p['plu_code']?.toString() ?? '';
+                            return ListTile(
+                              title: Text(name),
+                              subtitle: plu.isNotEmpty ? Text('PLU $plu', style: const TextStyle(fontSize: 12)) : null,
+                              onTap: () {
+                                setState(() {
+                                  _lineRows[rowIndex].inventoryItemId = id;
+                                  _lineRows[rowIndex].inventoryItemName = name;
+                                });
+                                Navigator.pop(ctx);
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+              ],
+            );
+          },
+        );
+      },
+    );
+    queryController.dispose();
+  }
+
   double _subtotal() {
     double sum = 0;
     for (final row in _lineRows) {
@@ -126,11 +236,16 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     for (final row in _lineRows) {
       final desc = row.description.text.trim();
       if (desc.isEmpty) continue;
-      items.add({
+      final map = <String, dynamic>{
         'description': desc,
         'quantity': double.tryParse(row.quantity.text) ?? 0,
         'unit_price': double.tryParse(row.unitPrice.text) ?? 0,
-      });
+      };
+      if (row.inventoryItemId != null && row.inventoryItemId!.isNotEmpty) {
+        map['inventory_item_id'] = row.inventoryItemId;
+        if (row.inventoryItemName != null) map['inventory_item_name'] = row.inventoryItemName;
+      }
+      items.add(map);
     }
     return items;
   }
@@ -373,6 +488,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
               const SizedBox(height: 8),
               ...List.generate(_lineRows.length, (i) {
                 final row = _lineRows[i];
+                final isDraft = widget.invoice == null || widget.invoice!.status == SupplierInvoiceStatus.draft;
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
@@ -384,6 +500,28 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
                           decoration: const InputDecoration(labelText: 'Description', isDense: true),
                         ),
                       ),
+                      if (isDraft) ...[
+                        const SizedBox(width: 8),
+                        InkWell(
+                          onTap: () => _showProductPicker(i),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            decoration: BoxDecoration(
+                              border: Border.all(color: AppColors.border),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            width: 140,
+                            child: Text(
+                              row.inventoryItemName ?? '— Product —',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: row.inventoryItemId != null ? AppColors.textPrimary : AppColors.textSecondary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
                       const SizedBox(width: 8),
                       SizedBox(
                         width: 80,

@@ -5,12 +5,26 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/core/models/stock_movement.dart';
+import 'package:admin_app/features/inventory/services/inventory_repository.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+/// Reads a movement field with fallback to metadata (for rows created via recordMovement).
+String _movementVal(Map<String, dynamic> m, String key, [String defaultVal = '']) {
+  final v = m[key];
+  if (v != null) return v.toString();
+  final meta = m['metadata'];
+  if (meta is Map) {
+    final mv = meta[key];
+    if (mv != null) return mv.toString();
+  }
+  return defaultVal;
+}
 
 /// Waste Log — view and record waste/sponsorship stock movements.
 /// 
@@ -58,7 +72,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
           .from('stock_movements')
           .select('''
             id, item_id, movement_type, quantity, unit_type,
-            balance_after, reason, staff_id, photo_url, notes,
+            balance_after, reason, staff_id, photo_url, notes, metadata,
             reference_type, reference_id, created_at,
             inventory_items(plu_code, name, cost_price),
             profiles(full_name)
@@ -205,9 +219,9 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
           'PLU': item?['plu_code']?.toString() ?? '',
           'Product': item?['name']?.toString() ?? '',
           'Type': m['movement_type'] == 'waste' ? 'Waste' : 'Sponsorship',
-          'Reason': m['reason']?.toString() ?? '',
+          'Reason': _movementVal(m, 'reason'),
           'Quantity': qty.toStringAsFixed(2),
-          'Unit': m['unit_type']?.toString() ?? 'kg',
+          'Unit': _movementVal(m, 'unit_type', 'kg'),
           'Est Value (R)': estValue.toStringAsFixed(2),
           'Staff': staff?['full_name']?.toString() ?? '',
           'Notes': m['notes']?.toString() ?? '',
@@ -304,9 +318,9 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
                   item?['name']?.toString() ?? '',
                   m['movement_type'] == 'waste' ? 'W' : 'S',
                   qty.toStringAsFixed(2),
-                  m['unit_type']?.toString() ?? 'kg',
+                  _movementVal(m, 'unit_type', 'kg'),
                   estValue.toStringAsFixed(2),
-                  m['reason']?.toString() ?? '',
+                  _movementVal(m, 'reason'),
                 ];
               }).toList(),
               headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8),
@@ -383,7 +397,8 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
     final costPrice = (item?['cost_price'] as num?)?.toDouble() ?? 0;
     final estValue = qty.abs() * costPrice;
     final type = movement['movement_type'] as String?;
-    final photoUrl = movement['photo_url'] as String?;
+    final photoUrl = (movement['photo_url'] as String?) ?? _movementVal(movement, 'photo_url');
+    final photoUrlOrNull = photoUrl.isEmpty ? null : photoUrl;
 
     showModalBottomSheet(
       context: context,
@@ -422,22 +437,22 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
               _detailRow('Date/Time', DateFormat('dd MMM yyyy HH:mm').format(DateTime.parse(movement['created_at']))),
               _detailRow('Product', '${item?['plu_code'] ?? ''} — ${item?['name'] ?? 'Unknown'}'),
               _detailRow('Type', type == 'waste' ? 'Waste' : 'Sponsorship'),
-              _detailRow('Reason', movement['reason']?.toString() ?? '-'),
-              _detailRow('Quantity', '${qty.toStringAsFixed(2)} ${movement['unit_type'] ?? 'kg'}'),
+              _detailRow('Reason', _movementVal(movement, 'reason', '-')),
+              _detailRow('Quantity', '${qty.toStringAsFixed(2)} ${_movementVal(movement, 'unit_type', 'kg')}'),
               _detailRow('Estimated Value', 'R ${estValue.toStringAsFixed(2)}'),
               _detailRow('Staff', staff?['full_name']?.toString() ?? '-'),
               if (movement['notes'] != null && (movement['notes'] as String).isNotEmpty)
                 _detailRow('Notes', movement['notes'].toString()),
               if (movement['reference_id'] != null)
                 _detailRow('Reference', '${movement['reference_type'] ?? ''}: ${movement['reference_id']}'),
-              if (photoUrl != null && photoUrl.isNotEmpty) ...[
+              if (photoUrlOrNull != null && photoUrlOrNull.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 const Text('Photo:', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                 const SizedBox(height: 8),
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
                   child: Image.network(
-                    photoUrl,
+                    photoUrlOrNull,
                     height: 200,
                     width: double.infinity,
                     fit: BoxFit.cover,
@@ -655,8 +670,8 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
     final estValue = qty.abs() * costPrice;
     final type = movement['movement_type'] as String?;
     final isWaste = type == 'waste';
-    final photoUrl = movement['photo_url'] as String?;
-    final hasPhoto = photoUrl != null && photoUrl.isNotEmpty;
+    final photoUrl = (movement['photo_url'] as String?) ?? _movementVal(movement, 'photo_url');
+    final hasPhoto = photoUrl.isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -688,7 +703,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      movement['reason']?.toString() ?? '-',
+                      _movementVal(movement, 'reason', '-'),
                       style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
                     ),
                   ],
@@ -714,7 +729,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${qty.toStringAsFixed(2)} ${movement['unit_type'] ?? 'kg'}',
+                    '${qty.toStringAsFixed(2)} ${_movementVal(movement, 'unit_type', 'kg')}',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
@@ -756,6 +771,7 @@ class _RecordWasteDialog extends StatefulWidget {
 class _RecordWasteDialogState extends State<_RecordWasteDialog> {
   final _client = SupabaseService.client;
   final _auth = AuthService();
+  final _inventoryRepo = InventoryRepository();
   final _formKey = GlobalKey<FormState>();
 
   List<Map<String, dynamic>> _products = [];
@@ -864,58 +880,57 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
         }
       }
 
-      // Get current balance_after (latest movement for this item)
-      double balanceAfter = 0;
-      try {
-        final latest = await _client
-            .from('stock_movements')
-            .select('balance_after')
-            .eq('item_id', _selectedProduct!['id'])
-            .order('created_at', ascending: false)
-            .limit(1)
-            .maybeSingle();
-        
-        if (latest != null) {
-          balanceAfter = (latest['balance_after'] as num?)?.toDouble() ?? 0;
-        }
-      } catch (e) {
-        debugPrint('Balance fetch error: $e');
+      // STEP 1: Record movement and update current_stock via repository (single source of truth)
+      final movementType = _selectedType == 'Waste' ? MovementType.waste : MovementType.sponsorship;
+      final metadata = <String, dynamic>{
+        'reason': _selectedReason,
+        'unit_type': _selectedProduct!['unit_type'] ?? 'kg',
+      };
+      if (photoUrl != null && photoUrl.isNotEmpty) metadata['photo_url'] = photoUrl;
+
+      final performedBy = _auth.currentStaffId ?? '';
+      if (performedBy.isEmpty) {
+        throw Exception('Staff not identified. Sign in with PIN to record waste.');
       }
 
-      // STEP 1: Insert stock_movements
-      final movementType = _selectedType == 'Waste' ? 'waste' : 'sponsorship';
-      final movementData = {
-        'item_id': _selectedProduct!['id'],
-        'movement_type': movementType,
-        'quantity': -qty, // Always negative
-        'unit_type': _selectedProduct!['unit_type'],
-        'balance_after': balanceAfter - qty,
-        'reason': _selectedReason,
-        'staff_id': _auth.currentStaffId,
-        'photo_url': photoUrl,
-        'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
-        'reference_type': 'manual_waste',
-        'created_at': _selectedDate.toIso8601String(),
-      };
+      final movement = await _inventoryRepo.recordMovement(
+        itemId: _selectedProduct!['id'],
+        movementType: movementType,
+        quantity: qty,
+        referenceType: 'manual_waste',
+        referenceId: null,
+        performedBy: performedBy,
+        notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        metadata: metadata,
+      );
 
-      final result = await _client
-          .from('stock_movements')
-          .insert(movementData)
-          .select()
-          .single();
+      // STEP 2: Get current balance after deduction for shrinkage check
+      double currentBalance = 0;
+      try {
+        final itemRow = await _client
+            .from('inventory_items')
+            .select('current_stock')
+            .eq('id', _selectedProduct!['id'])
+            .maybeSingle();
+        if (itemRow != null) {
+          currentBalance = (itemRow['current_stock'] as num?)?.toDouble() ?? 0;
+        }
+      } catch (e) {
+        debugPrint('Balance fetch for shrinkage: $e');
+      }
 
-      // STEP 2: Check shrinkage threshold (waste only)
-      if (movementType == 'waste') {
+      // STEP 3: Check shrinkage threshold (waste only)
+      if (movementType == MovementType.waste) {
         await _checkShrinkageThreshold(
           productId: _selectedProduct!['id'],
           productName: _selectedProduct!['name'],
           enteredQty: qty,
           reason: _selectedReason!,
-          currentBalance: balanceAfter - qty,
+          currentBalance: currentBalance,
         );
       }
 
-      // STEP 3: Audit log
+      // STEP 4: Audit log (explicit back-office log; recordMovement also logs)
       final costPrice = (_selectedProduct!['cost_price'] as num?)?.toDouble() ?? 0;
       final estValue = qty * costPrice;
       await AuditService.log(
@@ -923,17 +938,17 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
         module: 'Inventory',
         description: '${_selectedType}: ${qty.toStringAsFixed(2)} ${_selectedProduct!['unit_type']} x ${_selectedProduct!['name']} — $_selectedReason',
         entityType: 'StockMovement',
-        entityId: result['id'],
+        entityId: movement.id,
       );
 
-      // STEP 4: Success feedback
+      // STEP 5: Success feedback
       if (mounted) {
         Navigator.pop(context);
         widget.onSaved();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              movementType == 'waste'
+              movementType == MovementType.waste
                   ? 'Waste recorded — R ${estValue.toStringAsFixed(2)} value written off'
                   : 'Sponsorship recorded — R ${estValue.toStringAsFixed(2)} donated',
             ),

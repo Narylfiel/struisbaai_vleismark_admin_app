@@ -116,6 +116,114 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     ).then((_) => _load());
   }
 
+  Future<void> _cancelBatch(ProductionBatch batch) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Cancel batch?'),
+        content: Text(
+          'Cancel ${batch.batchNumber}?\n\n'
+          'All ingredients will be returned to stock.\n'
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep batch'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Cancel batch'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _batchRepo.cancelBatch(
+        batch.id,
+        AuthService().getCurrentStaffId(),
+      );
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Batch cancelled — ingredients returned to stock'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+        );
+      }
+    }
+  }
+
+  Future<void> _deleteBatch(ProductionBatch batch) async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete batch?'),
+        content: Text(
+          'Delete ${batch.batchNumber}?\n\n'
+          'All stock movements will be reversed.\n'
+          'Linked dryer batches will also be deleted.\n'
+          'This cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            child: const Text('Delete + Reverse Stock'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true || !mounted) return;
+    try {
+      await _batchRepo.deleteBatch(batch.id);
+      _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Batch deleted — stock reversed'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    }
+  }
+
+  void _editBatch(ProductionBatch batch) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _EditBatchScreen(
+          batch: batch,
+          batchRepo: _batchRepo,
+          recipeRepo: _recipeRepo,
+        ),
+      ),
+    ).then((edited) { if (edited == true) _load(); });
+  }
+
   Future<void> _confirmDeleteProductionBatch(ProductionBatch batch) async {
     final confirm = await showDialog<bool>(
       context: context,
@@ -182,11 +290,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     bool isChild, {
     ProductionBatch? parentBatch,
   }) {
-    final canComplete = b.status == ProductionBatchStatus.pending ||
-        b.status == ProductionBatchStatus.inProgress;
-    final canSplit = (b.status == ProductionBatchStatus.inProgress || b.status == ProductionBatchStatus.complete) &&
-        b.parentBatchId == null;
-    final recipeName = recipeNameById[b.recipeId] ?? b.recipeId.substring(0, 8);
+    final recipeName = recipeNameById[b.recipeId] ?? (b.recipeId.length >= 8 ? b.recipeId.substring(0, 8) : b.recipeId.isEmpty ? 'No recipe' : b.recipeId);
     final qtyDisplay = b.actualQuantity ?? b.plannedQuantity;
     return Card(
       margin: EdgeInsets.only(bottom: 8, left: isChild ? 20 : 0),
@@ -234,22 +338,48 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (canSplit)
+            // In-progress actions
+            if (b.status == ProductionBatchStatus.inProgress) ...[
               TextButton(
-                onPressed: () => _splitBatch(b),
-                child: const Text('Split batch'),
+                onPressed: () => _editBatch(b),
+                child: const Text('Edit', style: TextStyle(color: AppColors.warning)),
               ),
-            if (canComplete)
               TextButton(
                 onPressed: () => _completeBatch(b),
-                child: const Text('Complete'),
+                child: const Text('Complete', style: TextStyle(color: AppColors.success)),
               ),
-            if (!canComplete && !canSplit)
+              TextButton(
+                onPressed: () => _cancelBatch(b),
+                child: const Text('Cancel', style: TextStyle(color: AppColors.danger)),
+              ),
+            ],
+            // Complete actions
+            if (b.status == ProductionBatchStatus.complete) ...[
+              if (!b.isSplitParent)
+                TextButton(
+                  onPressed: () => _splitBatch(b),
+                  child: const Text('Split', style: TextStyle(color: AppColors.primary)),
+                ),
+              TextButton(
+                onPressed: () => _editBatch(b),
+                child: const Text('Edit', style: TextStyle(color: AppColors.warning)),
+              ),
+              TextButton(
+                onPressed: () => _deleteBatch(b),
+                child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+              ),
+            ],
+            // Cancelled actions
+            if (b.status == ProductionBatchStatus.cancelled)
+              TextButton(
+                onPressed: () => _deleteBatch(b),
+                child: const Text('Delete', style: TextStyle(color: AppColors.danger)),
+              ),
+            // Pending - show chip only
+            if (b.status == ProductionBatchStatus.pending)
               Chip(
                 label: Text(b.status.displayLabel),
-                backgroundColor: b.status == ProductionBatchStatus.complete
-                    ? AppColors.success
-                    : AppColors.textSecondary,
+                backgroundColor: AppColors.warning,
               ),
           ],
         ),
@@ -394,7 +524,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Batch started'), backgroundColor: AppColors.success),
+          const SnackBar(content: Text('Batch started — ingredients deducted from stock'), backgroundColor: AppColors.success),
         );
         widget.onDone();
       }
@@ -431,7 +561,8 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
             TextFormField(
               controller: _plannedQtyController,
               decoration: const InputDecoration(
-                labelText: 'Planned quantity (e.g. 10 kg batch)',
+                labelText: 'Batch size (kg)',
+                helperText: 'Ingredients deducted immediately on start',
                 border: OutlineInputBorder(),
               ),
               keyboardType: TextInputType.number,
@@ -447,7 +578,11 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
         ElevatedButton(
           onPressed: _loading ? null : _start,
-          child: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Start batch'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+          ),
+          child: _loading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) : const Text('Start — deducts ingredients now'),
         ),
       ],
     );
@@ -615,6 +750,7 @@ class _SplitBatchDialogState extends State<_SplitBatchDialog> {
       await widget.batchRepo.splitBatch(
         parentBatchId: widget.parentBatch.id,
         splits: splits,
+        performedBy: AuthService().getCurrentStaffId(),
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -808,6 +944,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
   bool _loading = true;
   bool _saving = false;
   String? _error;
+  Recipe? _recipe;
 
   @override
   void initState() {
@@ -864,16 +1001,10 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
 
       // Load recipe prep time and required role
       try {
-        final recipeRow = await _client
-            .from('recipes')
-            .select('prep_time_minutes, required_role')
-            .eq('id', widget.batch.recipeId)
-            .maybeSingle();
-        if (recipeRow != null) {
-          _recipePrepTimeMinutes =
-              (recipeRow['prep_time_minutes'] as num?)?.toInt() ?? 0;
-          _recipeRequiredRole =
-              recipeRow['required_role'] as String? ?? 'butchery_assistant';
+        _recipe = await widget.recipeRepo.getRecipe(widget.batch.recipeId);
+        if (_recipe != null) {
+          _recipePrepTimeMinutes = _recipe!.prepTimeMinutes ?? 0;
+          _recipeRequiredRole = _recipe!.requiredRole ?? 'butchery_assistant';
         }
       } catch (_) {}
 
@@ -894,7 +1025,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
       } catch (_) {}
       final inv = await _client
           .from('inventory_items')
-          .select('id, name, unit_type')
+          .select('id, name, unit_type, plu_code')
           .eq('is_active', true)
           .order('name');
       final invList = List<Map<String, dynamic>>.from(inv as List);
@@ -971,12 +1102,6 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
 
   Widget _buildOutputRow(int index) {
     final row = _outputRows[index];
-    Map<String, dynamic>? selectedItem;
-    if (row.inventoryItemId != null) {
-      try {
-        selectedItem = _inventoryItems.firstWhere((m) => m['id']?.toString() == row.inventoryItemId);
-      } catch (_) {}
-    }
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Card(
@@ -988,28 +1113,79 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
               Row(
                 children: [
                   Expanded(
-                    child: DropdownButtonFormField<Map<String, dynamic>>(
-                      value: selectedItem,
-                      decoration: const InputDecoration(
-                        labelText: 'Product',
-                        border: OutlineInputBorder(),
-                        isDense: true,
-                      ),
-                      items: [
-                        const DropdownMenuItem<Map<String, dynamic>>(
-                          value: null,
-                          child: Text('— Select product —'),
-                        ),
-                        ..._inventoryItems.map((m) => DropdownMenuItem<Map<String, dynamic>>(
-                              value: m,
-                              child: Text(m['name']?.toString() ?? ''),
-                            )),
-                      ],
-                      onChanged: (v) {
+                    child: Autocomplete<Map<String, dynamic>>(
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        if (textEditingValue.text.isEmpty) {
+                          return _inventoryItems.take(50);
+                        }
+                        final query = textEditingValue.text.toLowerCase();
+                        return _inventoryItems.where((m) {
+                          final name = (m['name'] as String? ?? '').toLowerCase();
+                          final plu = (m['plu_code']?.toString() ?? '').toLowerCase();
+                          return name.contains(query) || plu.contains(query);
+                        }).take(50);
+                      },
+                      displayStringForOption: (m) {
+                        final name = m['name'] as String? ?? '';
+                        final plu = m['plu_code']?.toString() ?? '';
+                        return plu.isNotEmpty ? '$name (PLU: $plu)' : name;
+                      },
+                      onSelected: (m) {
                         setState(() {
-                          row.inventoryItemId = v?['id']?.toString();
-                          row.unit = v?['unit_type']?.toString() ?? 'kg';
+                          row.inventoryItemId = m['id']?.toString();
+                          row.unit = m['unit_type']?.toString() ?? 'kg';
                         });
+                      },
+                      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+                        // Pre-fill if item already selected
+                        if (row.inventoryItemId != null && controller.text.isEmpty) {
+                          try {
+                            final existing = _inventoryItems.firstWhere(
+                              (m) => m['id']?.toString() == row.inventoryItemId,
+                            );
+                            final name = existing['name'] as String? ?? '';
+                            final plu = existing['plu_code']?.toString() ?? '';
+                            controller.text = plu.isNotEmpty ? '$name (PLU: $plu)' : name;
+                          } catch (_) {}
+                        }
+                        return TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Product (type to search)',
+                            hintText: 'Search by name or PLU...',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            suffixIcon: Icon(Icons.search, size: 18),
+                          ),
+                        );
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4,
+                            child: SizedBox(
+                              width: 400,
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (_, i) {
+                                  final m = options.elementAt(i);
+                                  final name = m['name'] as String? ?? '';
+                                  final plu = m['plu_code']?.toString() ?? '';
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(name),
+                                    subtitle: plu.isNotEmpty ? Text('PLU: $plu') : null,
+                                    onTap: () => onSelected(m),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),
@@ -1097,8 +1273,16 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
         costTotal: costTotal,
       );
       if (mounted) {
+        final dryerAutoCreated = _recipe?.goesToDryer == true && 
+                                 _recipe?.dryerOutputProductId != null && 
+                                 _recipe!.dryerOutputProductId!.isNotEmpty;
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Batch complete — ingredients deducted, output added'), backgroundColor: AppColors.success),
+          SnackBar(
+            content: Text(dryerAutoCreated 
+                ? 'Batch complete — dryer batch auto-created' 
+                : 'Batch complete — output added to inventory'),
+            backgroundColor: AppColors.success,
+          ),
         );
         Navigator.pop(context, true);
       }
@@ -1134,7 +1318,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
             const SizedBox(height: 8),
             ..._batchIngredients.map((bi) {
               final ri = _ingredientById[bi.ingredientId];
-              final name = ri?.ingredientName ?? bi.ingredientId.substring(0, 8);
+              final name = ri?.ingredientName ?? (bi.ingredientId.length >= 8 ? bi.ingredientId.substring(0, 8) : bi.ingredientId);
               final ctrl = _actualControllers[bi.ingredientId];
               // C1: Show current_stock available for linked inventory item (single source of truth).
               final available = ri?.inventoryItemId != null
@@ -1283,6 +1467,593 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
                 child: _saving
                     ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                     : const Text('Complete batch (deduct ingredients, add output)'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Edit Batch Screen - reuses Complete Batch layout but calls editBatch() instead
+class _EditBatchScreen extends StatefulWidget {
+  final ProductionBatch batch;
+  final ProductionBatchRepository batchRepo;
+  final RecipeRepository recipeRepo;
+
+  const _EditBatchScreen({
+    required this.batch,
+    required this.batchRepo,
+    required this.recipeRepo,
+  });
+
+  @override
+  State<_EditBatchScreen> createState() => _EditBatchScreenState();
+}
+
+class _EditBatchScreenState extends State<_EditBatchScreen> {
+  final _client = SupabaseService.client;
+  final _costTotalController = TextEditingController();
+  List<_OutputRow> _outputRows = [];
+  Map<String, TextEditingController> _actualControllers = {};
+  List<ProductionBatchIngredient> _batchIngredients = [];
+  Map<String, RecipeIngredient> _ingredientById = {};
+  List<Map<String, dynamic>> _inventoryItems = [];
+  Map<String, double> _availableStockByItemId = {};
+  double _calculatedIngredientCost = 0.0;
+  double _calculatedLabourCost = 0.0;
+  double _calculatedTotalCost = 0.0;
+  int _recipePrepTimeMinutes = 0;
+  String _recipeRequiredRole = 'butchery_assistant';
+  double _labourRatePerHour = 28.79;
+  Map<String, double> _ingredientCostPrices = {};
+  bool _costCalculated = false;
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+  Recipe? _recipe;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final batchIng = await widget.batchRepo.getBatchIngredients(widget.batch.id);
+      for (final bi in batchIng) {
+        final ri = await widget.recipeRepo.getIngredient(bi.ingredientId);
+        if (ri != null) _ingredientById[bi.ingredientId] = ri;
+        // Load actual or planned quantity
+        final qty = bi.actualQuantity ?? bi.plannedQuantity;
+        _actualControllers[bi.ingredientId] = TextEditingController(text: qty.toString());
+      }
+      final itemIds = _ingredientById.values
+          .map((ri) => ri.inventoryItemId)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+      if (itemIds.isNotEmpty) {
+        final rows = await _client
+            .from('inventory_items')
+            .select('id, current_stock')
+            .inFilter('id', itemIds);
+        final map = <String, double>{};
+        for (final row in rows as List) {
+          final id = (row as Map)['id']?.toString();
+          if (id != null) {
+            map[id] = (row['current_stock'] as num?)?.toDouble() ?? 0;
+          }
+        }
+        if (mounted) _availableStockByItemId = map;
+      }
+      // Load cost prices
+      final costItemIds = _ingredientById.values
+          .map((ri) => ri.inventoryItemId)
+          .where((id) => id != null && id.isNotEmpty)
+          .cast<String>()
+          .toSet()
+          .toList();
+      if (costItemIds.isNotEmpty) {
+        final costRows = await _client
+            .from('inventory_items')
+            .select('id, cost_price')
+            .inFilter('id', costItemIds);
+        for (final row in costRows as List) {
+          final id = (row as Map)['id']?.toString();
+          final price = (row['cost_price'] as num?)?.toDouble() ?? 0.0;
+          if (id != null) _ingredientCostPrices[id] = price;
+        }
+      }
+
+      // Load recipe
+      try {
+        _recipe = await widget.recipeRepo.getRecipe(widget.batch.recipeId);
+        if (_recipe != null) {
+          _recipePrepTimeMinutes = _recipe!.prepTimeMinutes ?? 0;
+          _recipeRequiredRole = _recipe!.requiredRole ?? 'butchery_assistant';
+        }
+      } catch (_) {}
+
+      // Load labour rate
+      try {
+        final staffRows = await _client
+            .from('staff_profiles')
+            .select('hourly_rate')
+            .eq('role', _recipeRequiredRole)
+            .eq('is_active', true);
+        final rates = (staffRows as List)
+            .map((r) => (r['hourly_rate'] as num?)?.toDouble() ?? 0.0)
+            .where((r) => r > 0)
+            .toList();
+        if (rates.isNotEmpty) {
+          _labourRatePerHour = rates.reduce((a, b) => a + b) / rates.length;
+        }
+      } catch (_) {}
+
+      final inv = await _client
+          .from('inventory_items')
+          .select('id, name, unit_type, plu_code')
+          .eq('is_active', true)
+          .order('name');
+      final invList = List<Map<String, dynamic>>.from(inv as List);
+
+      // Load existing outputs if batch is complete
+      if (widget.batch.status == ProductionBatchStatus.complete) {
+        final outputs = await _client
+            .from('production_batch_outputs')
+            .select()
+            .eq('batch_id', widget.batch.id);
+        for (final out in outputs as List) {
+          final row = _OutputRow();
+          row.inventoryItemId = out['inventory_item_id'] as String?;
+          row.qtyController.text = ((out['qty_produced'] as num?)?.toDouble() ?? 0).toString();
+          row.unit = out['unit'] as String? ?? 'kg';
+          row.notesController.text = out['notes'] as String? ?? '';
+          _outputRows.add(row);
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _batchIngredients = batchIng;
+          _inventoryItems = invList;
+          if (_outputRows.isEmpty) {
+            _outputRows.add(_OutputRow());
+          }
+          _loading = false;
+        });
+        _calculateCost();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
+    }
+  }
+
+  void _calculateCost() {
+    double ingredientTotal = 0.0;
+    for (final bi in _batchIngredients) {
+      final ri = _ingredientById[bi.ingredientId];
+      if (ri?.inventoryItemId == null) continue;
+      final actualQty = double.tryParse(
+        _actualControllers[bi.ingredientId]?.text ?? '',
+      ) ?? bi.plannedQuantity;
+      final costPrice =
+          _ingredientCostPrices[ri!.inventoryItemId] ?? 0.0;
+      ingredientTotal += actualQty * costPrice;
+    }
+    final labourHours = _recipePrepTimeMinutes / 60.0;
+    final labourCost = labourHours * _labourRatePerHour;
+    final total = ingredientTotal + labourCost;
+    setState(() {
+      _calculatedIngredientCost = ingredientTotal;
+      _calculatedLabourCost = labourCost;
+      _calculatedTotalCost = total;
+      _costCalculated = true;
+      _costTotalController.text = total.toStringAsFixed(2);
+    });
+  }
+
+  @override
+  void dispose() {
+    _costTotalController.dispose();
+    for (final row in _outputRows) {
+      row.qtyController.dispose();
+      row.notesController.dispose();
+    }
+    for (final c in _actualControllers.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  void _addOutputRow() {
+    setState(() => _outputRows.add(_OutputRow()));
+  }
+
+  void _removeOutputRow(int index) {
+    if (_outputRows.length <= 1) return;
+    setState(() {
+      _outputRows[index].qtyController.dispose();
+      _outputRows[index].notesController.dispose();
+      _outputRows.removeAt(index);
+    });
+  }
+
+  Widget _buildOutputRow(int index) {
+    final row = _outputRows[index];
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Autocomplete<Map<String, dynamic>>(
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        if (textEditingValue.text.isEmpty) {
+                          return _inventoryItems.take(50);
+                        }
+                        final query = textEditingValue.text.toLowerCase();
+                        return _inventoryItems.where((m) {
+                          final name = (m['name'] as String? ?? '').toLowerCase();
+                          final plu = (m['plu_code']?.toString() ?? '').toLowerCase();
+                          return name.contains(query) || plu.contains(query);
+                        }).take(50);
+                      },
+                      displayStringForOption: (m) {
+                        final name = m['name'] as String? ?? '';
+                        final plu = m['plu_code']?.toString() ?? '';
+                        return plu.isNotEmpty ? '$name (PLU: $plu)' : name;
+                      },
+                      onSelected: (m) {
+                        setState(() {
+                          row.inventoryItemId = m['id']?.toString();
+                          row.unit = m['unit_type']?.toString() ?? 'kg';
+                        });
+                      },
+                      fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+                        if (row.inventoryItemId != null && controller.text.isEmpty) {
+                          try {
+                            final existing = _inventoryItems.firstWhere(
+                              (m) => m['id']?.toString() == row.inventoryItemId,
+                            );
+                            final name = existing['name'] as String? ?? '';
+                            final plu = existing['plu_code']?.toString() ?? '';
+                            controller.text = plu.isNotEmpty ? '$name (PLU: $plu)' : name;
+                          } catch (_) {}
+                        }
+                        return TextFormField(
+                          controller: controller,
+                          focusNode: focusNode,
+                          decoration: const InputDecoration(
+                            labelText: 'Product (type to search)',
+                            hintText: 'Search by name or PLU...',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                            suffixIcon: Icon(Icons.search, size: 18),
+                          ),
+                        );
+                      },
+                      optionsViewBuilder: (context, onSelected, options) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4,
+                            child: SizedBox(
+                              width: 400,
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (_, i) {
+                                  final m = options.elementAt(i);
+                                  final name = m['name'] as String? ?? '';
+                                  final plu = m['plu_code']?.toString() ?? '';
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(name),
+                                    subtitle: plu.isNotEmpty ? Text('PLU: $plu') : null,
+                                    onTap: () => onSelected(m),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  if (_outputRows.length > 1)
+                    IconButton(
+                      onPressed: () => _removeOutputRow(index),
+                      icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger, size: 22),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  SizedBox(
+                    width: 120,
+                    child: TextFormField(
+                      controller: row.qtyController,
+                      decoration: const InputDecoration(
+                        labelText: 'Qty produced',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: AppColors.border),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(row.unit, style: const TextStyle(fontSize: 14)),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: row.notesController,
+                decoration: const InputDecoration(
+                  labelText: 'Notes (optional)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final outputs = <Map<String, dynamic>>[];
+    // Only validate outputs if batch is complete
+    if (widget.batch.status == ProductionBatchStatus.complete) {
+      for (final row in _outputRows) {
+        if (row.inventoryItemId == null || row.inventoryItemId!.isEmpty) continue;
+        final qty = double.tryParse(row.qtyController.text);
+        if (qty == null || qty <= 0) continue;
+        outputs.add({
+          'inventory_item_id': row.inventoryItemId,
+          'qty_produced': qty,
+          'unit': row.unit,
+          'notes': row.notesController.text.trim().isEmpty ? null : row.notesController.text.trim(),
+        });
+      }
+      if (outputs.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Add at least one output product with quantity'), backgroundColor: AppColors.danger),
+        );
+        return;
+      }
+    }
+
+    final actuals = <String, double>{};
+    for (final entry in _actualControllers.entries) {
+      final v = double.tryParse(entry.value.text);
+      if (v != null && v >= 0) actuals[entry.key] = v;
+    }
+    final costTotal = double.tryParse(_costTotalController.text);
+    setState(() => _saving = true);
+    try {
+      await widget.batchRepo.editBatch(
+        batchId: widget.batch.id,
+        newIngredientQtys: actuals,
+        newOutputs: outputs,
+        editedBy: AuthService().getCurrentStaffId(),
+        costTotal: costTotal,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Batch updated — stock adjusted'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+        );
+        setState(() => _saving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Edit batch ${widget.batch.batchNumber}'),
+        backgroundColor: AppColors.warning,
+        foregroundColor: Colors.white,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Ingredient quantities', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            const SizedBox(height: 8),
+            ..._batchIngredients.map((bi) {
+              final ri = _ingredientById[bi.ingredientId];
+              final name = ri?.ingredientName ?? (bi.ingredientId.length >= 8 ? bi.ingredientId.substring(0, 8) : bi.ingredientId);
+              final ctrl = _actualControllers[bi.ingredientId];
+              final available = ri?.inventoryItemId != null
+                  ? _availableStockByItemId[ri!.inventoryItemId]
+                  : null;
+              final availableStr = available != null
+                  ? '${available.toStringAsFixed(1)} kg available'
+                  : '—';
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(name)),
+                    SizedBox(
+                      width: 100,
+                      child: TextFormField(
+                        controller: ctrl,
+                        decoration: const InputDecoration(labelText: 'Quantity', isDense: true),
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        onChanged: (_) => _calculateCost(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text('(${bi.plannedQuantity.toStringAsFixed(1)} planned)', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                    const SizedBox(width: 8),
+                    Text(availableStr, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                ),
+              );
+            }),
+            if (widget.batch.status == ProductionBatchStatus.complete) ...[
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  const Text('Outputs', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                  const SizedBox(width: 16),
+                  IconButton(
+                    onPressed: _addOutputRow,
+                    icon: const Icon(Icons.add_circle_outline, color: AppColors.primary),
+                    tooltip: 'Add output row',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              ...List.generate(_outputRows.length, (i) => _buildOutputRow(i)),
+            ],
+            const SizedBox(height: 16),
+            if (_costCalculated) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.primary.withOpacity(0.2)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'AUTO-CALCULATED COST',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textSecondary,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Ingredients:', style: TextStyle(fontSize: 13)),
+                        Text('R${_calculatedIngredientCost.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'Labour (${_recipePrepTimeMinutes}min × '
+                            'R${_labourRatePerHour.toStringAsFixed(2)}/hr '
+                            '[${AdminConfig.roleDisplayLabel(_recipeRequiredRole)}]):',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        Text('R${_calculatedLabourCost.toStringAsFixed(2)}',
+                            style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total:',
+                            style: TextStyle(fontWeight: FontWeight.w600)),
+                        Text(
+                          'R${_calculatedTotalCost.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.primary,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Override below if needed',
+                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            TextFormField(
+              controller: _costTotalController,
+              decoration: InputDecoration(
+                labelText: _costCalculated
+                    ? 'Override total cost (optional)'
+                    : 'Total cost (optional)',
+                hintText: 'e.g. 1250.00',
+                border: const OutlineInputBorder(),
+                suffixIcon: _costCalculated
+                    ? IconButton(
+                        icon: const Icon(Icons.refresh, size: 18),
+                        tooltip: 'Reset to calculated',
+                        onPressed: () => setState(() =>
+                            _costTotalController.text =
+                                _calculatedTotalCost.toStringAsFixed(2)),
+                      )
+                    : null,
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 24),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _saving ? null : _save,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.warning,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                ),
+                child: _saving
+                    ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                    : const Text('Save changes (adjust stock)'),
               ),
             ),
           ],

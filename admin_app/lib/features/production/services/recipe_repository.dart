@@ -57,9 +57,47 @@ class RecipeRepository {
     return Recipe.fromJson(response as Map<String, dynamic>);
   }
 
-  /// Soft delete: set is_active = false (recipes table has is_active).
   Future<void> deleteRecipe(String id) async {
-    await _client.from('recipes').update({'is_active': false}).eq('id', id);
+    // 1. Find all recipe_ingredient ids
+    final ingRows = await _client
+        .from('recipe_ingredients')
+        .select('id')
+        .eq('recipe_id', id);
+    final ingIds = (ingRows as List)
+        .map((r) => r['id'] as String)
+        .toList();
+
+    // 2. Delete production_batch_ingredients referencing these ingredient ids
+    if (ingIds.isNotEmpty) {
+      await _client
+          .from('production_batch_ingredients')
+          .delete()
+          .inFilter('ingredient_id', ingIds);
+    }
+
+    // 3. Null out recipe_id on dryer_batches (preserve dryer history)
+    await _client
+        .from('dryer_batches')
+        .update({'recipe_id': null})
+        .eq('recipe_id', id);
+
+    // 4. Null out recipe_id on production_batches (preserve batch history)
+    await _client
+        .from('production_batches')
+        .update({'recipe_id': null})
+        .eq('recipe_id', id);
+
+    // 5. Delete recipe_ingredients
+    await _client
+        .from('recipe_ingredients')
+        .delete()
+        .eq('recipe_id', id);
+
+    // 6. Delete recipe
+    await _client
+        .from('recipes')
+        .delete()
+        .eq('id', id);
   }
 
   Future<List<RecipeIngredient>> getIngredientsByRecipe(String recipeId) async {

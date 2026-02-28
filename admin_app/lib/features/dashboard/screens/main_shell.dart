@@ -4,6 +4,7 @@ import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
+import 'package:admin_app/core/widgets/session_scope.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:admin_app/features/inventory/screens/inventory_navigation_screen.dart';
@@ -19,6 +20,8 @@ import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
 import 'package:admin_app/features/customers/screens/customer_list_screen.dart';
 import 'package:admin_app/features/audit/screens/audit_log_screen.dart';
 import 'package:admin_app/features/settings/screens/business_settings_screen.dart';
+import 'package:admin_app/features/transactions/screens/transaction_list_screen.dart';
+import 'package:admin_app/features/transactions/screens/till_session_list_screen.dart';
 
 class MainShell extends StatefulWidget {
   final String staffId;
@@ -72,6 +75,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           label: 'Dashboard',
           screen: const DashboardScreen(),
           locked: false,
+        ),
+        _NavItem(
+          icon: Icons.receipt_long,
+          label: 'Transactions',
+          screen: const TransactionListScreen(),
+          locked: !ps.can(Permissions.manageInventory),
+        ),
+        _NavItem(
+          icon: Icons.point_of_sale,
+          label: 'Till Sessions',
+          screen: const TillSessionListScreen(),
+          locked: !ps.can(Permissions.manageInventory),
         ),
         _NavItem(
           icon: Icons.inventory_2,
@@ -354,43 +369,77 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
           // Main content
           Expanded(
-            child: Column(
-              children: [
-                // Top bar
-                Container(
-                  height: 52,
-                  color: AppColors.cardBg,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Row(
-                    children: [
-                      Text(
-                        items[selected].label,
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
+            child: StreamBuilder<bool>(
+              stream: SessionScope.connectivity(context).connectionStatus,
+              initialData: SessionScope.connectivity(context).isConnected,
+              builder: (context, snapshot) {
+                final isConnected = snapshot.data ?? true;
+                // Pending sync count will be wired in Step 5 (OfflineQueueService)
+                const pendingSyncCount = 0;
+                return Column(
+                  children: [
+                    // Top bar
+                    Container(
+                      height: 52,
+                      color: AppColors.cardBg,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Row(
+                        children: [
+                          Text(
+                            items[selected].label,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          const Spacer(),
+                          Text(
+                            _formattedDate(),
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    // Offline banner
+                    if (!isConnected)
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 10),
+                        color: Colors.amber.shade700,
+                        child: Row(
+                          children: [
+                            Icon(Icons.cloud_off,
+                                size: 20, color: Colors.amber.shade100),
+                            const SizedBox(width: 10),
+                            Text(
+                              pendingSyncCount > 0
+                                  ? 'No internet — $pendingSyncCount actions pending sync'
+                                  : 'No internet — viewing cached data',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.amber.shade100,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                      const Spacer(),
-                      Text(
-                        _formattedDate(),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(height: 1, color: AppColors.border),
+                    const Divider(height: 1, color: AppColors.border),
 
-                // Screen content — protected
-                Expanded(
-                  child: items[selected].locked
-                      ? _buildAccessDenied(items[selected].label)
-                      : items[selected].screen,
-                ),
-              ],
+                    // Screen content — protected
+                    Expanded(
+                      child: items[selected].locked
+                          ? _buildAccessDenied(items[selected].label)
+                          : items[selected].screen,
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ],

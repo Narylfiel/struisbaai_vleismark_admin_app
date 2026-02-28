@@ -311,6 +311,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     MapEntry('draft', 'Draft'),
     MapEntry('pending_review', 'Pending Review'),
     MapEntry('approved', 'Approved'),
+    MapEntry('received', 'Received'),
     MapEntry('paid', 'Paid'),
     MapEntry('overdue', 'Overdue'),
     MapEntry('cancelled', 'Cancelled'),
@@ -601,6 +602,38 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     }
   }
 
+  Future<void> _receiveGoods(SupplierInvoice inv) async {
+    final userId = AuthService().getCurrentStaffId();
+    if (userId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in with PIN to receive goods'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    try {
+      final result = await _repo.receive(inv.id, userId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result.itemsReceived > 0
+                  ? 'Stock updated for ${result.itemsReceived} item(s)'
+                  : 'No stock movements created — no products linked',
+            ),
+            backgroundColor: result.itemsReceived > 0 ? AppColors.success : AppColors.warning,
+          ),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Receive failed: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -689,11 +722,16 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                                 const SizedBox(width: 16),
                                 SizedBox(width: 100, child: Text('R ${inv.total.toStringAsFixed(2)}')),
                                 const SizedBox(width: 16),
-                                SizedBox(width: 120, child: Text(inv.status.displayLabel, style: TextStyle(color: inv.canApprove ? AppColors.warning : AppColors.textSecondary))),
+                                SizedBox(width: 120, child: Text(inv.status.displayLabel, style: TextStyle(color: inv.canApprove ? AppColors.warning : (inv.canReceive ? AppColors.info : AppColors.textSecondary)))),
                                 if (inv.canApprove)
                                   TextButton(
                                     onPressed: () => _approve(inv),
                                     child: const Text('Approve'),
+                                  ),
+                                if (inv.canReceive)
+                                  TextButton(
+                                    onPressed: () => _receiveGoods(inv),
+                                    child: const Text('Receive goods'),
                                   ),
                               ],
                             ),

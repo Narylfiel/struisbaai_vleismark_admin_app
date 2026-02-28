@@ -106,6 +106,8 @@ class DryerBatch extends BaseModel {
   /// Blueprint: Finished product (e.g. biltong PLU)
   final String? outputProductId;
   final String? recipeId;
+  /// Link to the production batch that created this dryer batch (auto-created batches)
+  final String? productionBatchId;
   /// Set on create (loaded into dryer).
   final DateTime? loadedAt;
   /// Read only from DB (computed from loaded_at/completed_at).
@@ -132,6 +134,7 @@ class DryerBatch extends BaseModel {
     this.inputProductId,
     this.outputProductId,
     this.recipeId,
+    this.productionBatchId,
     this.loadedAt,
     this.dryingHours,
     this.kwhPerHour,
@@ -168,6 +171,7 @@ class DryerBatch extends BaseModel {
       'input_product_id': inputProductId,
       'output_product_id': outputProductId,
       'recipe_id': recipeId,
+      if (productionBatchId != null) 'production_batch_id': productionBatchId,
       'loaded_at': loadedAt?.toIso8601String(),
       'kwh_per_hour': kwhPerHour,
       'electricity_cost': electricityCost,
@@ -195,6 +199,7 @@ class DryerBatch extends BaseModel {
       inputProductId: json['input_product_id'] as String?,
       outputProductId: json['output_product_id'] as String?,
       recipeId: json['recipe_id'] as String?,
+      productionBatchId: json['production_batch_id'] as String?,
       loadedAt: _parseDateTime(json['loaded_at']) ?? _parseDateTime(json['started_at']),
       dryingHours: (json['drying_hours'] as num?)?.toDouble(),
       kwhPerHour: (json['kwh_per_hour'] as num?)?.toDouble(),

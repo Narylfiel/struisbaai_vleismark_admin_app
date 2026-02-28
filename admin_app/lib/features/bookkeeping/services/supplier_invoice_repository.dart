@@ -1,13 +1,22 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/models/stock_movement.dart';
+import 'package:admin_app/features/inventory/services/inventory_repository.dart';
 import '../models/supplier_invoice.dart';
 import 'ledger_repository.dart';
+
+/// Result of receive(): how many line items had stock movements created.
+class ReceiveResult {
+  final int itemsReceived;
+  ReceiveResult({required this.itemsReceived});
+}
 
 /// Supplier invoices — table supplier_invoices only.
 class SupplierInvoiceRepository {
   final SupabaseClient _client;
   final LedgerRepository _ledgerRepo;
+  final InventoryRepository _inventoryRepo;
 
   static const String _coaPurchases = '5000';
   static const String _coaPurchasesName = 'Meat Purchases';
@@ -17,8 +26,10 @@ class SupplierInvoiceRepository {
   SupplierInvoiceRepository({
     SupabaseClient? client,
     LedgerRepository? ledgerRepo,
+    InventoryRepository? inventoryRepo,
   })  : _client = client ?? SupabaseService.client,
-        _ledgerRepo = ledgerRepo ?? LedgerRepository(client: client);
+        _ledgerRepo = ledgerRepo ?? LedgerRepository(client: client),
+        _inventoryRepo = inventoryRepo ?? InventoryRepository(client: client);
 
   Future<List<SupplierInvoice>> getAll({String? status}) async {
     var q = _client.from('supplier_invoices').select('*, suppliers(id, name)');
@@ -218,5 +229,54 @@ class SupplierInvoiceRepository {
       entityType: 'SupplierInvoice',
       entityId: invoiceId,
     );
+  }
+
+  /// Mark invoice as received: create stock movements for lines with inventory_item_id, then set status to received.
+  /// Only allowed when status is approved. Once received cannot receive again.
+  /// Returns number of line items that had stock movements (0 if none linked).
+  Future<ReceiveResult> receive(String invoiceId, String receivedBy) async {
+    final invoice = await getById(invoiceId);
+    if (invoice == null) throw ArgumentError('Invoice not found');
+    if (!invoice.canReceive) {
+      throw StateError('Invoice cannot be received (status: ${invoice.status.dbValue}). Only approved invoices can be marked received.');
+    }
+    int itemsReceived = 0;
+    for (final line in invoice.lineItems) {
+      final itemId = line['inventory_item_id']?.toString();
+      if (itemId == null || itemId.isEmpty) continue;
+      final quantity = (line['quantity'] as num?)?.toDouble() ?? 0;
+      if (quantity <= 0) continue;
+      final unitPrice = (line['unit_price'] as num?)?.toDouble();
+      await _inventoryRepo.recordMovement(
+        itemId: itemId,
+        movementType: MovementType.in_,
+        quantity: quantity,
+        unitCost: unitPrice,
+        referenceType: 'supplier_invoice',
+        referenceId: invoiceId,
+        performedBy: receivedBy,
+        notes: 'Supplier invoice ${invoice.invoiceNumber}',
+        metadata: {'invoice_number': invoice.invoiceNumber},
+      );
+      itemsReceived++;
+    }
+    final now = DateTime.now().toUtc().toIso8601String();
+    await _client
+        .from('supplier_invoices')
+        .update({
+          'status': SupplierInvoiceStatus.received.dbValue,
+          'received_at': now,
+          'received_by': receivedBy,
+          'updated_at': now,
+        })
+        .eq('id', invoiceId);
+    await AuditService.log(
+      action: 'RECEIVE',
+      module: 'Bookkeeping',
+      description: 'Supplier invoice received: ${invoice.invoiceNumber}${itemsReceived > 0 ? ' — $itemsReceived product(s) added to stock' : ' — no products linked'}',
+      entityType: 'SupplierInvoice',
+      entityId: invoiceId,
+    );
+    return ReceiveResult(itemsReceived: itemsReceived);
   }
 }

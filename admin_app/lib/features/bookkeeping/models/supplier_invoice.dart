@@ -1,7 +1,7 @@
 import '../../../core/models/base_model.dart';
 
 /// Supplier invoice — table supplier_invoices.
-/// Status CHECK: draft, pending_review, approved, paid, overdue, cancelled (no sent).
+/// Status CHECK: draft, pending_review, approved, paid, overdue, cancelled, received.
 enum SupplierInvoiceStatus {
   draft,
   pendingReview,
@@ -9,6 +9,7 @@ enum SupplierInvoiceStatus {
   paid,
   overdue,
   cancelled,
+  received,
 }
 
 extension SupplierInvoiceStatusExt on SupplierInvoiceStatus {
@@ -26,6 +27,8 @@ extension SupplierInvoiceStatusExt on SupplierInvoiceStatus {
         return 'overdue';
       case SupplierInvoiceStatus.cancelled:
         return 'cancelled';
+      case SupplierInvoiceStatus.received:
+        return 'received';
     }
   }
 
@@ -43,6 +46,8 @@ extension SupplierInvoiceStatusExt on SupplierInvoiceStatus {
         return 'Overdue';
       case SupplierInvoiceStatus.cancelled:
         return 'Cancelled';
+      case SupplierInvoiceStatus.received:
+        return 'Received';
     }
   }
 
@@ -58,6 +63,8 @@ extension SupplierInvoiceStatusExt on SupplierInvoiceStatus {
         return SupplierInvoiceStatus.overdue;
       case 'cancelled':
         return SupplierInvoiceStatus.cancelled;
+      case 'received':
+        return SupplierInvoiceStatus.received;
       default:
         return SupplierInvoiceStatus.draft;
     }
@@ -79,6 +86,8 @@ class SupplierInvoice extends BaseModel {
   final String? notes;
   final String? createdBy;
   final String? supplierName;
+  final DateTime? receivedAt;
+  final String? receivedBy;
 
   const SupplierInvoice({
     required super.id,
@@ -96,6 +105,8 @@ class SupplierInvoice extends BaseModel {
     this.notes,
     this.createdBy,
     this.supplierName,
+    this.receivedAt,
+    this.receivedBy,
     super.createdAt,
     super.updatedAt,
   });
@@ -117,6 +128,8 @@ class SupplierInvoice extends BaseModel {
       'payment_date': paymentDate?.toIso8601String().substring(0, 10),
       'notes': notes,
       'created_by': createdBy,
+      'received_at': receivedAt?.toIso8601String(),
+      'received_by': receivedBy,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -158,6 +171,10 @@ class SupplierInvoice extends BaseModel {
       supplierName: json['suppliers'] != null
           ? (json['suppliers'] as Map<String, dynamic>)['name'] as String?
           : json['supplier_name'] as String?,
+      receivedAt: json['received_at'] != null
+          ? DateTime.tryParse(json['received_at'] as String)
+          : null,
+      receivedBy: json['received_by']?.toString(),
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,
@@ -170,6 +187,9 @@ class SupplierInvoice extends BaseModel {
   bool get canApprove =>
       status == SupplierInvoiceStatus.draft ||
       status == SupplierInvoiceStatus.pendingReview;
+
+  /// True when invoice can be marked as received (goods received). Only approved, not yet received.
+  bool get canReceive => status == SupplierInvoiceStatus.approved;
 
   SupplierInvoice copyWith({String? supplierName}) {
     return SupplierInvoice(
@@ -188,6 +208,8 @@ class SupplierInvoice extends BaseModel {
       notes: notes,
       createdBy: createdBy,
       supplierName: supplierName ?? this.supplierName,
+      receivedAt: receivedAt ?? this.receivedAt,
+      receivedBy: receivedBy ?? this.receivedBy,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );

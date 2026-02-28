@@ -1237,3 +1237,34 @@ ALTER TABLE recipes ADD COLUMN IF NOT EXISTS required_role text DEFAULT 'butcher
 ---
 
 **Updated Grade:** C+ (7.0/10) → **B- (7.5/10)** ⬆️
+
+---
+
+## 12. UPDATES LOG — February 27, 2026
+
+### ✅ Recipe & Production Batch Behaviour — COMPLETED
+
+**Recipe delete (hard delete with history preserved):**
+
+- **File:** `lib/features/production/services/recipe_repository.dart`
+- **Change:** `deleteRecipe()` replaced soft delete (`is_active = false`) with hard delete and full dependency handling:
+  1. Find all `recipe_ingredients` ids for the recipe
+  2. Delete `production_batch_ingredients` that reference those ingredient ids
+  3. Set `recipe_id` to null on `dryer_batches` (preserve dryer history)
+  4. Set `recipe_id` to null on `production_batches` (preserve batch history)
+  5. Delete all `recipe_ingredients` for the recipe
+  6. Delete the recipe row
+- **Result:** Deleting a recipe removes it from the list and clears dependent data while keeping batch/dryer history by nulling `recipe_id` instead of deleting those rows.
+
+**Production batch delete & edit:**
+
+- **File:** `lib/features/production/services/production_batch_repository.dart`
+  - **deleteBatch()** — Replaced simple row delete with full stock reversal: reverses ingredient deductions, reverses output additions, finds and deletes linked dryer batches (with their stock reversals), then deletes production batch records. Throws if batch has child splits (user must delete splits first).
+  - **editBatch()** — New method: adjusts batch ingredient quantities and/or output quantities with matching inventory movements (diffs applied as out/adjustment/production); updates `production_batch_ingredients` and optionally `production_batch_outputs` and `qty_produced`/`cost_total`. Cannot edit cancelled batches.
+- **File:** `lib/features/production/screens/production_batch_screen.dart`
+  - Batch card actions by status: **In progress** → Edit, Complete, Cancel; **Complete** → Split (if not split parent), Edit, Delete; **Cancelled** → Delete only; **Pending** → status chip only.
+  - **\_deleteBatch()** — Confirmation dialog then calls `deleteBatch()`; shows “Batch deleted — stock reversed” or error.
+  - **\_editBatch()** — Navigates to `_EditBatchScreen`; on return with `true`, reloads list.
+  - **\_EditBatchScreen** — New screen (same layout as Complete batch): edit ingredient quantities and, for complete batches, outputs; auto-cost breakdown; save calls `editBatch()` and shows “Batch updated — stock adjusted”.
+
+**Summary:** Recipe delete is now a proper hard delete with clean cascades and preserved history. Production batches support full delete-with-reversal and edit-with-stock-adjustment, with matching UI (Edit/Delete on cards and dedicated Edit screen).

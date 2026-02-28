@@ -34,6 +34,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   String? _requiredRole;
   double _avgLabourRate = 0.0;
   bool _loadingLabourRate = false;
+  bool _goesToDryer = false;
+  String? _dryerOutputProductId;
   /// C5: Explicit choice — link to existing product or create new (no auto-create, no duplicate).
   bool _outputProductLinkExisting = true;
   List<_IngredientRow> _ingredients = [];
@@ -57,6 +59,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       _isActive = widget.recipe!.isActive;
       _outputProductId = widget.recipe!.outputProductId;
       _requiredRole = widget.recipe!.requiredRole ?? 'butchery_assistant';
+      _goesToDryer = widget.recipe!.goesToDryer;
+      _dryerOutputProductId = widget.recipe!.dryerOutputProductId;
     } else {
       _expectedYieldController.text = '95';
       _batchSizeController.text = '10';
@@ -461,6 +465,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
           requiredRole: _requiredRole,
+          goesToDryer: _goesToDryer,
+          dryerOutputProductId: _goesToDryer ? _dryerOutputProductId : null,
           createdBy: widget.recipe!.createdBy,
           createdAt: widget.recipe!.createdAt,
           updatedAt: DateTime.now(),
@@ -505,6 +511,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
           requiredRole: _requiredRole,
+          goesToDryer: _goesToDryer,
+          dryerOutputProductId: _goesToDryer ? _dryerOutputProductId : null,
           createdBy: staffId.isEmpty ? null : staffId,
         );
         final saved = await _repo.createRecipe(created);
@@ -774,6 +782,39 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     ),
                 ],
               ),
+              const SizedBox(height: 16),
+              SwitchListTile(
+                title: const Text('Automatically send to dryer when batch completes'),
+                subtitle: const Text('Enable for biltong, droewors, chilli bites'),
+                value: _goesToDryer,
+                onChanged: (v) => setState(() {
+                  _goesToDryer = v;
+                  if (!v) _dryerOutputProductId = null;
+                }),
+                activeColor: AppColors.primary,
+              ),
+              if (_goesToDryer) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: _dryerOutputProductId,
+                  decoration: const InputDecoration(
+                    labelText: 'Finished dried product (inventory item) *',
+                    helperText: 'Product added to stock after dryer weigh-out',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    const DropdownMenuItem(value: null, child: Text('— Select product —')),
+                    ..._inventoryItems.map((item) => DropdownMenuItem(
+                      value: item['id'] as String,
+                      child: Text(item['name'] as String? ?? ''),
+                    )),
+                  ],
+                  validator: _goesToDryer
+                      ? (v) => (v == null || v.isEmpty) ? 'Select the finished dried product' : null
+                      : null,
+                  onChanged: (v) => setState(() => _dryerOutputProductId = v),
+                ),
+              ],
               const SizedBox(height: 16),
               SwitchListTile(
                 title: const Text('Active'),

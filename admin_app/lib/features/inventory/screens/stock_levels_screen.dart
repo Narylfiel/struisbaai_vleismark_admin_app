@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
@@ -19,7 +20,10 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
   final _exportService = ExportService();
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _categories = [];
+  /// item_id -> most recent created_at (ISO string). Built in _load from single stock_movements query.
+  Map<String, String?> _lastMovementByItemId = {};
   bool _isLoading = true;
+  bool _showInactive = false;
   String _filter = 'all'; // all | low | ok
   String? _selectedCategoryId; // null = All
   String _sortOption = 'plu_asc'; // plu_asc, name_az, stock_low, stock_high, reorder
@@ -51,12 +55,33 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
       ];
 
       // inventory_items has reorder_level (not reorder_point per schema)
-      final res = await _supabase
+      var q = _supabase
           .from('inventory_items')
-          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type, stock_control_type, category_id')
-          .eq('is_active', true)
-          .order('name');
+          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type, stock_control_type, category_id, is_active');
+      if (!_showInactive) {
+        q = q.eq('is_active', true);
+      }
+      final res = await q.order('name');
       _items = List<Map<String, dynamic>>.from(res);
+
+      // RPC: one row per item with max created_at (avoids loading many stock_movements rows)
+      _lastMovementByItemId = {};
+      if (_items.isNotEmpty) {
+        final ids = _items.map<String>((p) => p['id'] as String).toList();
+        final response = await _supabase.rpc(
+          'get_last_movement_by_items',
+          params: {'input_ids': ids},
+        );
+        for (final row in response as List) {
+          final m = row as Map<String, dynamic>;
+          final itemId = m['item_id']?.toString();
+          if (itemId != null) {
+            final at = m['last_movement_at'];
+            _lastMovementByItemId[itemId] = at is String ? at : at?.toString();
+          }
+        }
+      }
+
       _applyFilters();
     } catch (e) {
       debugPrint('Stock levels load: $e');
@@ -115,6 +140,14 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
       if (c['id']?.toString() == categoryId) return c['name'] as String?;
     }
     return null;
+  }
+
+  /// Format last movement date as DD MMM YYYY, or null for "Never".
+  String _formatLastMovement(String? isoDate) {
+    if (isoDate == null || isoDate.isEmpty) return 'Never';
+    final dt = DateTime.tryParse(isoDate);
+    if (dt == null) return 'Never';
+    return DateFormat('dd MMM yyyy').format(dt);
   }
 
   List<Map<String, dynamic>> get _filtered {
@@ -227,6 +260,18 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                     onSelectionChanged: (s) => setState(() => _filter = s.first),
                   ),
                   const SizedBox(width: 16),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Show inactive products', style: TextStyle(fontSize: 13)),
+                      const SizedBox(width: 8),
+                      Switch(
+                        value: _showInactive,
+                        onChanged: (v) => setState(() { _showInactive = v; _load(); }),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(width: 16),
                   SizedBox(
                     width: 140,
                     child: DropdownButton<String?>(
@@ -322,6 +367,8 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
               SizedBox(width: 12),
               SizedBox(width: 90, child: Text('REORDER', style: _headerStyle)),
               SizedBox(width: 12),
+              SizedBox(width: 100, child: Text('LAST MOVEMENT', style: _headerStyle)),
+              SizedBox(width: 12),
               SizedBox(width: 80, child: Text('STATUS', style: _headerStyle)),
             ],
           ),
@@ -333,7 +380,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
               : _filtered.isEmpty
                   ? Center(
                       child: Text(
-                        _items.isEmpty ? 'No active products' : 'No items match filter',
+                        _items.isEmpty ? (_showInactive ? 'No products' : 'No active products') : 'No items match filter',
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     )
@@ -350,45 +397,78 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                         final reorder = _reorderLevel(p);
                         final low = reorder > 0 && onHand <= reorder;
                         final catName = _categoryName(p['category_id']?.toString()) ?? '—';
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
-                            children: [
-                              SizedBox(width: 36, child: Text('$rowNum', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
-                              const SizedBox(width: 8),
-                              SizedBox(width: 60, child: Text('${p['plu_code'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w600))),
-                              const SizedBox(width: 12),
-                              Expanded(flex: 2, child: Text(p['name'] ?? '—')),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 100, child: Text(catName, overflow: TextOverflow.ellipsis)),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 90, child: Text(_formatStock(p['current_stock'], p))),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_fresh'], p))),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_frozen'], p))),
-                              const SizedBox(width: 12),
-                              SizedBox(width: 90, child: Text(_formatStock(p['reorder_level'], p))),
-                              const SizedBox(width: 12),
-                              SizedBox(
-                                width: 80,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: low ? AppColors.warning.withOpacity(0.15) : AppColors.success.withOpacity(0.15),
-                                    borderRadius: BorderRadius.circular(4),
+                        final itemId = p['id']?.toString();
+                        final lastMovementIso = itemId != null ? _lastMovementByItemId[itemId] : null;
+                        final lastMovementStr = _formatLastMovement(lastMovementIso);
+                        final isInactive = p['is_active'] == false;
+                        return Container(
+                          color: isInactive ? AppColors.textSecondary.withOpacity(0.08) : null,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                SizedBox(width: 36, child: Text('$rowNum', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
+                                const SizedBox(width: 8),
+                                SizedBox(width: 60, child: Text('${p['plu_code'] ?? '—'}', style: const TextStyle(fontWeight: FontWeight.w600))),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  flex: 2,
+                                  child: Row(
+                                    children: [
+                                      Expanded(child: Text(p['name'] ?? '—')),
+                                      if (isInactive) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: AppColors.textSecondary.withOpacity(0.2),
+                                            borderRadius: BorderRadius.circular(4),
+                                          ),
+                                          child: const Text('INACTIVE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                                        ),
+                                      ],
+                                    ],
                                   ),
+                                ),
+                                const SizedBox(width: 12),
+                                SizedBox(width: 100, child: Text(catName, overflow: TextOverflow.ellipsis)),
+                                const SizedBox(width: 12),
+                                SizedBox(width: 90, child: Text(_formatStock(p['current_stock'], p))),
+                                const SizedBox(width: 12),
+                                SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_fresh'], p))),
+                                const SizedBox(width: 12),
+                                SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_frozen'], p))),
+                                const SizedBox(width: 12),
+                                SizedBox(width: 90, child: Text(_formatStock(p['reorder_level'], p))),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 100,
                                   child: Text(
-                                    low ? 'LOW' : 'OK',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                      color: low ? AppColors.warning : AppColors.success,
+                                    lastMovementStr,
+                                    style: TextStyle(fontSize: 12, color: lastMovementStr == 'Never' ? AppColors.textSecondary : null),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                SizedBox(
+                                  width: 80,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: low ? AppColors.warning.withOpacity(0.15) : AppColors.success.withOpacity(0.15),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      low ? 'LOW' : 'OK',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: low ? AppColors.warning : AppColors.success,
+                                      ),
                                     ),
                                   ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
                         );
                       },

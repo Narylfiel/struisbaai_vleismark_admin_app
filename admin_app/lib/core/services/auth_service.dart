@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:admin_app/core/db/cached_staff_profile.dart';
+import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'base_service.dart';
@@ -27,7 +29,6 @@ class AuthService extends BaseService {
   String? _currentStaffName;
   String? _currentRole;
 
-  static const String _cachedStaffKey = 'cached_staff_profiles';
   static const String _activeSessionKey = 'active_session';
 
   // Getters
@@ -131,6 +132,9 @@ class AuthService extends BaseService {
           'id': response['id'],
           'name': response['full_name'],
           'role': response['role'],
+          'full_name': response['full_name'],
+          'is_active': response['is_active'],
+          'pin_hash': response['pin_hash'],
         };
       }
       return null;
@@ -140,27 +144,19 @@ class AuthService extends BaseService {
     }
   }
 
-  /// Offline authentication using cached profiles
+  /// Offline authentication using cached profiles (Isar).
   Future<Map<String, dynamic>?> _authenticateOffline(String pinHash) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cachedStaffJson = prefs.getString(_cachedStaffKey);
-      
-      if (cachedStaffJson != null) {
-        final List<dynamic> cachedStaff = jsonDecode(cachedStaffJson);
-        final profile = cachedStaff.firstWhere(
-          (staff) => staff['pin_hash'] == pinHash && staff['is_active'] == true,
-          orElse: () => null,
-        );
-        
-        if (profile != null) {
-          print('✅ Offline authentication successful for: ${profile['name']}');
-          // Cache the active session locally
-          await prefs.setString(_activeSessionKey, jsonEncode(profile));
-          return Map<String, dynamic>.from(profile);
-        }
+      final cached = await IsarService.getStaffProfileByPinHash(pinHash);
+      if (cached == null) return null;
+      final profile = cached.toAuthMap();
+      if (!AdminConfig.allowedRoles.contains((profile['role'] as String? ?? '').toLowerCase())) {
+        return null;
       }
-      return null;
+      print('✅ Offline authentication successful for: ${profile['name']}');
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_activeSessionKey, jsonEncode(profile));
+      return profile;
     } catch (e) {
       print('❌ Offline auth failed: $e');
       return null;
@@ -354,23 +350,11 @@ class AuthService extends BaseService {
     }
   }
 
-  /// Cache staff profile for offline use
+  /// Cache staff profile for offline use (Isar). Active session stays in SharedPreferences.
   Future<void> _cacheStaffProfile(Map<String, dynamic> profile) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final cachedStaffJson = prefs.getString(_cachedStaffKey);
-      List<dynamic> cachedStaff = cachedStaffJson != null ? jsonDecode(cachedStaffJson) : [];
-      
-      // Update existing or add new
-      final index = cachedStaff.indexWhere((staff) => staff['id'] == profile['id']);
-      if (index >= 0) {
-        cachedStaff[index] = profile;
-      } else {
-        cachedStaff.add(profile);
-      }
-      
-      await prefs.setString(_cachedStaffKey, jsonEncode(cachedStaff));
-      await prefs.setString(_activeSessionKey, jsonEncode(profile));
+      final c = CachedStaffProfile.fromSupabase(profile);
+      await IsarService.saveStaffProfile(c);
     } catch (e) {
       print('Failed to cache staff profile: $e');
     }

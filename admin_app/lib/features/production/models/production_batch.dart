@@ -1,11 +1,12 @@
 import '../../../core/models/base_model.dart';
 
 /// Blueprint §5.5: Production batch — input → output tracking; deduct ingredients, add output product.
-/// DB CHECK: pending, in_progress, complete (no cancelled).
+/// DB CHECK: pending, in_progress, complete, cancelled.
 enum ProductionBatchStatus {
   pending,
   inProgress,
   complete,
+  cancelled,
 }
 
 extension ProductionBatchStatusExt on ProductionBatchStatus {
@@ -17,6 +18,8 @@ extension ProductionBatchStatusExt on ProductionBatchStatus {
         return 'in_progress';
       case ProductionBatchStatus.complete:
         return 'complete';
+      case ProductionBatchStatus.cancelled:
+        return 'cancelled';
     }
   }
 
@@ -29,6 +32,8 @@ extension ProductionBatchStatusExt on ProductionBatchStatus {
         return 'In progress';
       case ProductionBatchStatus.complete:
         return 'Complete';
+      case ProductionBatchStatus.cancelled:
+        return 'Cancelled';
     }
   }
 
@@ -40,6 +45,8 @@ extension ProductionBatchStatusExt on ProductionBatchStatus {
         return ProductionBatchStatus.inProgress;
       case 'complete':
         return ProductionBatchStatus.complete;
+      case 'cancelled':
+        return ProductionBatchStatus.cancelled;
       default:
         return ProductionBatchStatus.pending;
     }
@@ -64,6 +71,8 @@ class ProductionBatch extends BaseModel {
   final String? parentBatchId;
   /// Note describing the split (e.g. output product per split).
   final String? splitNote;
+  /// True if this batch has been split into multiple outputs
+  final bool isSplitParent;
 
   const ProductionBatch({
     required super.id,
@@ -79,6 +88,7 @@ class ProductionBatch extends BaseModel {
     this.outputProductId,
     this.parentBatchId,
     this.splitNote,
+    this.isSplitParent = false,
     super.createdAt,
     super.updatedAt,
   });
@@ -99,6 +109,7 @@ class ProductionBatch extends BaseModel {
       'output_product_id': outputProductId,
       if (parentBatchId != null) 'parent_batch_id': parentBatchId,
       if (splitNote != null) 'split_note': splitNote,
+      'is_split_parent': isSplitParent,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -123,6 +134,7 @@ class ProductionBatch extends BaseModel {
       outputProductId: json['output_product_id'] as String?,
       parentBatchId: json['parent_batch_id'] as String?,
       splitNote: json['split_note'] as String?,
+      isSplitParent: json['is_split_parent'] as bool? ?? false,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,

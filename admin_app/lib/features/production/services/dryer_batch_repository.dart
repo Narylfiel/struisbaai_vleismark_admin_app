@@ -77,12 +77,18 @@ class DryerBatchRepository {
     String? inputProductId,
     String? outputProductId,
     String? recipeId,
+    String? productionBatchId,
     String? processedBy,
     String? notes,
     List<DryerBatchIngredient>? ingredients,
     bool deductInputNow = true,
     String? performedBy,
   }) async {
+    if (outputProductId == null || outputProductId.isEmpty) {
+      throw ArgumentError(
+        'A dryer batch cannot be created without an output product. Link a finished product to the recipe first.',
+      );
+    }
     final batchNum = (batchNumber == null || batchNumber.isEmpty) ? await _nextBatchNumber() : batchNumber;
     final now = DateTime.now().toIso8601String();
     // DB columns: weight_in, status, started_at, loaded_at, kwh_per_hour, planned_hours, ...
@@ -97,6 +103,7 @@ class DryerBatchRepository {
       'input_product_id': inputProductId?.isEmpty == true ? null : inputProductId,
       'output_product_id': outputProductId?.isEmpty == true ? null : outputProductId,
       if (recipeId != null && recipeId.isNotEmpty) 'recipe_id': recipeId,
+      if (productionBatchId != null && productionBatchId.isNotEmpty) 'production_batch_id': productionBatchId,
       'notes': notes,
     };
     final row = await _client

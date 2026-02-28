@@ -1,76 +1,15 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
+import 'package:admin_app/core/db/cached_staff_profile.dart';
+import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import 'package:admin_app/features/dashboard/screens/main_shell.dart';
-
-// ─────────────────────────────────────────────────────────────────
-// SIMPLE JSON FILE CACHE
-// Uses path_provider (already in pubspec) to store staff profiles
-// as a JSON file on disk. Works offline. No new dependency needed.
-// Blueprint: "Profile data (name, role, pin_hash) cached locally.
-//             PIN validation works without internet."
-// ─────────────────────────────────────────────────────────────────
-class _StaffCache {
-  static Future<File> _cacheFile() async {
-    final dir = await getApplicationSupportDirectory();
-    return File('${dir.path}/staff_cache.json');
-  }
-
-  /// Save all active staff to local JSON file
-  static Future<void> save(List<Map<String, dynamic>> profiles) async {
-    try {
-      final file = await _cacheFile();
-      await file.writeAsString(jsonEncode(profiles));
-    } catch (e) {
-      debugPrint('Cache save error: $e');
-    }
-  }
-
-  /// Load cached staff list from disk
-  static Future<List<Map<String, dynamic>>> load() async {
-    try {
-      final file = await _cacheFile();
-      if (!await file.exists()) return [];
-      final raw = await file.readAsString();
-      final list = jsonDecode(raw) as List;
-      return list.cast<Map<String, dynamic>>();
-    } catch (e) {
-      debugPrint('Cache load error: $e');
-      return [];
-    }
-  }
-
-  /// Find staff member by PIN hash in local cache
-  static Future<Map<String, dynamic>?> findByPin(String pinHash) async {
-    final profiles = await load();
-    try {
-      return profiles.firstWhere(
-        (p) {
-          if (p['pin_hash'] != pinHash) return false;
-          if (p['is_active'] != true && p['is_active'] != 'true') return false;
-          final r = p['role'] as String? ?? '';
-          return AdminConfig.allowedRoles.contains(r.toLowerCase());
-        },
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Check if any cache exists at all
-  static Future<bool> exists() async {
-    final profiles = await load();
-    return profiles.isNotEmpty;
-  }
-}
 
 class PinScreen extends StatefulWidget {
   const PinScreen({super.key});
@@ -84,6 +23,7 @@ class _PinScreenState extends State<PinScreen> {
   String _message = '';
   bool _isLoading = false;
   bool _isOffline = false;
+  bool _cacheStale = false;
   int _failedAttempts = 0;
   bool _isLocked = false;
 
@@ -95,7 +35,7 @@ class _PinScreenState extends State<PinScreen> {
     _refreshCacheIfOnline();
   }
 
-  /// Try to pull fresh staff data from Supabase and cache it.
+  /// Try to pull fresh staff data from Supabase and write to Isar.
   /// Runs silently — does not block the UI.
   Future<void> _refreshCacheIfOnline() async {
     try {
@@ -105,9 +45,10 @@ class _PinScreenState extends State<PinScreen> {
           .select('id, full_name, role, pin_hash, is_active')
           .eq('is_active', true)
           .timeout(const Duration(seconds: 6));
-      final profiles = List<Map<String, dynamic>>.from(data);
-      await _StaffCache.save(profiles);
-      if (mounted) setState(() => _isOffline = false);
+      final rows = List<Map<String, dynamic>>.from(data);
+      final profiles = rows.map((r) => CachedStaffProfile.fromSupabase(r)).toList();
+      await IsarService.saveStaffProfiles(profiles);
+      if (mounted) setState(() { _isOffline = false; _cacheStale = false; });
     } catch (_) {
       if (mounted) setState(() => _isOffline = true);
     }
@@ -173,12 +114,12 @@ class _PinScreenState extends State<PinScreen> {
         return;
       }
     } catch (_) {
-      // 2. Offline fallback — check local JSON cache
+      // 2. Offline fallback — read from Isar
       if (mounted) setState(() => _isOffline = true);
 
-      final hasCache = await _StaffCache.exists();
+      final hasCache = await IsarService.hasCachedStaff();
       if (!hasCache) {
-        setState(() {
+        if (mounted) setState(() {
           _message =
               'No internet & no local data.\nLog in online once to enable offline access.';
           _enteredPin = '';
@@ -187,11 +128,14 @@ class _PinScreenState extends State<PinScreen> {
         return;
       }
 
-      staff = await _StaffCache.findByPin(pinHash);
-      if (staff == null) {
+      final cached = await IsarService.getStaffProfileByPinHash(pinHash);
+      if (cached == null) {
         _handleFailedAttempt();
         return;
       }
+      staff = cached.toAuthMap();
+      final stale = await IsarService.isStaffCacheStale();
+      if (mounted) setState(() => _cacheStale = stale);
     }
 
     // ── Role check — Admin app: Owner + Manager only ──────────
@@ -354,6 +298,17 @@ class _PinScreenState extends State<PinScreen> {
                   );
                 }),
               ),
+              if (_isOffline && _cacheStale) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Cached data may be outdated.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textSecondary,
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
               const SizedBox(height: 12),
 
               // Message area

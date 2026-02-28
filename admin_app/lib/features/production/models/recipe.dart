@@ -22,6 +22,10 @@ class Recipe extends BaseModel {
   final double batchSizeKg;
   final String? createdBy;
   final String? requiredRole;
+  /// If true, completing a production batch auto-creates a dryer batch
+  final bool goesToDryer;
+  /// The finished dried product (inventory item) added to stock after dryer weigh-out
+  final String? dryerOutputProductId;
 
   const Recipe({
     required super.id,
@@ -38,6 +42,8 @@ class Recipe extends BaseModel {
     this.batchSizeKg = 1,
     this.createdBy,
     this.requiredRole,
+    this.goesToDryer = false,
+    this.dryerOutputProductId,
     super.createdAt,
     super.updatedAt,
   });
@@ -57,6 +63,9 @@ class Recipe extends BaseModel {
       'batch_size_kg': batchSizeKg,
       'created_by': createdBy,
       if (requiredRole != null) 'required_role': requiredRole,
+      'goes_to_dryer': goesToDryer,
+      if (dryerOutputProductId != null && dryerOutputProductId!.isNotEmpty)
+        'dryer_output_product_id': dryerOutputProductId,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -78,6 +87,8 @@ class Recipe extends BaseModel {
       batchSizeKg: (json['batch_size_kg'] as num?)?.toDouble() ?? 1,
       createdBy: json['created_by'] as String?,
       requiredRole: json['required_role'] as String?,
+      goesToDryer: json['goes_to_dryer'] as bool? ?? false,
+      dryerOutputProductId: json['dryer_output_product_id'] as String?,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,
