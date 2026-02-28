@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/settings/services/settings_repository.dart';
 
 /// Utilities & Costs — electricity rate for dryer cost tracking.
@@ -81,7 +82,7 @@ class _UtilitiesSettingsScreenState extends State<UtilitiesSettingsScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _saving = false;
         });
       }

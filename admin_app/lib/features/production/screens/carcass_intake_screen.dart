@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'recipe_list_screen.dart';
@@ -919,7 +920,7 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -1312,7 +1313,7 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.error),
         );
       }
@@ -1829,7 +1830,7 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Error: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.error),
         );
       }

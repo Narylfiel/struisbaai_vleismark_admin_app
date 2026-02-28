@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../features/settings/services/settings_repository.dart';
@@ -57,7 +58,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -257,7 +258,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -533,7 +534,7 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = 'Failed to load recipe ingredients: $e';
+          _error = ErrorHandler.friendlyMessage(e);
           _loadingIngredients = false;
         });
       }
@@ -608,7 +609,7 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
         widget.onDone();
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) setState(() { _error = ErrorHandler.friendlyMessage(e); _loading = false; });
     }
   }
 
@@ -813,7 +814,7 @@ class _WeighOutDialogState extends State<_WeighOutDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }

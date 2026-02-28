@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../models/modifier_group.dart';
 import '../services/modifier_repository.dart';
@@ -103,7 +104,7 @@ class _ModifierGroupFormScreenState extends State<ModifierGroupFormScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {
@@ -138,7 +139,7 @@ class _ModifierGroupFormScreenState extends State<ModifierGroupFormScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {

@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
-import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/db/cached_category.dart';
+import 'package:admin_app/core/db/cached_inventory_item.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// Blueprint §4.4: Stock Levels — table view of all products across locations.
@@ -20,9 +25,10 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
   final _exportService = ExportService();
   List<Map<String, dynamic>> _items = [];
   List<Map<String, dynamic>> _categories = [];
-  /// item_id -> most recent created_at (ISO string). Built in _load from single stock_movements query.
+  /// item_id -> most recent created_at (ISO string). Only populated when online (RPC).
   Map<String, String?> _lastMovementByItemId = {};
   bool _isLoading = true;
+  bool _isOffline = false;
   bool _showInactive = false;
   String _filter = 'all'; // all | low | ok
   String? _selectedCategoryId; // null = All
@@ -43,50 +49,104 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
+    final isConnected = ConnectivityService().isConnected;
+
     try {
-      final cats = await _supabase
-          .from('categories')
-          .select('id, name')
-          .eq('active', true)
-          .order('sort_order');
-      _categories = [
-        {'id': null, 'name': 'All'},
-        ...List<Map<String, dynamic>>.from(cats),
-      ];
-
-      // inventory_items has reorder_level (not reorder_point per schema)
-      var q = _supabase
-          .from('inventory_items')
-          .select('id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, reorder_level, unit_type, stock_control_type, category_id, is_active');
-      if (!_showInactive) {
-        q = q.eq('is_active', true);
-      }
-      final res = await q.order('name');
-      _items = List<Map<String, dynamic>>.from(res);
-
-      // RPC: one row per item with max created_at (avoids loading many stock_movements rows)
-      _lastMovementByItemId = {};
-      if (_items.isNotEmpty) {
-        final ids = _items.map<String>((p) => p['id'] as String).toList();
-        final response = await _supabase.rpc(
-          'get_last_movement_by_items',
-          params: {'input_ids': ids},
-        );
-        for (final row in response as List) {
-          final m = row as Map<String, dynamic>;
-          final itemId = m['item_id']?.toString();
-          if (itemId != null) {
-            final at = m['last_movement_at'];
-            _lastMovementByItemId[itemId] = at is String ? at : at?.toString();
-          }
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isInventoryItemsCacheStale();
+        final staleCat = await IsarService.isCategoriesCacheStale();
+        if (stale || staleCat) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
         }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
       }
-
       _applyFilters();
     } catch (e) {
       debugPrint('Stock levels load: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// Load items and categories from Isar (offline or when cache is fresh).
+  Future<void> _loadFromCache() async {
+    final categories = await IsarService.getAllCategories();
+    final active = categories.where((c) => c.isActive).toList();
+    _categories = [
+      {'id': null, 'name': 'All'},
+      ...active.map((c) => {'id': c.categoryId, 'name': c.name}),
+    ];
+    final items = await IsarService.getAllInventoryItems(_showInactive);
+    _items = items.map((e) => e.toMap()).toList();
+    if (!ConnectivityService().isConnected) {
+      _lastMovementByItemId = {};
+    }
+  }
+
+  /// Fetch from Supabase, save to Isar, populate last movement (online only).
+  Future<void> _fetchFromSupabaseAndSave() async {
+    _isOffline = false;
+    final cats = await _supabase
+        .from('categories')
+        .select('id, name, active')
+        .order('sort_order');
+    final categoryList = (cats as List)
+        .map((c) => CachedCategory.fromSupabase(Map<String, dynamic>.from(c as Map)))
+        .toList();
+    await IsarService.saveCategories(categoryList);
+    _categories = [
+      {'id': null, 'name': 'All'},
+      ...(cats as List).map((c) {
+        final m = Map<String, dynamic>.from(c as Map);
+        return {'id': m['id'], 'name': m['name']};
+      }),
+    ];
+
+    var q = _supabase
+        .from('inventory_items')
+        .select(
+          'id, name, plu_code, current_stock, stock_on_hand_fresh, stock_on_hand_frozen, '
+          'reorder_level, unit_type, stock_control_type, category_id, is_active',
+        );
+    if (!_showInactive) q = q.eq('is_active', true);
+    final res = await q.order('name');
+    _items = List<Map<String, dynamic>>.from(res);
+    final itemList = _items.map((i) => CachedInventoryItem.fromSupabase(i)).toList();
+    await IsarService.saveInventoryItems(itemList);
+
+    _lastMovementByItemId = {};
+    if (_items.isNotEmpty) {
+      final ids = _items.map<String>((p) => p['id'] as String).toList();
+      final response = await _supabase.rpc(
+        'get_last_movement_by_items',
+        params: {'input_ids': ids},
+      );
+      for (final row in response as List) {
+        final m = row as Map<String, dynamic>;
+        final itemId = m['item_id']?.toString();
+        if (itemId != null) {
+          final at = m['last_movement_at'];
+          _lastMovementByItemId[itemId] = at is String ? at : at?.toString();
+        }
+      }
+    }
+  }
+
+  /// Silent background refresh when online and cache was fresh.
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        final stale = await IsarService.isInventoryItemsCacheStale();
+        if (!stale) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
   }
 
   void _applyFilters() {
@@ -230,7 +290,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -349,27 +409,29 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           color: AppColors.surfaceBg,
-          child: const Row(
+          child: Row(
             children: [
-              SizedBox(width: 36, child: Text('#', style: _headerStyle)),
-              SizedBox(width: 8),
-              SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
-              SizedBox(width: 12),
-              Expanded(flex: 2, child: Text('PRODUCT', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 100, child: Text('CATEGORY', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 90, child: Text('ON HAND', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 80, child: Text('FRESH', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 80, child: Text('FROZEN', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 90, child: Text('REORDER', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 100, child: Text('LAST MOVEMENT', style: _headerStyle)),
-              SizedBox(width: 12),
-              SizedBox(width: 80, child: Text('STATUS', style: _headerStyle)),
+              const SizedBox(width: 36, child: Text('#', style: _headerStyle)),
+              const SizedBox(width: 8),
+              const SizedBox(width: 60, child: Text('PLU', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const Expanded(flex: 2, child: Text('PRODUCT', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const SizedBox(width: 100, child: Text('CATEGORY', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const SizedBox(width: 90, child: Text('ON HAND', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const SizedBox(width: 80, child: Text('FRESH', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const SizedBox(width: 80, child: Text('FROZEN', style: _headerStyle)),
+              const SizedBox(width: 12),
+              const SizedBox(width: 90, child: Text('REORDER', style: _headerStyle)),
+              if (!_isOffline) ...[
+                const SizedBox(width: 12),
+                const SizedBox(width: 100, child: Text('LAST MOVEMENT', style: _headerStyle)),
+              ],
+              const SizedBox(width: 12),
+              const SizedBox(width: 80, child: Text('STATUS', style: _headerStyle)),
             ],
           ),
         ),
@@ -377,14 +439,25 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-              : _filtered.isEmpty
-                  ? Center(
-                      child: Text(
-                        _items.isEmpty ? (_showInactive ? 'No products' : 'No active products') : 'No items match filter',
-                        style: const TextStyle(color: AppColors.textSecondary),
+              : _isOffline && _items.isEmpty
+                  ? const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(24),
+                        child: Text(
+                          'No cached data available. Connect to the internet to load data.',
+                          style: TextStyle(color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     )
-                  : ListView.separated(
+                  : _filtered.isEmpty
+                      ? Center(
+                          child: Text(
+                            _items.isEmpty ? (_showInactive ? 'No products' : 'No active products') : 'No items match filter',
+                            style: const TextStyle(color: AppColors.textSecondary),
+                          ),
+                        )
+                      : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                       itemCount: _filtered.length,
                       separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
@@ -440,14 +513,16 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                                 SizedBox(width: 80, child: Text(_formatStock(p['stock_on_hand_frozen'], p))),
                                 const SizedBox(width: 12),
                                 SizedBox(width: 90, child: Text(_formatStock(p['reorder_level'], p))),
-                                const SizedBox(width: 12),
-                                SizedBox(
-                                  width: 100,
-                                  child: Text(
-                                    lastMovementStr,
-                                    style: TextStyle(fontSize: 12, color: lastMovementStr == 'Never' ? AppColors.textSecondary : null),
+                                if (!_isOffline) ...[
+                                  const SizedBox(width: 12),
+                                  SizedBox(
+                                    width: 100,
+                                    child: Text(
+                                      lastMovementStr,
+                                      style: TextStyle(fontSize: 12, color: lastMovementStr == 'Never' ? AppColors.textSecondary : null),
+                                    ),
                                   ),
-                                ),
+                                ],
                                 const SizedBox(width: 12),
                                 SizedBox(
                                   width: 80,
@@ -474,6 +549,14 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                       },
                     ),
         ),
+        if (_isOffline && _items.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+            child: Text(
+              'Last movement data unavailable offline.',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+            ),
+          ),
       ],
     );
   }

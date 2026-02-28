@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import '../../core/constants/app_colors.dart';
 
@@ -38,7 +39,7 @@ class ChartWidgets {
           numberFormat: NumberFormat.currency(symbol: 'R'),
           majorGridLines: const MajorGridLines(width: 0.5, color: AppColors.border),
         ),
-        series: <ChartSeries<ChartData, DateTime>>[
+        series: <CartesianSeries<ChartData, dynamic>>[
           LineSeries<ChartData, DateTime>(
             dataSource: data,
             xValueMapper: (ChartData sales, _) => sales.x,
@@ -88,7 +89,7 @@ class ChartWidgets {
           majorGridLines: MajorGridLines(width: 0.5, color: AppColors.border),
         ),
         tooltipBehavior: TooltipBehavior(enable: true),
-        series: <ChartSeries<ChartData, String>>[
+        series: <CartesianSeries<ChartData, dynamic>>[
           ColumnSeries<ChartData, String>(
             dataSource: data,
             xValueMapper: (ChartData product, _) => product.x.toString(),
@@ -184,7 +185,7 @@ class ChartWidgets {
           numberFormat: NumberFormat.percentPattern(),
           majorGridLines: const MajorGridLines(width: 0.5, color: AppColors.border),
         ),
-        series: <ChartSeries<ChartData, DateTime>>[
+        series: <CartesianSeries<ChartData, dynamic>>[
           AreaSeries<ChartData, DateTime>(
             dataSource: data,
             xValueMapper: (ChartData shrinkage, _) => shrinkage.x,
@@ -198,7 +199,7 @@ class ChartWidgets {
     );
   }
 
-  /// Staff performance radar chart
+  /// Staff performance bar chart (replaces radar for compatibility)
   static Widget staffPerformanceChart({
     required List<ChartData> data,
     String title = 'Staff Performance',
@@ -212,7 +213,7 @@ class ChartWidgets {
         borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.border),
       ),
-      child: SfPolarChart(
+      child: SfCartesianChart(
         title: ChartTitle(
           text: title,
           textStyle: const TextStyle(
@@ -223,17 +224,23 @@ class ChartWidgets {
         ),
         legend: const Legend(isVisible: false),
         tooltipBehavior: TooltipBehavior(enable: true),
-        series: <PolarSeries<ChartData, String>>[
-          RadarSeries<ChartData, String>(
+        primaryXAxis: const CategoryAxis(
+          majorGridLines: MajorGridLines(width: 0),
+          labelRotation: 45,
+        ),
+        primaryYAxis: const NumericAxis(
+          majorGridLines: MajorGridLines(width: 0.5, color: AppColors.border),
+        ),
+        series: <CartesianSeries<ChartData, dynamic>>[
+          ColumnSeries<ChartData, String>(
             dataSource: data,
             xValueMapper: (ChartData performance, _) => performance.x.toString(),
             yValueMapper: (ChartData performance, _) => performance.y,
             color: AppColors.primary.withOpacity(0.5),
-            borderColor: AppColors.primary,
-            borderWidth: 2,
-            markerSettings: const MarkerSettings(
+            borderRadius: BorderRadius.circular(4),
+            dataLabelSettings: const DataLabelSettings(
               isVisible: true,
-              color: AppColors.primary,
+              textStyle: TextStyle(color: Colors.white, fontSize: 11),
             ),
           ),
         ],
@@ -301,25 +308,4 @@ class ChartData {
     this.color,
     this.label,
   });
-}
-
-// Import statements for date formatting
-class DateFormat {
-  static const MMMd = 'MMM d';
-}
-
-class NumberFormat {
-  static currency({required String symbol}) => _CurrencyFormatter(symbol);
-  static percentPattern() => _PercentFormatter();
-}
-
-class _CurrencyFormatter {
-  final String symbol;
-  _CurrencyFormatter(this.symbol);
-
-  String format(num value) => '$symbol${value.toStringAsFixed(2)}';
-}
-
-class _PercentFormatter {
-  String format(num value) => '${(value * 100).toStringAsFixed(1)}%';
 }

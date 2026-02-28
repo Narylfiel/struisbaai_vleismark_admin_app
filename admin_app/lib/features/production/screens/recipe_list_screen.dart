@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/recipe.dart';
 import '../services/recipe_repository.dart';
@@ -35,7 +36,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -87,7 +88,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     }

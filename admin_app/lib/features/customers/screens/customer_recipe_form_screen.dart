@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/features/customers/models/customer_recipe.dart';
 import 'package:admin_app/features/customers/services/customer_recipe_repository.dart';
@@ -167,7 +168,7 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Failed to delete image: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.danger),
         );
       }
@@ -254,7 +255,7 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Failed to save: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.danger),
         );
       }

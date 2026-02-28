@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/utils/error_handler.dart';
+import '../../../core/services/offline_queue_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/models/stock_movement.dart';
 import '../services/inventory_repository.dart';
@@ -266,7 +269,7 @@ class _WasteDialogState extends State<_WasteDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -418,7 +421,7 @@ class _TransferDialogState extends State<_TransferDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -568,7 +571,7 @@ class _FreezerDialogState extends State<_FreezerDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -720,7 +723,7 @@ class _DonationDialogState extends State<_DonationDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -905,7 +908,7 @@ class _SponsorshipDialogState extends State<_SponsorshipDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -1059,13 +1062,32 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
     }
     setState(() => _loading = true);
     try {
+      final notes = _notesController.text.trim().isEmpty ? null : _notesController.text.trim();
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('stock_adjustment', {
+          'itemId': widget.product['id'] as String,
+          'quantity': actual,
+          'reason': notes,
+          'performedBy': staffId,
+          'notes': notes,
+        });
+        widget.onDone();
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Saved — will sync when back online.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        return;
+      }
       await _repo.adjustStock(
         itemId: widget.product['id'] as String,
         actualQuantity: actual,
         performedBy: staffId,
-        notes: _notesController.text.trim().isEmpty
-            ? null
-            : _notesController.text.trim(),
+        notes: notes,
       );
       widget.onDone();
       if (mounted) Navigator.pop(context);
@@ -1075,7 +1097,7 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }

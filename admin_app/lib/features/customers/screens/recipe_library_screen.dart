@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/features/customers/models/customer_recipe.dart';
 import 'package:admin_app/features/customers/services/customer_recipe_repository.dart';
@@ -318,7 +319,7 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Failed: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.danger),
         );
       }
@@ -365,7 +366,7 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-              content: Text('Failed to delete: $e'),
+              content: Text(ErrorHandler.friendlyMessage(e)),
               backgroundColor: AppColors.danger),
         );
       }
@@ -405,7 +406,7 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
       return;

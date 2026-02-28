@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/services/supabase_service.dart';
+import '../../../../core/utils/error_handler.dart';
 import '../../models/category.dart';
 import 'category_event.dart';
 import 'category_state.dart';
@@ -38,7 +39,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
 
       emit(CategoryLoaded(categories));
     } catch (e) {
-      emit(CategoryError('Failed to load categories: ${e.toString()}'));
+      emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }
   }
 
@@ -59,7 +60,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
       emit(const CategoryOperationSuccess('Category created successfully'));
       add(const LoadCategories());
     } catch (e) {
-      emit(CategoryError('Failed to create category: ${e.toString()}'));
+      emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }
   }
 
@@ -80,7 +81,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
       emit(const CategoryOperationSuccess('Category updated successfully'));
       add(const LoadCategories());
     } catch (e) {
-      emit(CategoryError('Failed to update category: ${e.toString()}'));
+      emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }
   }
 
@@ -108,7 +109,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
       emit(const CategoryOperationSuccess('Deleted'));
       add(const LoadCategories());
     } catch (e) {
-      emit(CategoryError('Failed to delete category: ${e.toString()}'));
+      emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }
   }
 
@@ -129,7 +130,7 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
       emit(const CategoryOperationSuccess('Categories reordered successfully'));
       add(const LoadCategories());
     } catch (e) {
-      emit(CategoryError('Failed to reorder categories: ${e.toString()}'));
+      emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }
   }
 }

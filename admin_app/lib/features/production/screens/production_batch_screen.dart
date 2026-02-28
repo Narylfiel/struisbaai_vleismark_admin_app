@@ -2,7 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
+import '../../../core/utils/error_handler.dart';
+import '../../../core/db/cached_production_batch.dart';
+import '../../../core/db/isar_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/connectivity_service.dart';
+import '../../../core/services/offline_queue_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/production_batch.dart';
 import '../models/recipe.dart';
@@ -26,36 +31,100 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
   List<ProductionBatch> _batches = [];
   List<Recipe> _recipes = [];
   List<Map<String, dynamic>> _inventoryItems = [];
+  /// Recipe name by recipe id when loaded from cache (offline).
+  Map<String, String> _recipeNameById = {};
   bool _loading = true;
+  bool _isOffline = false;
   String? _error;
+  /// Status filter: null = All, or 'pending', 'in_progress', 'complete', 'cancelled'.
+  String? _statusFilter;
 
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
+    final isConnected = ConnectivityService().isConnected;
     try {
-      final batches = await _batchRepo.getBatches();
-      final recipes = await _recipeRepo.getRecipes(activeOnly: true);
-      // C1: Single source of truth — current_stock only (POS trigger updates it).
-      final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
-      final invList = List<Map<String, dynamic>>.from(inv as List);
-      if (mounted) {
-        setState(() {
-          _batches = batches;
-          _recipes = recipes;
-          _inventoryItems = invList;
-          _loading = false;
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isProductionBatchCacheStale();
+        if (stale) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
+          final recipes = await _recipeRepo.getRecipes(activeOnly: true);
+          final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
+          final invList = List<Map<String, dynamic>>.from(inv as List);
+          if (mounted) setState(() {
+            _recipes = recipes;
+            _inventoryItems = invList;
+          });
+        }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
+        if (mounted) setState(() {
+          _recipes = [];
+          _inventoryItems = [];
         });
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _error = e.toString();
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() {
+        _error = ErrorHandler.friendlyMessage(e);
+      });
     }
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getProductionBatches(null);
+    _batches = cached
+        .map((c) => ProductionBatch.fromJson(c.toBatchMap()))
+        .toList();
+    _recipeNameById = { for (final c in cached) if (c.recipeId != null) c.recipeId!: c.recipeName ?? '' };
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final batches = await _batchRepo.getBatches();
+    final recipes = await _recipeRepo.getRecipes(activeOnly: true);
+    final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
+    final invList = List<Map<String, dynamic>>.from(inv as List);
+    final recipeNameById = { for (final r in recipes) r.id: r.name };
+    final productNameById = { for (final m in invList) m['id']?.toString() ?? '': m['name']?.toString() ?? '' };
+    final toSave = batches.map((b) {
+      final recipeName = b.recipeId.isNotEmpty ? recipeNameById[b.recipeId] : null;
+      final outputName = b.outputProductId != null ? productNameById[b.outputProductId!] : null;
+      return CachedProductionBatch.fromSupabase(
+        b.toJson(),
+        recipeName: recipeName,
+        outputProductName: outputName,
+      );
+    }).toList();
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+    final trimmed = toSave.where((c) => (c.createdAt ?? DateTime(0)).isAfter(thirtyDaysAgo)).take(100).toList();
+    await IsarService.saveProductionBatches(trimmed);
+    _batches = batches;
+    _recipes = recipes;
+    _inventoryItems = invList;
+    _recipeNameById = {};
+  }
+
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        if (!await IsarService.isProductionBatchCacheStale()) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
+  }
+
+  /// Batches to display: filter by _statusFilter in Dart (works offline from cache).
+  List<ProductionBatch> get _filteredBatches {
+    if (_statusFilter == null || _statusFilter!.isEmpty) return _batches;
+    return _batches.where((b) => b.status.dbValue == _statusFilter).toList();
   }
 
   @override
@@ -157,7 +226,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     }
@@ -203,7 +272,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: $e'),
+            content: Text(ErrorHandler.friendlyMessage(e)),
             backgroundColor: AppColors.danger,
           ),
         );
@@ -249,7 +318,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
       }
     } catch (e) {
       if (mounted) {
-        final msg = e.toString().contains('splits') ? 'Cannot delete — this batch has splits. Delete splits first.' : e.toString();
+        final msg = e.toString().contains('splits') ? 'Cannot delete — this batch has splits. Delete splits first.' : ErrorHandler.friendlyMessage(e);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), backgroundColor: AppColors.danger));
       }
     }
@@ -257,10 +326,11 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
 
   /// Build list: roots (no parent_batch_id) then each root's children indented. Parents with children get "Split" badge.
   List<Widget> _buildBatchListItems() {
-    final roots = _batches.where((b) => b.parentBatchId == null).toList()
+    final listToUse = _filteredBatches;
+    final roots = listToUse.where((b) => b.parentBatchId == null).toList()
       ..sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
     final childrenByParent = <String, List<ProductionBatch>>{};
-    for (final b in _batches) {
+    for (final b in listToUse) {
       if (b.parentBatchId != null) {
         childrenByParent.putIfAbsent(b.parentBatchId!, () => []).add(b);
       }
@@ -269,10 +339,9 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
       list.sort((a, b) => (b.createdAt ?? DateTime(0)).compareTo(a.createdAt ?? DateTime(0)));
     }
     final parentIdsWithSplits = childrenByParent.keys.toSet();
-    final recipeNameById = <String, String>{};
-    for (final r in _recipes) {
-      recipeNameById[r.id] = r.name;
-    }
+    final recipeNameById = _recipeNameById.isNotEmpty
+        ? Map<String, String>.from(_recipeNameById)
+        : { for (final r in _recipes) r.id: r.name };
     final items = <Widget>[];
     for (final root in roots) {
       items.add(_buildBatchCard(root, recipeNameById, parentIdsWithSplits.contains(root.id), false));
@@ -416,9 +485,21 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
+              SegmentedButton<String?>(
+                segments: const [
+                  ButtonSegment(value: null, label: Text('All')),
+                  ButtonSegment(value: 'pending', label: Text('Pending')),
+                  ButtonSegment(value: 'in_progress', label: Text('In progress')),
+                  ButtonSegment(value: 'complete', label: Text('Complete')),
+                  ButtonSegment(value: 'cancelled', label: Text('Cancelled')),
+                ],
+                selected: {_statusFilter},
+                onSelectionChanged: (s) => setState(() => _statusFilter = s.first),
+              ),
+              const SizedBox(width: 16),
               const Expanded(child: SizedBox()),
               ElevatedButton.icon(
-                onPressed: _startNewBatch,
+                onPressed: _isOffline ? null : _startNewBatch,
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Start batch'),
                 style: ElevatedButton.styleFrom(
@@ -430,40 +511,54 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
           ),
         ),
         Expanded(
-          child: _batches.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.batch_prediction, size: 64, color: AppColors.textSecondary),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Production batches',
-                        style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Select recipe → Start batch → Enter actuals → Complete (ingredients deducted, output added)',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _startNewBatch,
-                        icon: const Icon(Icons.add),
-                        label: const Text('Start batch'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
+          child: _isOffline && _batches.isEmpty
+              ? const Center(
+                  child: Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Text(
+                      'No cached data available. Connect to the internet to load data.',
+                      style: TextStyle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
                   ),
                 )
-              : ListView(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  children: _buildBatchListItems(),
-                ),
+              : _filteredBatches.isEmpty
+                  ? Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.batch_prediction, size: 64, color: AppColors.textSecondary),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Production batches',
+                            style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _statusFilter != null
+                                ? 'No batches with status "${_statusFilter!.replaceAll('_', ' ')}".'
+                                : 'Select recipe → Start batch → Enter actuals → Complete (ingredients deducted, output added)',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 24),
+                          if (_statusFilter == null)
+                            ElevatedButton.icon(
+                              onPressed: _isOffline ? null : _startNewBatch,
+                              icon: const Icon(Icons.add),
+                              label: const Text('Start batch'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                        ],
+                      ),
+                    )
+                  : ListView(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: _buildBatchListItems(),
+                    ),
         ),
       ],
     );
@@ -531,7 +626,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -761,7 +856,7 @@ class _SplitBatchDialogState extends State<_SplitBatchDialog> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -1043,7 +1138,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -1263,13 +1358,36 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
       if (v != null && v >= 0) actuals[entry.key] = v;
     }
     final costTotal = double.tryParse(_costTotalController.text);
+    final completedBy = AuthService().getCurrentStaffId() ?? '';
+    if (completedBy.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in with PIN to complete batch'), backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+    if (!ConnectivityService().isConnected) {
+      await OfflineQueueService().addToQueue('complete_batch', {
+        'batchId': widget.batch.id,
+        'actualQuantitiesByIngredientId': actuals,
+        'outputs': outputs,
+        'completedBy': completedBy,
+        'costTotal': costTotal,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success),
+        );
+        Navigator.pop(context, true);
+      }
+      return;
+    }
     setState(() => _saving = true);
     try {
       await widget.batchRepo.completeBatch(
         batchId: widget.batch.id,
         actualQuantitiesByIngredientId: actuals,
         outputs: outputs,
-        completedBy: AuthService().getCurrentStaffId(),
+        completedBy: completedBy,
         costTotal: costTotal,
       );
       if (mounted) {
@@ -1289,7 +1407,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
         setState(() => _saving = false);
       }
@@ -1631,7 +1749,7 @@ class _EditBatchScreenState extends State<_EditBatchScreen> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString();
+          _error = ErrorHandler.friendlyMessage(e);
           _loading = false;
         });
       }
@@ -1875,7 +1993,7 @@ class _EditBatchScreenState extends State<_EditBatchScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
         setState(() => _saving = false);
       }

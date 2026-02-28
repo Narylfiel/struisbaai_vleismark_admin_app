@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 /// H6: Chart of Accounts — tree by type (Assets | Liabilities | Equity | Income | Expenses),
@@ -161,7 +162,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account deleted'), backgroundColor: AppColors.success));
                         }
                       } catch (e) {
-                        if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+                        if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
                       }
                     },
                     child: const Text('Delete', style: TextStyle(color: AppColors.error)),
@@ -199,7 +200,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success));
                       }
                     } catch (e) {
-                      if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+                      if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
                     }
                   },
                   child: const Text('Save'),
@@ -242,7 +243,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Standard SA chart imported'), backgroundColor: AppColors.success));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Import failed: $e'), backgroundColor: AppColors.error));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     }
   }
 
@@ -254,7 +255,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(current ? 'Deactivated' : 'Activated'), backgroundColor: AppColors.success));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     }
   }
 

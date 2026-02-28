@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
@@ -167,7 +168,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     }
   }

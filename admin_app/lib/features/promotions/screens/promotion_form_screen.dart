@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/promotion.dart';
 import '../models/promotion_product.dart';
@@ -269,7 +270,7 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

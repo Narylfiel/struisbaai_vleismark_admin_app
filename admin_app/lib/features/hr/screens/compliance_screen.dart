@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:pdf/pdf.dart';
@@ -157,7 +158,7 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
           pw.Table(
             border: pw.TableBorder.all(width: 0.5),
             columnWidths: {
-              for (int i = 0; i < 1 + staffCols.length; i++) i: const pw.FlexColumnWidth(1.5),
+              for (int i = 0; i < 1 + staffCols.length; i++) i: pw.FlexColumnWidth(1.5),
             },
             children: [
               pw.TableRow(
@@ -166,7 +167,7 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
                   pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Document type', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
                   ...staffCols.map((s) => pw.Padding(
                         padding: const pw.EdgeInsets.all(4),
-                        child: pw.Text((s['full_name'] ?? '').toString(), style: const pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8)),
+                        child: pw.Text((s['full_name'] ?? '').toString(), style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 8)),
                       )),
                 ],
               ),
@@ -398,7 +399,7 @@ class _DocumentDetailDialogState extends State<_DocumentDetailDialog> {
     } catch (e) {
       if (mounted) {
         setState(() => _uploading = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Upload failed: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     }
   }
@@ -431,7 +432,7 @@ class _DocumentDetailDialogState extends State<_DocumentDetailDialog> {
         widget.onSaved();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
     if (mounted) setState(() => _saving = false);
   }

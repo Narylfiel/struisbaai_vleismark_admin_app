@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../models/promotion.dart';
 import '../models/promotion_product.dart';
 import '../services/promotion_repository.dart';
@@ -45,7 +46,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       });
     } catch (e) {
       if (mounted) setState(() {
-        _error = e.toString();
+        _error = ErrorHandler.friendlyMessage(e);
         _loading = false;
       });
     }
@@ -338,7 +339,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Promotion activated')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
   }
 
@@ -348,7 +349,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Promotion paused')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
   }
 
@@ -358,7 +359,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Promotion cancelled')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
   }
 
@@ -380,7 +381,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Promotion deleted')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
   }
 
@@ -416,7 +417,7 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Promotion duplicated')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
   }
 }

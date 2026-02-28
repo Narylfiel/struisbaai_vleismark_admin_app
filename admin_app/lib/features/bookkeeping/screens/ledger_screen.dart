@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -256,7 +257,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Journal entry saved'), backgroundColor: AppColors.success));
                             }
                           } catch (e) {
-                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e'), backgroundColor: AppColors.error));
+                            if (context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
                           }
                         },
                   child: const Text('Save'),
@@ -297,7 +298,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: AppColors.error));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     }
     if (mounted) setState(() => _exporting = false);
   }

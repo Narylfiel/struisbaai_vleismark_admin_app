@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -89,7 +92,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
       debugPrint('Waste log load error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading data: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -245,7 +248,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -354,7 +357,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Export error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -829,7 +832,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Photo error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
@@ -891,6 +894,27 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
       final performedBy = _auth.currentStaffId ?? '';
       if (performedBy.isEmpty) {
         throw Exception('Staff not identified. Sign in with PIN to record waste.');
+      }
+
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('record_waste', {
+          'itemId': _selectedProduct!['id'],
+          'movementType': _selectedType == 'Waste' ? 'waste' : 'sponsorship',
+          'quantity': qty,
+          'reason': _selectedReason,
+          'performedBy': performedBy,
+          'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
+        });
+        if (mounted) {
+          setState(() => _isSaving = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Saved — will sync when back online.'),
+              backgroundColor: AppColors.success,
+            ),
+          );
+        }
+        return;
       }
 
       final movement = await _inventoryRepo.recordMovement(
@@ -961,7 +985,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
       if (mounted) {
         setState(() => _isSaving = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }

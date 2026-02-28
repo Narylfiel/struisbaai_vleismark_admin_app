@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/accounts/screens/account_detail_screen.dart';
@@ -1574,7 +1575,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'),
+            SnackBar(content: Text(ErrorHandler.friendlyMessage(e)),
                 backgroundColor: AppColors.error));
       }
     }
@@ -1968,7 +1969,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e'),
+            SnackBar(content: Text(ErrorHandler.friendlyMessage(e)),
                 backgroundColor: AppColors.error));
       }
     }

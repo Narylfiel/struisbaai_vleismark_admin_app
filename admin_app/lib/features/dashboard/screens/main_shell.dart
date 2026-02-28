@@ -4,6 +4,8 @@ import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
+import 'package:admin_app/core/screens/pending_syncs_screen.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/widgets/session_scope.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
@@ -374,70 +376,87 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               initialData: SessionScope.connectivity(context).isConnected,
               builder: (context, snapshot) {
                 final isConnected = snapshot.data ?? true;
-                // Pending sync count will be wired in Step 5 (OfflineQueueService)
-                const pendingSyncCount = 0;
-                return Column(
-                  children: [
-                    // Top bar
-                    Container(
-                      height: 52,
-                      color: AppColors.cardBg,
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: Row(
-                        children: [
-                          Text(
-                            items[selected].label,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textPrimary,
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            _formattedDate(),
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Offline banner
-                    if (!isConnected)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 24, vertical: 10),
-                        color: Colors.amber.shade700,
-                        child: Row(
-                          children: [
-                            Icon(Icons.cloud_off,
-                                size: 20, color: Colors.amber.shade100),
-                            const SizedBox(width: 10),
-                            Text(
-                              pendingSyncCount > 0
-                                  ? 'No internet — $pendingSyncCount actions pending sync'
-                                  : 'No internet — viewing cached data',
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.amber.shade100,
+                return StreamBuilder<int>(
+                  stream: OfflineQueueService().pendingCountStream,
+                  initialData: 0,
+                  builder: (context, countSnapshot) {
+                    final pendingCount = countSnapshot.data ?? 0;
+                    final bannerWidget = !isConnected
+                        ? Material(
+                            color: Colors.amber.shade700,
+                            child: InkWell(
+                              onTap: pendingCount > 0
+                                  ? () => Navigator.of(context).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => const PendingSyncsScreen(),
+                                        ),
+                                      )
+                                  : null,
+                              child: Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 24, vertical: 10),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.cloud_off,
+                                        size: 20, color: Colors.amber.shade100),
+                                    const SizedBox(width: 10),
+                                    Text(
+                                      pendingCount > 0
+                                          ? 'No internet — $pendingCount actions pending sync'
+                                          : 'No internet — viewing cached data',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.amber.shade100,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                          ],
+                          )
+                        : null;
+                    return Column(
+                      children: [
+                        // Top bar
+                        Container(
+                          height: 52,
+                          color: AppColors.cardBg,
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: Row(
+                            children: [
+                              Text(
+                                items[selected].label,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                _formattedDate(),
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    const Divider(height: 1, color: AppColors.border),
+                        if (bannerWidget != null) bannerWidget,
+                        const Divider(height: 1, color: AppColors.border),
 
-                    // Screen content — protected
-                    Expanded(
-                      child: items[selected].locked
-                          ? _buildAccessDenied(items[selected].label)
-                          : items[selected].screen,
-                    ),
-                  ],
+                        // Screen content — protected
+                        Expanded(
+                          child: items[selected].locked
+                              ? _buildAccessDenied(items[selected].label)
+                              : items[selected].screen,
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),

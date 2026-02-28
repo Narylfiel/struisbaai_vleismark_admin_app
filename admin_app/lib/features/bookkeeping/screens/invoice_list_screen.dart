@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/ocr_service.dart';
 import 'package:admin_app/features/bookkeeping/models/customer_invoice.dart';
 import 'package:admin_app/features/bookkeeping/models/supplier_invoice.dart';
@@ -371,7 +374,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       } catch (e) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Invalid CSV: $e'), backgroundColor: AppColors.error),
+            SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
           );
         }
         return;
@@ -497,7 +500,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -569,7 +572,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('OCR failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     } finally {
@@ -596,18 +599,30 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Approval failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }
   }
 
   Future<void> _receiveGoods(SupplierInvoice inv) async {
-    final userId = AuthService().getCurrentStaffId();
+    final userId = AuthService().getCurrentStaffId() ?? '';
     if (userId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sign in with PIN to receive goods'), backgroundColor: AppColors.warning),
       );
+      return;
+    }
+    if (!ConnectivityService().isConnected) {
+      await OfflineQueueService().addToQueue('receive_invoice', {
+        'invoiceId': inv.id,
+        'receivedBy': userId,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success),
+        );
+      }
       return;
     }
     try {
@@ -628,7 +643,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Receive failed: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }

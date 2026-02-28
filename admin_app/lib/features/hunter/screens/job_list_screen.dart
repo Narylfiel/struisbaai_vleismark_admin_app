@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/db/cached_hunter_job.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
@@ -95,14 +99,42 @@ class _JobsTabState extends State<_JobsTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      var query = _supabase.from('hunter_jobs').select('*');
-      if (widget.isCompleted) {
-        query = query.eq('status', 'completed');
-      } else {
-        query = query.neq('status', 'completed');
+      final isOnline = ConnectivityService().isConnected;
+      if (!isOnline) {
+        final statusFilter = widget.isCompleted ? 'completed' : '!completed';
+        final cached = await IsarService.getHunterJobs(statusFilter);
+        if (mounted) setState(() => _jobs = cached.map((j) => j.toListMap()).toList());
+        setState(() => _isLoading = false);
+        return;
       }
-      final data = await query.order('created_at', ascending: false);
-      setState(() => _jobs = List<Map<String, dynamic>>.from(data));
+      final stale = await IsarService.isHunterJobCacheStale();
+      final cachedList = await IsarService.getHunterJobs(null);
+      if (stale || cachedList.isEmpty) {
+        var query = _supabase.from('hunter_jobs').select('*');
+        if (widget.isCompleted) {
+          query = query.eq('status', 'completed');
+        } else {
+          query = query.neq('status', 'completed');
+        }
+        final data = await query.order('created_at', ascending: false);
+        final list = List<Map<String, dynamic>>.from(data);
+        final toSave = list.map((row) => CachedHunterJob.fromSupabase(row)).toList();
+        await IsarService.saveHunterJobs(toSave);
+        if (mounted) setState(() => _jobs = list);
+        setState(() => _isLoading = false);
+        return;
+      }
+      final statusFilter = widget.isCompleted ? 'completed' : '!completed';
+      final fromCache = await IsarService.getHunterJobs(statusFilter);
+      if (mounted) setState(() => _jobs = fromCache.map((j) => j.toListMap()).toList());
+      setState(() => _isLoading = false);
+      _supabase.from('hunter_jobs').select('*').order('created_at', ascending: false).limit(200).then((data) async {
+        if (data == null || (data as List).isEmpty) return;
+        final list = List<Map<String, dynamic>>.from(data);
+        final toSave = list.map((row) => CachedHunterJob.fromSupabase(row)).toList();
+        await IsarService.saveHunterJobs(toSave);
+        if (mounted) _load();
+      });
     } catch (e) {
       debugPrint('Jobs load: $e');
     }
@@ -182,7 +214,7 @@ class _JobsTabState extends State<_JobsTab> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -221,7 +253,7 @@ class _JobsTabState extends State<_JobsTab> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -292,7 +324,9 @@ class _JobsTabState extends State<_JobsTab> {
               : _jobs.isEmpty
                   ? Center(
                       child: Text(
-                        widget.isCompleted ? 'No completed jobs' : 'No active jobs',
+                        ConnectivityService().isConnected
+                            ? (widget.isCompleted ? 'No completed jobs' : 'No active jobs')
+                            : 'No cached data available. Connect to the internet to load data.',
                         style: const TextStyle(color: AppColors.textSecondary),
                       ),
                     )
@@ -475,7 +509,7 @@ class _JobFormDialogState extends State<_JobFormDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     }
     setState(() => _isSaving = false);
@@ -730,7 +764,7 @@ class _ServicesTabState extends State<_ServicesTab> {
       _load();
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Service deleted')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     }
   }
 
@@ -926,7 +960,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
         widget.onSaved();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
     }
     setState(() => _isSaving = false);
   }

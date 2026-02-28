@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/customers/models/customer_recipe.dart';
 import 'package:admin_app/features/customers/services/customer_recipe_repository.dart';
 
@@ -68,7 +69,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
       );
       _load();
     } catch (e) {
-      if (mounted) _showError('Failed to add type: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 
@@ -124,7 +125,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
       );
       _load();
     } catch (e) {
-      if (mounted) _showError('Failed to update type: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 
@@ -159,7 +160,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
         );
       }
     } catch (e) {
-      if (mounted) _showError('Failed to delete type: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 
@@ -200,7 +201,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
       );
       _load();
     } catch (e) {
-      if (mounted) _showError('Failed to add option: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 
@@ -259,7 +260,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
       );
       _load();
     } catch (e) {
-      if (mounted) _showError('Failed to update option: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 
@@ -290,7 +291,7 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
       await _repo.deleteCategoryOption(option.id);
       _load();
     } catch (e) {
-      if (mounted) _showError('Failed to delete option: $e');
+      if (mounted) _showError(ErrorHandler.friendlyMessage(e));
     }
   }
 

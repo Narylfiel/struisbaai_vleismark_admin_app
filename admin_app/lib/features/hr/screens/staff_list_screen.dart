@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'dart:convert';
@@ -926,6 +929,21 @@ class _LeaveTabState extends State<_LeaveTab> {
   Future<void> _updateStatus(String id, String status, String? notes) async {
     // DB CHECK expects lowercase: 'pending', 'approved', 'rejected'
     final statusLower = status.toLowerCase();
+    if (!ConnectivityService().isConnected) {
+      await OfflineQueueService().addToQueue('approve_leave', {
+        'id': id,
+        'status': statusLower,
+        'review_notes': notes,
+        'reviewedBy': AuthService().getCurrentStaffId(),
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success),
+        );
+      }
+      _load();
+      return;
+    }
     await _supabase.from('leave_requests').update({
       'status': statusLower,
       'review_notes': notes,
@@ -1562,7 +1580,7 @@ class _AwolTabState extends State<_AwolTab> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed: $e'), backgroundColor: AppColors.error),
+        SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
       );
     }
   }
@@ -1879,7 +1897,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {
@@ -1992,7 +2010,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
       setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.error),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     }

@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/export_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -277,7 +278,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to start: $e')),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e))),
         );
       }
     }
@@ -318,7 +319,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Save failed: $e')),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e))),
         );
       }
     }
@@ -342,7 +343,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Submit failed: $e')),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e))),
         );
       }
     }
@@ -363,7 +364,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Approve failed: $e')),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e))),
         );
       }
     }
@@ -439,7 +440,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString()), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -462,7 +463,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       await _repo.setSessionStatus(session.id, StockTakeSessionStatus.cancelled.dbValue);
       if (mounted) await _loadSessionsAndOpen();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
     }
   }
 
@@ -499,7 +500,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rejected — staff can recount')));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
     }
     if (mounted) setState(() => _saving = false);
   }
@@ -516,7 +517,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
     }
     if (mounted) setState(() => _saving = false);
   }
@@ -582,7 +583,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       await Share.shareXFiles([XFile(file.path)], text: 'Stock take export');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -1117,7 +1118,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       await _loadEntries(_currentSession!.id);
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Count updated')));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
     }
   }
 }
@@ -1242,7 +1243,7 @@ class _SessionEntriesViewScreenState extends State<_SessionEntriesViewScreen> {
       await _refreshEntries();
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e'), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }
@@ -1278,7 +1279,7 @@ class _SessionEntriesViewScreenState extends State<_SessionEntriesViewScreen> {
       await Share.shareXFiles([XFile(file.path)], text: 'Stock take export');
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Export failed: $e'), backgroundColor: AppColors.danger));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger));
       }
     }
   }

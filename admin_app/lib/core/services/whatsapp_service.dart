@@ -279,7 +279,7 @@ Ready for quality check and packaging.
     String? status,
   }) async {
     try {
-      var query = client.from('message_logs').select('*').order('sent_at', ascending: false);
+      var query = client.from('message_logs').select('*');
 
       if (startDate != null) {
         query = query.gte('sent_at', startDate.toIso8601String());
@@ -293,7 +293,7 @@ Ready for quality check and packaging.
         query = query.eq('status', status);
       }
 
-      final response = await executeQuery(() => query, operationName: 'Fetch message logs');
+      final response = await executeQuery(() => query.order('sent_at', ascending: false), operationName: 'Fetch message logs');
       return List<Map<String, dynamic>>.from(response ?? []);
     } catch (e) {
       throw Exception('Failed to fetch message logs: $e');

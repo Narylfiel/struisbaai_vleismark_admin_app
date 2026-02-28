@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/settings/services/settings_repository.dart';
 import 'package:admin_app/features/settings/screens/tax_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/scale_settings_screen.dart';
@@ -130,7 +131,7 @@ class _BusinessTabState extends State<_BusinessTab> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error saving: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     } finally {
       if (mounted) {

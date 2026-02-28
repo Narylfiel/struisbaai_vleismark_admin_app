@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/db/cached_transaction.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/features/transactions/services/transaction_repository.dart';
 import 'package:admin_app/features/transactions/screens/transaction_detail_screen.dart';
 import 'package:intl/intl.dart';
@@ -47,15 +50,62 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final list = await _repo.getTransactions(
-        start: _dateFrom,
-        end: _dateTo,
-        paymentMethod: _paymentFilter?.isEmpty == true ? null : _paymentFilter,
-        staffId: _staffFilter?.isEmpty == true ? null : _staffFilter,
+      final isOnline = ConnectivityService().isConnected;
+      if (!isOnline) {
+        final cached = await IsarService.getTransactions(
+          _dateFrom,
+          _dateTo,
+          _paymentFilter?.isEmpty == true ? null : _paymentFilter,
+          _staffFilter?.isEmpty == true ? null : _staffFilter,
+        );
+        if (mounted) setState(() {
+          _transactions = cached.map((t) => t.toListMap()).toList();
+          _loading = false;
+        });
+        return;
+      }
+      final stale = await IsarService.isTransactionCacheStale();
+      final cached = await IsarService.getTransactions(null, null, null, null);
+      if (stale || cached.isEmpty) {
+        final list = await _repo.getTransactions(
+          start: _dateFrom,
+          end: _dateTo,
+          paymentMethod: _paymentFilter?.isEmpty == true ? null : _paymentFilter,
+          staffId: _staffFilter?.isEmpty == true ? null : _staffFilter,
+        );
+        final toSave = list.map((row) {
+          final profiles = row['profiles'];
+          String? staffName;
+          if (profiles is Map) staffName = profiles['full_name']?.toString();
+          return CachedTransaction.fromSupabase(row, staffName: staffName);
+        }).toList();
+        await IsarService.saveTransactions(toSave);
+        if (mounted) setState(() {
+          _transactions = list;
+          _loading = false;
+        });
+        return;
+      }
+      final fromCache = await IsarService.getTransactions(
+        _dateFrom,
+        _dateTo,
+        _paymentFilter?.isEmpty == true ? null : _paymentFilter,
+        _staffFilter?.isEmpty == true ? null : _staffFilter,
       );
       if (mounted) setState(() {
-        _transactions = list;
+        _transactions = fromCache.map((t) => t.toListMap()).toList();
         _loading = false;
+      });
+      _repo.getTransactions(start: _dateFrom, end: _dateTo, paymentMethod: _paymentFilter, staffId: _staffFilter).then((list) async {
+        if (list.isEmpty) return;
+        final toSave = list.map((row) {
+          final profiles = row['profiles'];
+          String? staffName;
+          if (profiles is Map) staffName = profiles['full_name']?.toString();
+          return CachedTransaction.fromSupabase(row, staffName: staffName);
+        }).toList();
+        await IsarService.saveTransactions(toSave);
+        if (mounted) _load();
       });
     } catch (e) {
       if (mounted) setState(() {
@@ -183,7 +233,14 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _transactions.isEmpty
-                    ? const Center(child: Text('No transactions for this period', style: TextStyle(color: AppColors.textSecondary)))
+                    ? Center(
+                        child: Text(
+                          ConnectivityService().isConnected
+                              ? 'No transactions for this period'
+                              : 'No cached data available. Connect to the internet to load data.',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                        ),
+                      )
                     : ListView.builder(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                         itemCount: _transactions.length,

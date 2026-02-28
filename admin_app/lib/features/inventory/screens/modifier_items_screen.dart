@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../models/modifier_group.dart';
@@ -37,7 +38,7 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
       });
     } catch (e) {
       if (mounted) setState(() {
-        _error = e.toString();
+        _error = ErrorHandler.friendlyMessage(e);
         _loading = false;
       });
     }
@@ -89,7 +90,7 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     }
@@ -315,7 +316,7 @@ class _ModifierItemFormScreenState extends State<_ModifierItemFormScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e'), backgroundColor: AppColors.danger),
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.danger),
         );
       }
     } finally {
