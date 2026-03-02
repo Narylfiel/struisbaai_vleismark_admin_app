@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/db/cached_category.dart';
+import 'package:admin_app/core/db/cached_inventory_item.dart';
+import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
@@ -41,28 +45,61 @@ class ProductListScreenState extends State<ProductListScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final isConnected = ConnectivityService().isConnected;
     try {
-      // Category dropdown: id, name, parent_id; active only (categories table uses 'active' column); order by sort_order.
-      final cats = await _supabase
-          .from('categories')
-          .select('id, name, parent_id')
-          .eq('active', true)
-          .order('sort_order');
-      _categories = [
-        {'id': null, 'name': 'All'},
-        ...List<Map<String, dynamic>>.from(cats),
-      ];
-
-      final products = await _supabase
-          .from('inventory_items')
-          .select('*')
-          .order('plu_code');
-      _products = List<Map<String, dynamic>>.from(products);
+      if (isConnected) {
+        final staleItems = await IsarService.isInventoryItemsCacheStale();
+        final staleCat = await IsarService.isCategoriesCacheStale();
+        if (staleItems || staleCat) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+        }
+      } else {
+        await _loadFromCache();
+      }
       _filterProducts();
     } catch (e) {
       debugPrint('Product list error: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
+  }
+
+  Future<void> _loadFromCache() async {
+    final categories = await IsarService.getAllCategories();
+    final active = categories.where((c) => c.isActive).toList();
+    _categories = [
+      {'id': null, 'name': 'All'},
+      ...active.map((c) => {'id': c.categoryId, 'name': c.name}),
+    ];
+    final items = await IsarService.getAllInventoryItems(_showInactive);
+    _products = items.map((e) => e.toMap()).toList();
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final cats = await _supabase
+        .from('categories')
+        .select('id, name, parent_id, active')
+        .eq('active', true)
+        .order('sort_order');
+    final categoryList = (cats as List)
+        .map((c) => CachedCategory.fromSupabase(Map<String, dynamic>.from(c as Map)))
+        .toList();
+    await IsarService.saveCategories(categoryList);
+    _categories = [
+      {'id': null, 'name': 'All'},
+      ...(cats as List).map((c) {
+        final m = Map<String, dynamic>.from(c as Map);
+        return {'id': m['id'], 'name': m['name']};
+      }),
+    ];
+
+    var q = _supabase.from('inventory_items').select('*');
+    if (!_showInactive) q = q.eq('is_active', true);
+    final res = await q.order('plu_code');
+    _products = List<Map<String, dynamic>>.from(res);
+    final itemList = _products.map((i) => CachedInventoryItem.fromSupabase(i)).toList();
+    await IsarService.saveInventoryItems(itemList);
   }
 
   void _filterProducts() {

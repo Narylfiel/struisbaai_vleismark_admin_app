@@ -11,7 +11,7 @@ class TransactionRepository {
     required DateTime end,
     String? paymentMethod,
     String? staffId,
-    int limit = 500,
+    int limit = 2000,
   }) async {
     try {
       var q = _client

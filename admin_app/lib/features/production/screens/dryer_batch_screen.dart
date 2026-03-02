@@ -2,6 +2,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/db/cached_dryer_batch.dart';
+import '../../../core/db/isar_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -26,6 +29,7 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
   List<Map<String, dynamic>> _inventoryItems = [];
   List<Map<String, dynamic>> _recipes = [];
   bool _loading = true;
+  bool _isOffline = false;
   String? _error;
   double _electricityRate = 2.5;
   Timer? _timer;
@@ -35,26 +39,28 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
       _loading = true;
       _error = null;
     });
+    final isConnected = ConnectivityService().isConnected;
     try {
-      final batches = await _repo.getBatches();
-      final inv = await _client
-          .from('inventory_items')
-          .select('id, name')
-          .eq('is_active', true)
-          .order('name');
-      final recipeData = await _client
-          .from('recipes')
-          .select('id, name, expected_yield_pct, batch_size_kg, prep_time_minutes, output_product_id')
-          .eq('is_active', true)
-          .order('name');
-      if (mounted) {
-        setState(() {
-          _batches = batches;
-          _inventoryItems = List<Map<String, dynamic>>.from(inv as List);
-          _recipes = List<Map<String, dynamic>>.from(recipeData as List);
-          _loading = false;
-        });
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isDryerBatchCacheStale();
+        if (stale) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
+          _inventoryItems = List<Map<String, dynamic>>.from(await _client.from('inventory_items').select('id, name').eq('is_active', true).order('name') as List);
+          _recipes = List<Map<String, dynamic>>.from(await _client.from('recipes').select('id, name, expected_yield_pct, batch_size_kg, prep_time_minutes, output_product_id').eq('is_active', true).order('name') as List);
+        }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
+        final inv = await IsarService.getAllInventoryItems(true);
+        _inventoryItems = inv.map((e) => e.toMap()).toList();
+        final rec = await IsarService.getAllRecipes(true);
+        _recipes = rec.map((r) => {'id': r.recipeId, 'name': r.name}).toList();
       }
+      if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -63,6 +69,52 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
         });
       }
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getAllDryerBatches();
+    _batches = cached.map((c) {
+      final map = c.toMap();
+      map['batch_number'] = c.batchId;
+      map['product_name'] = c.outputProductName ?? '';
+      map['input_weight_kg'] = c.weightIn ?? 0;
+      map['output_weight_kg'] = c.weightOut;
+      map['started_at'] = c.startDate?.toIso8601String();
+      map['completed_at'] = c.endDate?.toIso8601String();
+      return DryerBatch.fromJson(map);
+    }).toList();
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final batches = await _repo.getBatches();
+    final inv = await _client.from('inventory_items').select('id, name').eq('is_active', true).order('name');
+    final recipeData = await _client.from('recipes').select('id, name, expected_yield_pct, batch_size_kg, prep_time_minutes, output_product_id').eq('is_active', true).order('name');
+    _inventoryItems = List<Map<String, dynamic>>.from(inv as List);
+    _recipes = List<Map<String, dynamic>>.from(recipeData as List);
+    final toSave = batches.map((b) {
+      final j = b.toJson();
+      j['start_date'] = j['started_at'];
+      j['end_date'] = j['completed_at'];
+      j['weight_in'] = j['input_weight_kg'];
+      j['weight_out'] = j['output_weight_kg'];
+      j['output_product_name'] = b.productName;
+      if (b.inputWeightKg > 0 && b.outputWeightKg != null) {
+        j['shrinkage_pct'] = ((b.inputWeightKg - b.outputWeightKg!) / b.inputWeightKg) * 100;
+      }
+      return CachedDryerBatch.fromSupabase(j);
+    }).toList();
+    await IsarService.saveDryerBatches(toSave);
+    _batches = batches;
+  }
+
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        if (!await IsarService.isDryerBatchCacheStale()) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
   }
 
   @override
@@ -164,33 +216,49 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
         Expanded(
           child: _batches.isEmpty
               ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.ac_unit, size: 64, color: AppColors.textSecondary),
-                      const SizedBox(height: 16),
-                      const Text(
-                        'Dryer batches',
-                        style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Biltong, Droewors, Chilli Bites — Load dryer → track drying → Weigh out (deduct raw, add output)',
-                        style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 24),
-                      ElevatedButton.icon(
-                        onPressed: _newBatch,
-                        icon: const Icon(Icons.add),
-                        label: const Text('New dryer batch'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          foregroundColor: Colors.white,
+                  child: _isOffline
+                      ? Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.cloud_off, size: 64, color: AppColors.textSecondary),
+                              const SizedBox(height: 16),
+                              const Text(
+                                'No cached data available. Connect to the internet to load data.',
+                                style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                          ),
+                        )
+                      : Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.ac_unit, size: 64, color: AppColors.textSecondary),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Dryer batches',
+                              style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Biltong, Droewors, Chilli Bites — Load dryer → track drying → Weigh out (deduct raw, add output)',
+                              style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 24),
+                            ElevatedButton.icon(
+                              onPressed: _newBatch,
+                              icon: const Icon(Icons.add),
+                              label: const Text('New dryer batch'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                    ],
-                  ),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),

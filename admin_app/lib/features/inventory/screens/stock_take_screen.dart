@@ -5,8 +5,11 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
+import '../../../core/db/isar_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/offline_queue_service.dart';
 import '../../../core/services/export_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/stock_take_entry.dart';
@@ -35,6 +38,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
   bool _loadingSessions = true;
   bool _loadingEntries = false;
   bool _saving = false;
+  bool _isOffline = false;
   String? _scannedItemId;
   final ScrollController _countListScrollController = ScrollController();
   final FocusNode _scanFocusNode = FocusNode();
@@ -157,7 +161,27 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
 
   Future<void> _loadSessionsAndOpen() async {
     setState(() => _loadingSessions = true);
+    final isConnected = ConnectivityService().isConnected;
     try {
+      if (!isConnected) {
+        _isOffline = true;
+        final cachedItems = await IsarService.getAllInventoryItems(true);
+        if (mounted) setState(() {
+          _sessions = [];
+          _currentSession = null;
+          _locations = [];
+          _items = cachedItems.map((e) => e.toMap()).toList();
+          _loadingSessions = false;
+          for (final item in _items) {
+            final id = item['id'] as String?;
+            if (id != null && !_actualControllers.containsKey(id)) {
+              _actualControllers[id] = TextEditingController();
+            }
+          }
+        });
+        return;
+      }
+      _isOffline = false;
       final sessions = await _repo.getSessions();
       final open = await _repo.getOpenSession();
 
@@ -291,6 +315,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
     int saved = 0;
     setState(() => _saving = true);
     try {
+      final entries = <Map<String, dynamic>>[];
       for (final item in _items) {
         final itemId = item['id'] as String?;
         if (itemId == null) continue;
@@ -299,14 +324,37 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         final actual = double.tryParse(text);
         if (actual == null) continue;
         final expected = _expectedForItem(item);
+        entries.add({
+          'session_id': sessionId,
+          'item_id': itemId,
+          'location_id': _selectedLocationId,
+          'expected_quantity': expected,
+          'actual_quantity': actual,
+          'counted_by': _staffId,
+          'device_id': null,
+        });
+      }
+      if (entries.isEmpty) {
+        if (mounted) setState(() => _saving = false);
+        return;
+      }
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('create_stock_take', {'entries': entries});
+        if (mounted) {
+          setState(() => _saving = false);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+        }
+        return;
+      }
+      for (final e in entries) {
         await _repo.saveEntry(
-          sessionId: sessionId,
-          itemId: itemId,
-          locationId: _selectedLocationId,
-          expectedQuantity: expected,
-          actualQuantity: actual,
-          countedBy: _staffId,
-          deviceId: null,
+          sessionId: e['session_id'] as String,
+          itemId: e['item_id'] as String,
+          locationId: e['location_id'] as String?,
+          expectedQuantity: (e['expected_quantity'] as num).toDouble(),
+          actualQuantity: (e['actual_quantity'] as num).toDouble(),
+          countedBy: e['counted_by'] as String?,
+          deviceId: e['device_id'] as String?,
         );
         saved++;
       }
@@ -605,9 +653,12 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
             ),
             const SizedBox(height: 12),
             if (_sessions.isEmpty)
-              const Text(
-                'No stock-take sessions yet. Start one to begin counting.',
-                style: TextStyle(color: AppColors.textSecondary),
+              Text(
+                _isOffline
+                    ? 'No cached data available. Connect to the internet to load data.'
+                    : 'No stock-take sessions yet. Start one to begin counting.',
+                style: const TextStyle(color: AppColors.textSecondary),
+                textAlign: TextAlign.center,
               )
             else
               ListView.separated(
@@ -759,11 +810,14 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         ));
         if (_isOwnerOrManager) {
           list.addAll([
-            FilledButton.icon(
-              icon: const Icon(Icons.check, size: 16),
-              label: const Text('Approve'),
-              style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-              onPressed: _saving ? null : () => _approveSessionFromList(s),
+            Tooltip(
+              message: !ConnectivityService().isConnected ? 'Requires internet connection' : 'Approve stock take',
+              child: FilledButton.icon(
+                icon: const Icon(Icons.check, size: 16),
+                label: const Text('Approve'),
+                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                onPressed: (_saving || !ConnectivityService().isConnected) ? null : () => _approveSessionFromList(s),
+              ),
             ),
             OutlinedButton.icon(
               icon: const Icon(Icons.close, size: 16),
@@ -837,13 +891,16 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
               ),
             ],
             if (s.status == StockTakeSessionStatus.pendingApproval) ...[
-              ElevatedButton(
-                onPressed: _saving ? null : _approveSession,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.success,
-                  foregroundColor: Colors.white,
+              Tooltip(
+                message: !ConnectivityService().isConnected ? 'Requires internet connection' : 'Approve stock take',
+                child: ElevatedButton(
+                  onPressed: (_saving || !ConnectivityService().isConnected) ? null : _approveSession,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.success,
+                    foregroundColor: Colors.white,
+                  ),
+                  child: const Text('Approve'),
                 ),
-                child: const Text('Approve'),
               ),
               TextButton(
                 onPressed: _closeCurrentSession,

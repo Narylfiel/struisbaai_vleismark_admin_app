@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
@@ -68,20 +70,31 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
       }
       _weightInTotalCtrl.addListener(() => setState(() {}));
       final serviceId = widget.job['service_id']?.toString();
-      if (serviceId != null) {
-        final s = await _client.from('hunter_services').select('*').eq('id', serviceId).maybeSingle();
-        if (s != null) _service = Map<String, dynamic>.from(s as Map);
+      if (ConnectivityService().isConnected) {
+        if (serviceId != null) {
+          final s = await _client.from('hunter_services').select('*').eq('id', serviceId).maybeSingle();
+          if (s != null) _service = Map<String, dynamic>.from(s as Map);
+        }
+        final inv = await _client
+            .from('inventory_items')
+            .select('id, name, product_type')
+            .eq('is_active', true)
+            .order('name');
+        final list = List<Map<String, dynamic>>.from(inv as List);
+        _inventoryItems = list.where((i) {
+          final pt = i['product_type']?.toString();
+          return pt == null || pt == 'raw' || pt == 'portioned';
+        }).toList();
+      } else {
+        if (serviceId != null) {
+          final configs = await IsarService.getAllHunterServiceConfigs(true);
+          final match = configs.where((c) => c.configId == serviceId).toList();
+          final c = match.isNotEmpty ? match.first : null;
+          if (c != null) _service = {'id': c.configId, 'species': c.species, 'base_price': c.baseRate, 'price_per_kg': c.perKgRate};
+        }
+        final inv = await IsarService.getAllInventoryItems(true);
+        _inventoryItems = inv.map((i) => {'id': i.itemId, 'name': i.name, 'product_type': 'raw'}).toList();
       }
-      final inv = await _client
-          .from('inventory_items')
-          .select('id, name, product_type')
-          .eq('is_active', true)
-          .order('name');
-      final list = List<Map<String, dynamic>>.from(inv as List);
-      _inventoryItems = list.where((i) {
-        final pt = i['product_type']?.toString();
-        return pt == null || pt == 'raw' || pt == 'portioned';
-      }).toList();
       if (mounted) setState(() => _loading = false);
     } catch (_) {
       if (mounted) setState(() => _loading = false);

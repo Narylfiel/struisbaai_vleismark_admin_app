@@ -4,6 +4,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/offline_queue_service.dart';
+import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -47,6 +48,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
   List<Map<String, dynamic>> _movements = [];
   List<Map<String, dynamic>> _filteredMovements = [];
   bool _isLoading = true;
+  bool _isOffline = false;
 
   // Filters
   DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 30));
@@ -68,9 +70,35 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
+    final isConnected = ConnectivityService().isConnected;
     try {
-      // Query stock_movements with joins
-      // Pattern confirmed: table_name(columns) for joins
+      if (!isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllStockMovements();
+        final endOfDay = DateTime(_dateTo.year, _dateTo.month, _dateTo.day, 23, 59, 59);
+        _movements = cached
+            .where((c) =>
+                (c.movementType == 'waste' || c.movementType == 'sponsorship') &&
+                c.createdAt != null &&
+                !c.createdAt!.isBefore(_dateFrom) &&
+                !c.createdAt!.isAfter(endOfDay))
+            .map((c) {
+          final m = c.toMap();
+          m['inventory_items'] = {'name': c.itemName, 'plu_code': '', 'cost_price': null};
+          m['profiles'] = {'full_name': null};
+          m['unit_type'] = 'kg';
+          m['metadata'] = null;
+          m['photo_url'] = null;
+          m['reference_type'] = null;
+          m['reference_id'] = null;
+          return m;
+        }).toList();
+        _applyFilters();
+        await _calculateStats();
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
       final response = await _client
           .from('stock_movements')
           .select('''
@@ -623,10 +651,13 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _filteredMovements.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
-                          'No waste or sponsorship entries found',
-                          style: TextStyle(color: AppColors.textSecondary),
+                          _isOffline && _movements.isEmpty
+                              ? 'No cached data available. Connect to the internet to load data.'
+                              : 'No waste or sponsorship entries found',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
                         ),
                       )
                     : ListView.builder(

@@ -4,6 +4,8 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/widgets/offline_required_gate.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../models/customer_invoice.dart';
 import '../services/customer_invoice_repository.dart';
 
@@ -284,7 +286,9 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
             ),
         ],
       ),
-      body: SingleChildScrollView(
+      body: OfflineRequiredGate(
+        onRetry: () => setState(() {}),
+        child: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Form(
           key: _formKey,
@@ -444,6 +448,7 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
           ),
         ),
       ),
+    ),
     );
   }
 }

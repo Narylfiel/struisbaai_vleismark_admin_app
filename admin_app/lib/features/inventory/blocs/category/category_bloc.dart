@@ -1,4 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../../core/db/cached_category.dart';
+import '../../../../core/db/isar_service.dart';
+import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../models/category.dart';
@@ -24,20 +27,72 @@ class CategoryBloc extends Bloc<CategoryEvent, CategoryState> {
     try {
       emit(const CategoryLoading());
 
-      // Only active categories (column is 'active'); after soft delete, LoadCategories() refreshes and deleted item disappears.
-      final response = await SupabaseService.client
-          .from('categories')
-          .select()
-          .eq('active', true)
-          .order('parent_id', ascending: true)
-          .order('sort_order', ascending: true)
-          .order('name');
+      final isOnline = ConnectivityService().isConnected;
 
-      final categories = (response as List)
-          .map((json) => Category.fromJson(json as Map<String, dynamic>))
-          .toList();
+      if (!isOnline) {
+        final cached = await IsarService.getAllCategories();
+        if (cached.isEmpty) {
+          emit(const CategoryError('No cached data available. Connect to the internet to load data.'));
+          return;
+        }
+        final categories = cached.map((c) => Category(
+          id: c.categoryId,
+          name: c.name,
+          colorCode: '#808080',
+          notes: null,
+          sortOrder: 0,
+          isActive: c.isActive,
+          parentId: null,
+        )).toList();
+        emit(CategoryLoaded(categories));
+        return;
+      }
 
+      final stale = await IsarService.isCategoriesCacheStale();
+      if (stale) {
+        final response = await SupabaseService.client
+            .from('categories')
+            .select()
+            .eq('active', true)
+            .order('parent_id', ascending: true)
+            .order('sort_order', ascending: true)
+            .order('name');
+        final list = response as List;
+        final categoryList = list.map((json) => Category.fromJson(json as Map<String, dynamic>)).toList();
+        final toCache = list.map((json) {
+          final m = Map<String, dynamic>.from(json as Map);
+          return CachedCategory.fromSupabase(m);
+        }).toList();
+        await IsarService.saveCategories(toCache);
+        emit(CategoryLoaded(categoryList));
+        return;
+      }
+
+      final cached = await IsarService.getAllCategories();
+      final categories = cached.map((c) => Category(
+        id: c.categoryId,
+        name: c.name,
+        colorCode: '#808080',
+        notes: null,
+        sortOrder: 0,
+        isActive: c.isActive,
+        parentId: null,
+      )).toList();
       emit(CategoryLoaded(categories));
+      // Silent background refresh when online and cache was fresh
+      Future(() async {
+        if (!ConnectivityService().isConnected) return;
+        try {
+          final response = await SupabaseService.client
+              .from('categories')
+              .select()
+              .order('sort_order')
+              .order('name');
+          final list = response as List;
+          final toCache = list.map((json) => CachedCategory.fromSupabase(Map<String, dynamic>.from(json as Map))).toList();
+          await IsarService.saveCategories(toCache);
+        } catch (_) {}
+      });
     } catch (e) {
       emit(CategoryError(ErrorHandler.friendlyMessage(e)));
     }

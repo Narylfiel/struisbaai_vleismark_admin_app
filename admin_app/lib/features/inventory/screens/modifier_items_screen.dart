@@ -7,6 +7,8 @@ import '../../../shared/widgets/form_widgets.dart';
 import '../models/modifier_group.dart';
 import '../models/modifier_item.dart';
 import '../services/modifier_repository.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Blueprint §4.3: Modifier items for one group. List items, Add/Edit (name, price adjustment, track inventory, linked item).
@@ -24,6 +26,7 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
   List<ModifierItem> _items = [];
   bool _loading = true;
   String? _error;
+  bool _isOffline = false;
 
   Future<void> _load() async {
     setState(() {
@@ -31,6 +34,26 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
       _error = null;
     });
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllModifierItems(widget.group.id);
+        _items = cached
+            .where((c) => c.modifierGroupId == widget.group.id)
+            .map((c) => ModifierItem(
+                  id: c.itemId,
+                  groupId: c.modifierGroupId,
+                  name: c.name,
+                  priceAdjustment: c.priceAdjustment,
+                  isActive: c.isActive,
+                  sortOrder: 0,
+                  trackInventory: false,
+                  linkedInventoryItemId: null,
+                ))
+            .toList();
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      _isOffline = false;
       final list = await _repo.getItemsByGroup(widget.group.id);
       if (mounted) setState(() {
         _items = list;
@@ -133,14 +156,17 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
                         children: [
                           const Icon(Icons.add_circle_outline, size: 64, color: AppColors.textSecondary),
                           const SizedBox(height: 16),
-                          const Text(
-                            'No modifier items',
-                            style: TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
+                          Text(
+                            _isOffline
+                                ? 'No cached data available. Connect to the internet to load data.'
+                                : 'No modifier items',
+                            style: const TextStyle(color: AppColors.textPrimary, fontSize: 20, fontWeight: FontWeight.w500),
+                            textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 8),
-                          const Text(
-                            'Add items (e.g. Pepper Sauce +R15, Track inventory, Linked product)',
-                            style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                          Text(
+                            _isOffline ? '' : 'Add items (e.g. Pepper Sauce +R15, Track inventory, Linked product)',
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 24),

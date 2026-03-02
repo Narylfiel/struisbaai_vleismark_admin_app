@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
@@ -41,6 +44,11 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   
   Future<void> _reloadJob() async {
     try {
+      if (!ConnectivityService().isConnected) {
+        final cached = await IsarService.getHunterJobById(widget.job['id']?.toString() ?? '');
+        if (cached != null && mounted) setState(() => _currentJob = cached.toListMap());
+        return;
+      }
       final fresh = await _client
           .from('hunter_jobs')
           .select('*')
@@ -581,6 +589,12 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   Future<void> _markCollected() async {
     setState(() => _saving = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('update_hunter_job_status', {'id': widget.job['id'], 'status': 'completed'});
+        if (mounted) setState(() { _saving = false; _collected = true; });
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+        return;
+      }
       final job = _currentJob ?? widget.job;
       final jobNumber = hunterJobDisplayNumber(job['id']?.toString());
       final hunterName = job['hunter_name'] ?? job['client_name'] ?? 'Unknown';
@@ -665,10 +679,13 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
                 label: const Text('Print PDF Invoice'),
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _sendWhatsApp,
-                icon: const Icon(Icons.chat),
-                label: const Text('WhatsApp'),
+              Tooltip(
+                message: !ConnectivityService().isConnected ? 'Requires internet connection' : 'Send WhatsApp',
+                child: ElevatedButton.icon(
+                  onPressed: ConnectivityService().isConnected ? _sendWhatsApp : null,
+                  icon: const Icon(Icons.chat),
+                  label: const Text('WhatsApp'),
+                ),
               ),
               const SizedBox(height: 12),
               ElevatedButton.icon(

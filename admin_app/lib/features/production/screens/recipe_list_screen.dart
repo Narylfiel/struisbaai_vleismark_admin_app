@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/db/cached_recipe.dart';
+import '../../../core/db/isar_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/recipe.dart';
@@ -18,6 +21,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
   final _repo = RecipeRepository();
   List<Recipe> _recipes = [];
   bool _loading = true;
+  bool _isOffline = false;
   String? _error;
 
   Future<void> _load() async {
@@ -25,14 +29,22 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       _loading = true;
       _error = null;
     });
+    final isConnected = ConnectivityService().isConnected;
     try {
-      final list = await _repo.getRecipes();
-      if (mounted) {
-        setState(() {
-          _recipes = list;
-          _loading = false;
-        });
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isRecipesCacheStale();
+        if (stale) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
+        }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
       }
+      if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -41,6 +53,46 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
         });
       }
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getAllRecipes(true);
+    _recipes = cached.map((c) => Recipe(
+      id: c.recipeId,
+      name: c.name,
+      instructions: c.instructions,
+      category: c.category,
+      isActive: c.isActive,
+      outputProductId: null,
+      expectedYieldPct: 100,
+      batchSizeKg: c.yieldQty,
+      createdAt: null,
+      updatedAt: null,
+    )).toList();
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final list = await _repo.getRecipes();
+    final toSave = list.map((r) {
+      final m = r.toJson();
+      m['yield_qty'] = r.batchSizeKg;
+      m['yield_unit'] = 'kg';
+      m['cost_per_unit'] = 0.0;
+      m['ingredients'] = null;
+      return CachedRecipe.fromSupabase(m);
+    }).toList();
+    await IsarService.saveRecipes(toSave);
+    _recipes = list;
+  }
+
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        if (!await IsarService.isRecipesCacheStale()) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
   }
 
   @override
@@ -126,6 +178,25 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       );
     }
     if (_recipes.isEmpty) {
+      if (_isOffline) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_off, size: 64, color: AppColors.textSecondary),
+                const SizedBox(height: 16),
+                const Text(
+                  'No cached data available. Connect to the internet to load data.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

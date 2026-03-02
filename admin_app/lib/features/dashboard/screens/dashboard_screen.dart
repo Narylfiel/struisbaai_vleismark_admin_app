@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:syncfusion_flutter_charts/charts.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
@@ -20,6 +22,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _ps = PermissionService();
 
   bool _isLoading = true;
+  bool _isOffline = false;
+  int _cachedInventoryCount = 0;
+  int _cachedTransactionCountToday = 0;
 
   // Permission getters
   bool get _canSeeFinancials   => _ps.can(Permissions.seeFinancials);
@@ -60,12 +65,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadDashboard();
-    _subscribeTransactions();
-    
-    // Load top products if permitted
-    if (_canSeeTopProducts) {
-      if (!_canSeeTopRevenue) _topProductsMode = 'quantity';
-      _loadTopProducts();
+    if (ConnectivityService().isConnected) {
+      _subscribeTransactions();
+      if (_canSeeTopProducts) {
+        if (!_canSeeTopRevenue) _topProductsMode = 'quantity';
+        _loadTopProducts();
+      }
     }
   }
 
@@ -89,6 +94,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Future<void> _loadDashboard() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
+    final isConnected = ConnectivityService().isConnected;
+    if (!isConnected) {
+      try {
+        final items = await IsarService.getAllInventoryItems(false);
+        final now = DateTime.now();
+        final todayStart = DateTime(now.year, now.month, now.day);
+        final todayEnd = todayStart.add(const Duration(days: 1));
+        final tx = await IsarService.getTransactions(todayStart, todayEnd, null, null);
+        if (mounted) {
+          setState(() {
+            _isOffline = true;
+            _cachedInventoryCount = items.length;
+            _cachedTransactionCountToday = tx.length;
+            _isLoading = false;
+          });
+        }
+      } catch (e) {
+        debugPrint('Dashboard offline load: $e');
+        if (mounted) setState(() { _isOffline = true; _isLoading = false; });
+      }
+      return;
+    }
+    setState(() => _isOffline = false);
     try {
       await Future.wait([
         _loadSalesStats(),
@@ -278,50 +306,45 @@ class _DashboardScreenState extends State<DashboardScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-          : RefreshIndicator(
-              onRefresh: _loadDashboard,
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Stats row
-                    _buildStatsRow(),
-                    const SizedBox(height: 24),
-
-                    // H5: 7-day chart
-                    if (_canSeeChartAmounts)
-                      _build7DayChart()
-                    else if (_canSeeChartCounts)
-                      _buildTransactionCountChart(),
-                    if (_canSeeChartAmounts || _canSeeChartCounts)
-                      const SizedBox(height: 24),
-
-                    // Top products widget
-                    if (_canSeeTopProducts)
-                      _buildTopProductsWidget(),
-                    if (_canSeeTopProducts)
-                      const SizedBox(height: 24),
-
-                    // Alerts + Clock-in
-                    Row(
+          : _isOffline
+              ? _buildOfflineDashboard()
+              : RefreshIndicator(
+                  onRefresh: _loadDashboard,
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_canSeeAlerts) ...[
-                          Expanded(flex: 3, child: _buildAlerts()),
-                          const SizedBox(width: 16),
-                        ],
-                        Expanded(
-                          flex: _canSeeAlerts ? 2 : 1,
-                          child: _buildClockInStatus(),
+                        _buildStatsRow(),
+                        const SizedBox(height: 24),
+                        if (_canSeeChartAmounts)
+                          _build7DayChart()
+                        else if (_canSeeChartCounts)
+                          _buildTransactionCountChart(),
+                        if (_canSeeChartAmounts || _canSeeChartCounts)
+                          const SizedBox(height: 24),
+                        if (_canSeeTopProducts)
+                          _buildTopProductsWidget(),
+                        if (_canSeeTopProducts)
+                          const SizedBox(height: 24),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            if (_canSeeAlerts) ...[
+                              Expanded(flex: 3, child: _buildAlerts()),
+                              const SizedBox(width: 16),
+                            ],
+                            Expanded(
+                              flex: _canSeeAlerts ? 2 : 1,
+                              child: _buildClockInStatus(),
+                            ),
+                          ],
                         ),
+                        const SizedBox(height: 24),
                       ],
                     ),
-                    const SizedBox(height: 24),
-                  ],
+                  ),
                 ),
-              ),
-            ),
     );
   }
 
@@ -333,6 +356,99 @@ class _DashboardScreenState extends State<DashboardScreen> {
     ];
     const days = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
     return '${days[now.weekday - 1]}, ${now.day} ${months[now.month - 1]} ${now.year}';
+  }
+
+  Widget _buildOfflineDashboard() {
+    return RefreshIndicator(
+      onRefresh: _loadDashboard,
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppColors.warning.withOpacity(0.15),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.warning),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.cloud_off, color: AppColors.warning, size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Offline — showing cached data',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    title: 'CACHED INVENTORY',
+                    value: '$_cachedInventoryCount',
+                    sub: 'products in cache',
+                    subColor: AppColors.textSecondary,
+                    icon: Icons.inventory_2,
+                    color: AppColors.info,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _StatCard(
+                    title: "TODAY'S TRANSACTIONS",
+                    value: '$_cachedTransactionCountToday',
+                    sub: 'from cache',
+                    subColor: AppColors.textSecondary,
+                    icon: Icons.receipt_long,
+                    color: AppColors.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: AppColors.cardBg,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline, color: AppColors.textSecondary, size: 24),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Dashboard data from cache — connect for live updates. Live charts and alerts require internet connection.',
+                      style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _build7DayChart() {

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hr/models/staff_credit.dart';
 import 'package:admin_app/features/hr/services/staff_credit_repository.dart';
@@ -24,6 +27,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
   String? _selectedStaffId;
   List<StaffCredit> _credits = [];
   bool _loading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -33,6 +37,11 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
 
   Future<void> _loadStaff() async {
     try {
+      if (!ConnectivityService().isConnected) {
+        final cached = await IsarService.getAllStaffProfiles();
+        if (mounted) setState(() => _staffList = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
+        return;
+      }
       final data = await _client
           .from('staff_profiles')
           .select('id, full_name')
@@ -50,6 +59,26 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     }
     setState(() => _loading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllStaffCredits();
+        final list = cached
+            .where((c) => c.staffId == _selectedStaffId)
+            .map((c) => StaffCredit.fromJson({
+                  'id': c.creditId,
+                  'staff_id': c.staffId,
+                  'credit_type': 'salary_advance',
+                  'credit_amount': c.amount,
+                  'reason': c.reason,
+                  'granted_date': c.creditDate?.toIso8601String(),
+                  'staff_profiles': {'full_name': c.staffName},
+                }))
+            .toList();
+        if (mounted) setState(() => _credits = list);
+        setState(() => _loading = false);
+        return;
+      }
+      _isOffline = false;
       final list = await _repo.getCredits(staffId: _selectedStaffId, outstandingOnly: false);
       if (mounted) setState(() => _credits = list);
     } catch (e) {
@@ -178,6 +207,22 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     final reason = notesController.text.trim().isEmpty ? typeLabel : '$typeLabel — ${notesController.text.trim()}';
 
     try {
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('add_staff_credit', {
+          'staff_id': selectedStaffId,
+          'credit_type': type.dbValue,
+          'credit_amount': signedAmount,
+          'reason': reason,
+          'granted_date': DateTime.now().toIso8601String(),
+          'granted_by': userId,
+          'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+          _loadCredits();
+        }
+        return;
+      }
       await _repo.create(
         staffId: selectedStaffId,
         creditType: type,
@@ -267,7 +312,13 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
             const Divider(height: 1, color: AppColors.border),
             Expanded(
               child: entries.isEmpty
-                  ? const Center(child: Text('No credit entries'))
+                  ? Center(
+                      child: Text(
+                        _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No credit entries',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
                   : ListView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
                       itemCount: entries.length,

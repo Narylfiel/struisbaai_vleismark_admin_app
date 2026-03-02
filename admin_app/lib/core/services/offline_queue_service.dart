@@ -9,6 +9,8 @@ import 'package:admin_app/core/db/pending_write.dart';
 import 'package:admin_app/core/models/stock_movement.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/bookkeeping/services/supplier_invoice_repository.dart';
+import 'package:admin_app/features/hr/models/staff_credit.dart';
+import 'package:admin_app/features/hr/services/staff_credit_repository.dart';
 import 'package:admin_app/features/inventory/services/inventory_repository.dart';
 import 'package:admin_app/features/production/services/production_batch_repository.dart';
 
@@ -122,6 +124,27 @@ class OfflineQueueService {
       case 'approve_leave':
         await _executeApproveLeave(payload);
         break;
+      case 'create_carcass_intake':
+        await _executeCreateCarcassIntake(payload);
+        break;
+      case 'update_hunter_job_status':
+        await _executeUpdateHunterJobStatus(payload);
+        break;
+      case 'create_timecard_entry':
+        await _executeCreateTimecardEntry(payload);
+        break;
+      case 'approve_payroll':
+        await _executeApprovePayroll(payload);
+        break;
+      case 'create_stock_take':
+        await _executeCreateStockTake(payload);
+        break;
+      case 'create_customer':
+        await _executeCreateCustomer(payload);
+        break;
+      case 'add_staff_credit':
+        await _executeAddStaffCredit(payload);
+        break;
       default:
         throw UnsupportedError('Unknown actionType: ${item.actionType}');
     }
@@ -190,6 +213,82 @@ class OfflineQueueService {
       'review_notes': p['review_notes'] as String?,
       'reviewed_at': DateTime.now().toUtc().toIso8601String(),
     }).eq('id', id);
+  }
+
+  Future<void> _executeCreateCarcassIntake(Map<String, dynamic> p) async {
+    final payload = Map<String, dynamic>.from(p);
+    payload.remove('actionType');
+    await SupabaseService.client.from('carcass_intakes').insert(payload);
+  }
+
+  Future<void> _executeUpdateHunterJobStatus(Map<String, dynamic> p) async {
+    final id = p['id'] as String;
+    final updateData = <String, dynamic>{
+      if (p['status'] != null) 'status': p['status'],
+      if (p['updated_at'] != null) 'updated_at': p['updated_at'],
+    };
+    if (updateData.isEmpty) return;
+    await SupabaseService.client.from('hunter_jobs').update(updateData).eq('id', id);
+  }
+
+  Future<void> _executeCreateTimecardEntry(Map<String, dynamic> p) async {
+    final payload = Map<String, dynamic>.from(p);
+    payload.remove('actionType');
+    await SupabaseService.client.from('timecards').insert(payload);
+  }
+
+  Future<void> _executeApprovePayroll(Map<String, dynamic> p) async {
+    final entryId = p['entry_id'] as String?;
+    final periodId = p['period_id'] as String?;
+    if (entryId != null) {
+      await SupabaseService.client.from('payroll_entries').update({'status': 'approved'}).eq('id', entryId);
+    } else if (periodId != null) {
+      await SupabaseService.client.from('payroll_entries').update({'status': 'approved'}).eq('pay_period_id', periodId);
+    } else {
+      throw ArgumentError('approve_payroll requires entry_id or period_id');
+    }
+  }
+
+  Future<void> _executeCreateStockTake(Map<String, dynamic> p) async {
+    final entries = p['entries'] as List<dynamic>?;
+    if (entries == null || entries.isEmpty) return;
+    for (final e in entries) {
+      final row = Map<String, dynamic>.from(e as Map);
+      await SupabaseService.client.from('stock_take_entries').insert(row);
+    }
+    if (p['stock_take_id'] != null) {
+      await SupabaseService.client.from('stock_take_sessions').update({'status': 'completed'}).eq('id', p['stock_take_id']);
+    }
+  }
+
+  Future<void> _executeCreateCustomer(Map<String, dynamic> p) async {
+    final payload = Map<String, dynamic>.from(p);
+    payload.remove('actionType');
+    await SupabaseService.client.from('loyalty_customers').insert(payload);
+  }
+
+  Future<void> _executeAddStaffCredit(Map<String, dynamic> p) async {
+    final typeStr = p['credit_type'] as String? ?? 'salary_advance';
+    StaffCreditType creditType = StaffCreditType.salaryAdvance;
+    for (final e in StaffCreditType.values) {
+      if (e.dbValue == typeStr) {
+        creditType = e;
+        break;
+      }
+    }
+    await StaffCreditRepository().create(
+      staffId: p['staff_id'] as String,
+      creditType: creditType,
+      amount: (p['credit_amount'] as num).toDouble(),
+      reason: p['reason'] as String,
+      grantedDate: DateTime.parse(p['granted_date'] as String),
+      dueDate: p['due_date'] != null ? DateTime.tryParse(p['due_date'] as String) : null,
+      itemsPurchased: p['items_purchased'] as String?,
+      repaymentPlan: p['repayment_plan'] as String?,
+      deductFrom: p['deduct_from'] as String? ?? 'next_payroll',
+      grantedBy: p['granted_by'] as String,
+      notes: p['notes'] as String?,
+    );
   }
 
   Future<int> getPendingCount() async {

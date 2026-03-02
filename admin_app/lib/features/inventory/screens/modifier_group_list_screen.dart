@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/db/cached_modifier_group.dart';
+import '../../../core/db/isar_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/modifier_group.dart';
@@ -19,6 +22,7 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
   final _repo = ModifierRepository();
   List<ModifierGroup> _groups = [];
   bool _loading = true;
+  bool _isOffline = false;
   String? _error;
 
   Future<void> _load() async {
@@ -26,18 +30,60 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
       _loading = true;
       _error = null;
     });
+    final isConnected = ConnectivityService().isConnected;
     try {
-      final list = await _repo.getGroups();
-      if (mounted) setState(() {
-        _groups = list;
-        _loading = false;
-      });
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isModifierGroupsCacheStale();
+        if (stale) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
+        }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
+      }
+      if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) setState(() {
         _error = ErrorHandler.friendlyMessage(e);
         _loading = false;
       });
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getAllModifierGroups();
+    _groups = cached.map((c) {
+      final m = c.toMap();
+      m['active'] = true;
+      m['sort_order'] = 0;
+      m['allow_multiple'] = c.maxSelections > 1;
+      return ModifierGroup.fromJson(m);
+    }).toList();
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final list = await _repo.getGroups();
+    final toSave = list.map((g) {
+      final m = g.toJson();
+      m['min_selections'] = 0;
+      return CachedModifierGroup.fromSupabase(m);
+    }).toList();
+    await IsarService.saveModifierGroups(toSave);
+    _groups = list;
+  }
+
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        if (!await IsarService.isModifierGroupsCacheStale()) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
   }
 
   @override
@@ -132,6 +178,25 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
       );
     }
     if (_groups.isEmpty) {
+      if (_isOffline) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.cloud_off, size: 64, color: AppColors.textSecondary),
+                const SizedBox(height: 16),
+                const Text(
+                  'No cached data available. Connect to the internet to load data.',
+                  style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,

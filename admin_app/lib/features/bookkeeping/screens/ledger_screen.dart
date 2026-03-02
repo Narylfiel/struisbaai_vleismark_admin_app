@@ -3,6 +3,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/models/ledger_entry.dart';
@@ -100,6 +101,31 @@ class _LedgerScreenState extends State<LedgerScreen> {
   }
 
   void _openNewJournalEntry() async {
+    if (!ConnectivityService().isConnected) {
+      await showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Offline'),
+          content: const Text(
+            'This feature requires an internet connection. Connect to the internet and tap Retry.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('OK'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                if (ConnectivityService().isConnected) _openNewJournalEntry();
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
     final staffId = AuthService().currentStaffId;
     if (staffId == null || staffId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(

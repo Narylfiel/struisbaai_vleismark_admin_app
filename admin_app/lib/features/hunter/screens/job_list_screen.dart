@@ -5,6 +5,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/db/cached_hunter_job.dart';
 import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
@@ -627,6 +628,13 @@ class _JobDetailsDialogState extends State<_JobDetailsDialog> {
 
   Future<void> _updateStatus(String newStatusDb) async {
     try {
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('update_hunter_job_status', {'id': widget.job['id'], 'status': newStatusDb});
+        setState(() => _status = newStatusDb);
+        widget.onSaved();
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+        return;
+      }
       await _supabase.from('hunter_jobs').update({'status': newStatusDb}).eq('id', widget.job['id']);
       setState(() => _status = newStatusDb);
       if (newStatusDb == 'ready') {

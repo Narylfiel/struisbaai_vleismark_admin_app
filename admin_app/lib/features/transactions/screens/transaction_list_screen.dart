@@ -20,7 +20,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _staffList = [];
   bool _loading = true;
-  DateTime _dateFrom = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+  DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 6));
   DateTime _dateTo = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59);
   String? _paymentFilter;
   String? _staffFilter;
@@ -67,11 +67,13 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       final stale = await IsarService.isTransactionCacheStale();
       final cached = await IsarService.getTransactions(null, null, null, null);
       if (stale || cached.isEmpty) {
+        final bulkStart = DateTime.now().subtract(const Duration(days: 90));
+        final bulkEnd = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59);
         final list = await _repo.getTransactions(
-          start: _dateFrom,
-          end: _dateTo,
-          paymentMethod: _paymentFilter?.isEmpty == true ? null : _paymentFilter,
-          staffId: _staffFilter?.isEmpty == true ? null : _staffFilter,
+          start: bulkStart,
+          end: bulkEnd,
+          paymentMethod: null,
+          staffId: null,
         );
         final toSave = list.map((row) {
           final profiles = row['profiles'];

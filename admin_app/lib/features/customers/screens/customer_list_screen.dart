@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/db/cached_customer.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/features/customers/services/customer_repository.dart';
 import 'package:admin_app/features/customers/screens/announcement_screen.dart';
 import 'package:admin_app/features/customers/screens/recipe_library_screen.dart';
@@ -76,6 +79,7 @@ class _CustomersTabState extends State<_CustomersTab> {
   final _repo = CustomerRepository();
   List<Map<String, dynamic>> _customers = [];
   bool _isLoading = true;
+  bool _isOffline = false;
   String _searchQuery = '';
   final _searchController = TextEditingController();
 
@@ -87,13 +91,43 @@ class _CustomersTabState extends State<_CustomersTab> {
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
-    final res = await _repo.getCustomers(searchQuery: _searchQuery);
-    if (mounted) {
-      setState(() {
-        _customers = res;
-        _isLoading = false;
-      });
+    final isConnected = ConnectivityService().isConnected;
+    try {
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isCustomerCacheStale();
+        if (stale) {
+          final res = await _repo.getCustomers(searchQuery: _searchQuery);
+          final toSave = res.map((r) {
+            final m = Map<String, dynamic>.from(r);
+            m['name'] = m['full_name'] ?? m['customer_name'] ?? m['name'] ?? '';
+            return CachedCustomer.fromSupabase(m);
+          }).toList();
+          await IsarService.saveCustomers(toSave);
+          if (mounted) setState(() => _customers = res);
+        } else {
+          final cached = await IsarService.getAllCustomers();
+          _customers = cached.map((c) => c.toMap()).toList();
+          if (_searchQuery.isNotEmpty) {
+            final q = _searchQuery.toLowerCase();
+            _customers = _customers.where((m) => (m['name']?.toString().toLowerCase().contains(q) ?? false)).toList();
+          }
+          if (mounted) setState(() {});
+        }
+      } else {
+        _isOffline = true;
+        final cached = await IsarService.getAllCustomers();
+        _customers = cached.map((c) => c.toMap()).toList();
+        if (_searchQuery.isNotEmpty) {
+          final q = _searchQuery.toLowerCase();
+          _customers = _customers.where((m) => (m['name']?.toString().toLowerCase().contains(q) ?? false)).toList();
+        }
+        if (mounted) setState(() {});
+      }
+    } catch (_) {
+      if (mounted) setState(() => _customers = []);
     }
+    setState(() => _isLoading = false);
   }
 
   Future<void> _toggleStatus(String id, bool currentState) async {
@@ -166,7 +200,18 @@ class _CustomersTabState extends State<_CustomersTab> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _customers.isEmpty
-                  ? Center(child: Text(_searchQuery.isEmpty ? 'No customers found in directory.' : 'No results for "$_searchQuery"'))
+                  ? Center(
+                      child: _isOffline
+                          ? const Padding(
+                              padding: EdgeInsets.all(24),
+                              child: Text(
+                                'No cached data available. Connect to the internet to load data.',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: AppColors.textSecondary),
+                              ),
+                            )
+                          : Text(_searchQuery.isEmpty ? 'No customers found in directory.' : 'No results for "$_searchQuery"'),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                       itemCount: _customers.length,

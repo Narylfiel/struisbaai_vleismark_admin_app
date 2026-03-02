@@ -5,6 +5,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/offline_queue_service.dart';
+import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'dart:convert';
@@ -100,6 +101,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
   List<Map<String, dynamic>> _staff = [];
   bool _isLoading = true;
   bool _showInactive = false;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -110,6 +112,27 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllStaffProfiles();
+        var list = cached.map((c) {
+          final m = c.toAuthMap();
+          m['phone'] = null;
+          m['email'] = null;
+          m['employment_type'] = 'hourly';
+          m['hourly_rate'] = 0;
+          m['monthly_salary'] = 0;
+          m['pay_frequency'] = null;
+          m['hire_date'] = null;
+          m['max_discount_pct'] = null;
+          return m;
+        }).toList();
+        if (!_showInactive) list = list.where((m) => m['is_active'] == true).toList();
+        setState(() => _staff = list);
+        setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
       var query = _supabase.from('staff_profiles').select(
           'id, full_name, role, phone, email, employment_type, hourly_rate, '
           'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
@@ -334,11 +357,14 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.people_outline, size: 64, color: AppColors.border),
         const SizedBox(height: 16),
-        const Text('No staff members yet',
-            style: TextStyle(fontSize: 18, color: AppColors.textSecondary)),
+        Text(
+          _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No staff members yet',
+          style: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+          textAlign: TextAlign.center,
+        ),
         const SizedBox(height: 24),
         ElevatedButton.icon(
-          onPressed: () => _openStaff(null),
+          onPressed: _isOffline ? null : () => _openStaff(null),
           icon: const Icon(Icons.person_add),
           label: const Text('Add First Staff Member'),
         ),
@@ -366,6 +392,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   List<Map<String, dynamic>> _timecards = [];
   List<Map<String, dynamic>> _staff = [];
   bool _isLoading = true;
+  bool _isOffline = false;
   String? _selectedStaffId;
   String _viewMode = 'daily'; // daily | weekly | monthly
   DateTime _selectedDate = DateTime.now();
@@ -383,6 +410,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
   Future<void> _loadStaff() async {
     try {
+      if (!ConnectivityService().isConnected) {
+        final cached = await IsarService.getAllStaffProfiles();
+        setState(() => _staff = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
+        return;
+      }
       final data = await _supabase
           .from('staff_profiles')
           .select('id, full_name')
@@ -408,13 +440,40 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             .toIso8601String()
             .substring(0, 10);
       } else {
-        // monthly
         final m = DateTime(_selectedDate.year, _selectedDate.month, 1);
         rangeStart = m.toIso8601String().substring(0, 10);
         rangeEnd = DateTime(_selectedDate.year, _selectedDate.month + 1, 0)
             .toIso8601String()
             .substring(0, 10);
       }
+
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllTimecards();
+        final rangeStartDt = DateTime.parse('${rangeStart}T00:00:00');
+        final rangeEndDt = DateTime.parse('${rangeEnd}T23:59:59');
+        var cards = cached
+            .where((c) =>
+                c.clockIn != null &&
+                !c.clockIn!.isBefore(rangeStartDt) &&
+                !c.clockIn!.isAfter(rangeEndDt) &&
+                (_selectedStaffId == null || c.staffId == _selectedStaffId))
+            .map((c) {
+          final m = c.toMap();
+          m['staff_profiles'] = {'full_name': c.staffName, 'role': null, 'hourly_rate': null};
+          m['breaks'] = <Map<String, dynamic>>[];
+          m['total_hours'] = c.totalHours;
+          m['overtime_hours'] = 0;
+          m['regular_hours'] = c.totalHours;
+          m['sunday_hours'] = 0;
+          return m;
+        }).toList();
+        cards.sort((a, b) => (a['clock_in'] as String? ?? '').compareTo(b['clock_in'] as String? ?? ''));
+        setState(() => _timecards = cards);
+        setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
 
       var q = _supabase
           .from('timecards')
@@ -425,7 +484,6 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       final cards =
           List<Map<String, dynamic>>.from(await q.order('clock_in'));
 
-      // Fetch all breaks in one batch
       if (cards.isNotEmpty) {
         final ids = cards.map((t) => t['id'] as String).toList();
         final breaks = List<Map<String, dynamic>>.from(
@@ -637,8 +695,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
                       const Icon(Icons.access_time, size: 48, color: AppColors.border),
                       const SizedBox(height: 12),
-                      Text('No timecards for $_rangeLabel',
-                          style: const TextStyle(color: AppColors.textSecondary)),
+                      Text(
+                        _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No timecards for $_rangeLabel',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
                     ]),
                   )
                 : ListView.separated(
@@ -895,6 +956,7 @@ class _LeaveTabState extends State<_LeaveTab> {
   List<Map<String, dynamic>> _requests = [];
   List<Map<String, dynamic>> _balances = [];
   bool _isLoading = true;
+  bool _isOffline = false;
   String _filter = 'Pending';
 
   @override
@@ -906,7 +968,26 @@ class _LeaveTabState extends State<_LeaveTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      // DB stores status lowercase: 'pending', 'approved', 'rejected'
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllLeaveRequests();
+        final statusLower = _filter.toLowerCase();
+        final list = cached
+            .where((c) => (c.status ?? '').toLowerCase() == statusLower)
+            .map((c) {
+          final m = c.toMap();
+          m['staff_profiles'] = {'full_name': c.staffName, 'role': null};
+          return m;
+        }).toList();
+        list.sort((a, b) => (b['start_date'] ?? '').compareTo(a['start_date'] ?? ''));
+        setState(() {
+          _requests = list;
+          _balances = [];
+        });
+        setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
       final requests = await _supabase
           .from('leave_requests')
           .select('*, staff_profiles!staff_id(full_name, role)')
@@ -987,8 +1068,12 @@ class _LeaveTabState extends State<_LeaveTab> {
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _requests.isEmpty
                     ? Center(
-                        child: Text('No $_filter requests',
-                            style: const TextStyle(color: AppColors.textSecondary)))
+                        child: Text(
+                          _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No $_filter requests',
+                          style: const TextStyle(color: AppColors.textSecondary),
+                          textAlign: TextAlign.center,
+                        ),
+                      )
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: _requests.length,
@@ -1174,6 +1259,7 @@ class _PayrollTabState extends State<_PayrollTab> {
   Map<String, dynamic>? _selectedPeriod;
   List<Map<String, dynamic>> _entries = [];
   bool _isLoading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -1184,8 +1270,6 @@ class _PayrollTabState extends State<_PayrollTab> {
   Future<void> _loadPeriods() async {
     setState(() => _isLoading = true);
     try {
-      // payroll_entries has staff_id, pay_period_start, pay_period_end, etc. (no period_id)
-      // Load payroll from staff + timecards for current month
       await _loadCurrentPayroll();
     } catch (e) {
       debugPrint('Payroll: $e');
@@ -1194,10 +1278,40 @@ class _PayrollTabState extends State<_PayrollTab> {
   }
 
   Future<void> _loadCurrentPayroll() async {
-    // Get current month's data
     final now = DateTime.now();
     final monthStart = DateTime(now.year, now.month, 1);
+    final monthEnd = DateTime(now.year, now.month + 1, 0);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllPayrollEntries();
+        final summary = cached
+            .where((c) =>
+                c.payPeriodStart != null &&
+                !c.payPeriodStart!.isBefore(monthStart) &&
+                !c.payPeriodStart!.isAfter(monthEnd))
+            .map((c) => {
+                  'id': c.entryId,
+                  'staff_id': c.staffId,
+                  'full_name': c.staffName,
+                  'role': null,
+                  'employment_type': 'hourly',
+                  'hourly_rate': 0,
+                  'monthly_salary': 0,
+                  'pay_frequency': null,
+                  'total_hours': 0,
+                  'regular_hours': 0,
+                  'overtime_hours': 0,
+                  'sunday_hours': 0,
+                  'gross_pay': c.grossPay,
+                  'uif': c.deductions,
+                  'net_pay': c.netPay,
+                })
+            .toList();
+        setState(() => _entries = summary);
+        return;
+      }
+      _isOffline = false;
       final staff = await _supabase
           .from('staff_profiles')
           .select('id, full_name, role, employment_type, hourly_rate, monthly_salary, pay_frequency')
@@ -1210,7 +1324,6 @@ class _PayrollTabState extends State<_PayrollTab> {
           .gte('clock_in', monthStart.toIso8601String())
           .not('clock_out', 'is', null);
 
-      // Build payroll summary per staff
       final summary = <Map<String, dynamic>>[];
       for (final s in List<Map<String, dynamic>>.from(staff)) {
         final empTimecards = List<Map<String, dynamic>>.from(timecards)
@@ -1238,8 +1351,7 @@ class _PayrollTabState extends State<_PayrollTab> {
           grossPay = monthlySalary;
         }
 
-        // SA deductions
-        final uif = grossPay * 0.01; // UIF 1%
+        final uif = grossPay * 0.01;
         final netPay = grossPay - uif;
 
         summary.add({
@@ -1328,9 +1440,13 @@ class _PayrollTabState extends State<_PayrollTab> {
         child: _isLoading
             ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
             : _entries.isEmpty
-                ? const Center(
-                    child: Text('No staff found',
-                        style: TextStyle(color: AppColors.textSecondary)))
+                ? Center(
+                    child: Text(
+                      _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No staff found',
+                      style: const TextStyle(color: AppColors.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                  )
                 : ListView.separated(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     itemCount: _entries.length,
@@ -1453,6 +1569,7 @@ class _AwolTabState extends State<_AwolTab> {
   List<AwolRecord> _records = [];
   List<Map<String, dynamic>> _staff = [];
   bool _loading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -1463,6 +1580,11 @@ class _AwolTabState extends State<_AwolTab> {
 
   Future<void> _loadStaff() async {
     try {
+      if (!ConnectivityService().isConnected) {
+        final cached = await IsarService.getAllStaffProfiles();
+        if (mounted) setState(() => _staff = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
+        return;
+      }
       final data = await SupabaseService.client
           .from('staff_profiles')
           .select('id, full_name')
@@ -1475,6 +1597,29 @@ class _AwolTabState extends State<_AwolTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllAwolRecords();
+        final list = cached
+            .where((c) => c.awolDate != null)
+            .map((c) => AwolRecord.fromJson({
+                  'id': c.recordId,
+                  'staff_id': c.staffId ?? '',
+                  'awol_date': c.awolDate!.toIso8601String(),
+                  'notified_owner_manager': false,
+                  'resolution': c.resolved ? 'returned' : 'pending',
+                  'written_warning_issued': false,
+                  'notes': c.notes,
+                  'recorded_by': '',
+                  'staff_profiles': {'full_name': c.staffName},
+                }))
+            .toList();
+        list.sort((a, b) => b.awolDate.compareTo(a.awolDate));
+        if (mounted) setState(() => _records = list);
+        setState(() => _loading = false);
+        return;
+      }
+      _isOffline = false;
       final list = await _repo.getRecords();
       if (mounted) setState(() => _records = list);
     } catch (e) {
@@ -1621,7 +1766,13 @@ class _AwolTabState extends State<_AwolTab> {
           child: _loading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _records.isEmpty
-                  ? const Center(child: Text('No AWOL records'))
+                  ? Center(
+                      child: Text(
+                        _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No AWOL records',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       itemCount: _records.length,
@@ -1679,6 +1830,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   final _service = ComplianceService();
   List<ComplianceItem> _items = [];
   bool _loading = true;
+  bool _isOffline = false;
   DateTime _month = DateTime(DateTime.now().year, DateTime.now().month, 1);
 
   @override
@@ -1690,6 +1842,24 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllComplianceRecords();
+        final list = cached
+            .map((c) => ComplianceItem(
+                  id: c.recordId,
+                  status: ComplianceStatus.info,
+                  title: c.documentType ?? 'Document',
+                  detail: c.notes ?? c.expiryDate?.toString() ?? '',
+                  staffId: c.staffId,
+                  staffName: c.staffName,
+                ))
+            .toList();
+        if (mounted) setState(() => _items = list);
+        setState(() => _loading = false);
+        return;
+      }
+      _isOffline = false;
       final list = await _service.getBceaCompliance(_month);
       if (mounted) setState(() => _items = list);
     } catch (e) {
@@ -1765,7 +1935,19 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                     children: [
                       const Text('Compliance status', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
                       const SizedBox(height: 12),
-                      ..._items.map((item) => Card(
+                      if (_items.isEmpty)
+                        Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(24),
+                            child: Text(
+                              _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No compliance items for this month.',
+                              style: const TextStyle(color: AppColors.textSecondary),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
+                        )
+                      else
+                        ..._items.map((item) => Card(
                             margin: const EdgeInsets.only(bottom: 12),
                             child: ListTile(
                               leading: Icon(_statusIcon(item.status), color: _statusColor(item.status), size: 28),

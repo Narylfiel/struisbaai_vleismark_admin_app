@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'recipe_list_screen.dart';
@@ -90,6 +93,7 @@ class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
   final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _templates = [];
   bool _isLoading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -100,6 +104,19 @@ class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
   Future<void> _loadTemplates() async {
     setState(() => _isLoading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllYieldTemplates();
+        _templates = cached.map((c) {
+          final m = c.toMap();
+          m['template_name'] = c.name;
+          m['carcass_type'] = c.species;
+          return m;
+        }).toList();
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
       final data = await _supabase
           .from('yield_templates')
           .select('*')
@@ -173,12 +190,17 @@ class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
         children: [
           const Icon(Icons.cut, size: 64, color: AppColors.border),
           const SizedBox(height: 16),
-          const Text('No yield templates yet',
-              style: TextStyle(fontSize: 18, color: AppColors.textSecondary)),
+          Text(
+            _isOffline
+                ? 'No cached data available. Connect to the internet to load data.'
+                : 'No yield templates yet',
+            style: const TextStyle(fontSize: 18, color: AppColors.textSecondary),
+            textAlign: TextAlign.center,
+          ),
           const SizedBox(height: 8),
-          const Text(
-            'Create templates for Beef Side, Whole Lamb, Pork Side, etc.',
-            style: TextStyle(color: AppColors.textSecondary),
+          Text(
+            _isOffline ? '' : 'Create templates for Beef Side, Whole Lamb, Pork Side, etc.',
+            style: const TextStyle(color: AppColors.textSecondary),
           ),
           const SizedBox(height: 24),
           ElevatedButton.icon(
@@ -327,6 +349,7 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
   final _supabase = SupabaseService.client;
   List<Map<String, dynamic>> _intakes = [];
   bool _isLoading = true;
+  bool _isOffline = false;
 
   @override
   void initState() {
@@ -337,6 +360,24 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
   Future<void> _loadIntakes() async {
     setState(() => _isLoading = true);
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final cached = await IsarService.getAllCarcassIntakes();
+        _intakes = cached.map((c) {
+          final d = c.toMap();
+          d['reference_number'] = c.intakeId;
+          d['suppliers'] = {'name': c.supplierName};
+          d['supplier_name'] = c.supplierName;
+          d['carcass_type'] = c.species;
+          d['invoice_weight'] = c.weightIn;
+          d['actual_weight'] = c.weightIn;
+          d['delivery_date'] = c.intakeDate?.toIso8601String();
+          return d;
+        }).toList();
+        if (mounted) setState(() => _isLoading = false);
+        return;
+      }
+      _isOffline = false;
       final data = await _supabase
           .from('carcass_intakes')
           .select('*, suppliers(name)')
@@ -425,9 +466,15 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
           child: _isLoading
               ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
               : _intakes.isEmpty
-                  ? const Center(
-                      child: Text('No intakes yet',
-                          style: TextStyle(color: AppColors.textSecondary)))
+                  ? Center(
+                      child: Text(
+                        _isOffline
+                            ? 'No cached data available. Connect to the internet to load data.'
+                            : 'No intakes yet',
+                        style: const TextStyle(color: AppColors.textSecondary),
+                        textAlign: TextAlign.center,
+                      ),
+                    )
                   : ListView.separated(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       itemCount: _intakes.length,
@@ -1284,6 +1331,16 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
     };
 
     try {
+      if (!ConnectivityService().isConnected) {
+        await OfflineQueueService().addToQueue('create_carcass_intake', Map<String, dynamic>.from(data));
+        widget.onSaved();
+        if (mounted) {
+          setState(() => _isSaving = false);
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+        }
+        return;
+      }
       final result = await _supabase.from('carcass_intakes').insert(data).select().single();
       
       // Get supplier name for audit log

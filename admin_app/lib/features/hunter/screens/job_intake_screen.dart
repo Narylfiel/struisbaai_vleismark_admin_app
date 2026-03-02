@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
+import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
@@ -52,6 +55,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
   DateTime _jobDate = DateTime.now();
   bool _loading = true;
   bool _saving = false;
+  bool _isOffline = false;
   String? _savedJobId;
   String? _savedJobNumber;
   Map<String, dynamic>? _savedJob;
@@ -169,6 +173,34 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
 
   Future<void> _loadData() async {
     try {
+      if (!ConnectivityService().isConnected) {
+        _isOffline = true;
+        final configs = await IsarService.getAllHunterServiceConfigs(true);
+        final inv = await IsarService.getAllInventoryItems(true);
+        _speciesOptions = configs.map((c) => {
+          'id': c.configId,
+          'name': c.species ?? '—',
+          'typical_weight_min': null,
+          'typical_weight_max': null,
+        }).toList();
+        _serviceOptions = configs.map((c) => {
+          'id': c.configId,
+          'name': c.species ?? '—',
+          'base_price': c.baseRate,
+          'price_per_kg': c.perKgRate,
+          'cut_options': c.cutOptions,
+        }).toList();
+        _inventoryItems = inv.map((i) => {
+          'id': i.itemId,
+          'name': i.name,
+          'plu_code': i.pluCode.toString(),
+          'unit_type': i.unitType,
+          'cost_price': 0,
+        }).toList();
+        if (mounted) setState(() => _loading = false);
+        return;
+      }
+      _isOffline = false;
       final speciesRes = await _client.from('hunter_species').select('id, name, typical_weight_min, typical_weight_max').eq('is_active', true).order('sort_order');
       final servicesRes = await _client.from('hunter_services').select('id, name, base_price, price_per_kg, cut_options').eq('is_active', true).order('name');
       final invRes = await _client.from('inventory_items').select('id, name, plu_code, unit_type, cost_price').eq('is_active', true).order('name');
@@ -369,6 +401,14 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         );
       } else {
         // INSERT new job
+        if (!ConnectivityService().isConnected) {
+          await OfflineQueueService().addToQueue('create_hunter_job', Map<String, dynamic>.from(payload));
+          if (mounted) {
+            setState(() => _saving = false);
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success));
+          }
+          return;
+        }
         row = await _client.from('hunter_jobs').insert(payload).select().single();
         
         // Audit log - job creation
@@ -545,9 +585,10 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
                     ),
                     const SizedBox(height: 24),
                     ElevatedButton(
-                      onPressed: _saving ? null : _save,
+                      onPressed: (_saving || _isOffline) ? null : _save,
                       child: _saving ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2)) : const Text('Save job'),
                     ),
+                    if (_isOffline) const Padding(padding: EdgeInsets.only(top: 8), child: Text('Requires internet connection', style: TextStyle(fontSize: 12, color: AppColors.textSecondary))),
                     const SizedBox(height: 12),
                     TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
                   ],

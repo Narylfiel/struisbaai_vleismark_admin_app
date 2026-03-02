@@ -5,6 +5,7 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/widgets/offline_required_gate.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../../inventory/models/supplier.dart';
 import '../../inventory/services/supplier_repository.dart';
@@ -247,7 +248,9 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
       ),
-      body: Form(
+      body: OfflineRequiredGate(
+        onRetry: () => setState(() {}),
+        child: Form(
         key: _formKey,
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
@@ -498,6 +501,7 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }

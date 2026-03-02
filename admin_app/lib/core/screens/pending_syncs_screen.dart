@@ -19,6 +19,20 @@ String _actionLabel(String actionType) {
       return 'Create Hunter Job';
     case 'approve_leave':
       return 'Approve Leave';
+    case 'create_carcass_intake':
+      return 'Create Carcass Intake';
+    case 'update_hunter_job_status':
+      return 'Update Hunter Job Status';
+    case 'create_timecard_entry':
+      return 'Create Timecard Entry';
+    case 'approve_payroll':
+      return 'Approve Payroll';
+    case 'create_stock_take':
+      return 'Create Stock Take';
+    case 'create_customer':
+      return 'Create Customer';
+    case 'add_staff_credit':
+      return 'Add Staff Credit';
     default:
       return actionType.replaceAll('_', ' ').split(' ').map((e) => e.isEmpty ? e : '${e[0].toUpperCase()}${e.substring(1)}').join(' ');
   }

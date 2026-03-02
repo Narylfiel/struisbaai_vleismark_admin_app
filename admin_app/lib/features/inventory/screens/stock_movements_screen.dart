@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/db/cached_stock_movement.dart';
+import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
@@ -12,7 +15,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Stock Movements — READ-ONLY view of all stock_movements records.
-/// 
+///
 /// Displays complete movement history with filtering, search, and export.
 /// No create/edit/delete functionality — viewing only.
 class StockMovementsScreen extends StatefulWidget {
@@ -31,6 +34,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
   List<Map<String, dynamic>> _movements = [];
   bool _isLoading = true;
   bool _isLoadingMore = false;
+  bool _isOffline = false;
 
   // Filters
   DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 7));
@@ -71,32 +75,21 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
       _allMovements = [];
     });
 
+    final isConnected = ConnectivityService().isConnected;
     try {
-      // Build query chain based on filter
-      dynamic query = _client
-          .from('stock_movements')
-          .select('''
-            id, item_id, movement_type, quantity, unit_type,
-            balance_after, reference_id, reference_type,
-            reason, staff_id, photo_url, notes, created_at,
-            location_from, location_to,
-            inventory_items(plu_code, name, cost_price),
-            profiles(full_name)
-          ''');
-
-      if (!_selectedTypes.contains('all')) {
-        query = query.inFilter('movement_type', _selectedTypes.toList());
+      if (isConnected) {
+        _isOffline = false;
+        final stale = await IsarService.isStockMovementCacheStale();
+        if (stale) {
+          await _fetchFromSupabaseAndSave();
+        } else {
+          await _loadFromCache();
+          _refreshInBackground();
+        }
+      } else {
+        _isOffline = true;
+        await _loadFromCache();
       }
-
-      final data = await query
-          .gte('created_at', _dateFrom.toIso8601String())
-          .lte('created_at', _dateTo.toIso8601String())
-          .order('created_at', ascending: false)
-          .limit(_pageSize);
-
-      _allMovements = List<Map<String, dynamic>>.from(data as List);
-      _totalCount = _allMovements.length;
-      _offset = _pageSize;
       _applyFilters();
       _calculateStats();
     } catch (e) {
@@ -109,6 +102,82 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getAllStockMovements();
+    final endOfDay = DateTime(_dateTo.year, _dateTo.month, _dateTo.day, 23, 59, 59);
+    _allMovements = cached
+        .where((c) =>
+            c.createdAt != null &&
+            !c.createdAt!.isBefore(_dateFrom) &&
+            !c.createdAt!.isAfter(endOfDay))
+        .map((c) {
+      final m = c.toMap();
+      m['inventory_items'] = {'name': c.itemName, 'plu_code': ''};
+      m['profiles'] = {'full_name': null};
+      m['unit_type'] = 'kg';
+      return m;
+    }).toList();
+    _totalCount = _allMovements.length;
+    _offset = _allMovements.length;
+  }
+
+  Future<void> _fetchFromSupabaseAndSave() async {
+    final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
+    dynamic query = _client
+        .from('stock_movements')
+        .select('''
+          id, item_id, movement_type, quantity, unit_type,
+          balance_after, reference_id, reference_type,
+          reason, staff_id, photo_url, notes, created_at,
+          location_from, location_to,
+          inventory_items(plu_code, name, cost_price),
+          profiles(full_name)
+        ''');
+    if (!_selectedTypes.contains('all')) {
+      query = query.inFilter('movement_type', _selectedTypes.toList());
+    }
+    final data = await query
+        .gte('created_at', thirtyDaysAgo.toIso8601String())
+        .order('created_at', ascending: false)
+        .limit(200);
+    final fullList = List<Map<String, dynamic>>.from(data as List);
+    final toSave = fullList.map((row) {
+      final flat = <String, dynamic>{
+        'id': row['id'],
+        'item_id': row['item_id'],
+        'item_name': (row['inventory_items'] as Map?)?['name'],
+        'movement_type': row['movement_type'],
+        'quantity': row['quantity'],
+        'reason': row['reason'],
+        'staff_id': row['staff_id'],
+        'created_at': row['created_at'],
+      };
+      return CachedStockMovement.fromSupabase(flat);
+    }).toList();
+    await IsarService.saveStockMovements(toSave);
+    final endOfDay = DateTime(_dateTo.year, _dateTo.month, _dateTo.day, 23, 59, 59);
+    _allMovements = fullList
+        .where((m) {
+          final at = m['created_at']?.toString();
+          if (at == null) return false;
+          final dt = DateTime.tryParse(at);
+          return dt != null && !dt.isBefore(_dateFrom) && !dt.isAfter(endOfDay);
+        })
+        .toList();
+    _totalCount = _allMovements.length;
+    _offset = _allMovements.length;
+  }
+
+  void _refreshInBackground() {
+    Future(() async {
+      try {
+        if (!await IsarService.isStockMovementCacheStale()) return;
+        await _fetchFromSupabaseAndSave();
+        if (mounted) setState(() {});
+      } catch (_) {}
+    });
   }
 
   Future<void> _loadMore() async {
@@ -729,18 +798,34 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
                 ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
                 : _movements.isEmpty
                     ? Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.swap_vert_circle_outlined, size: 64, color: Colors.grey[400]),
-                            const SizedBox(height: 12),
-                            const Text('No movements found', style: TextStyle(fontSize: 16, color: AppColors.textPrimary)),
-                            const Text(
-                              'Try adjusting your filters or date range',
-                              style: TextStyle(color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ),
+                        child: _isOffline
+                            ? Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.cloud_off, size: 64, color: Colors.grey[400]),
+                                    const SizedBox(height: 12),
+                                    const Text(
+                                      'No cached data available. Connect to the internet to load data.',
+                                      style: TextStyle(fontSize: 16, color: AppColors.textSecondary),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ],
+                                ),
+                              )
+                            : Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(Icons.swap_vert_circle_outlined, size: 64, color: Colors.grey[400]),
+                                  const SizedBox(height: 12),
+                                  const Text('No movements found', style: TextStyle(fontSize: 16, color: AppColors.textPrimary)),
+                                  const Text(
+                                    'Try adjusting your filters or date range',
+                                    style: TextStyle(color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
                       )
                     : Column(
                         children: [

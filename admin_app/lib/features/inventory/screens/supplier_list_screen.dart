@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/db/isar_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/export_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/supplier.dart';
 import '../services/supplier_repository.dart';
+import '../../../core/db/cached_supplier.dart';
 import 'supplier_form_screen.dart';
 
 /// Blueprint §4.6: Supplier Management — list suppliers, Add/Edit/Delete.
@@ -36,14 +39,30 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
       _loading = true;
       _error = null;
     });
+    final isConnected = ConnectivityService().isConnected;
     try {
-      final list = await _repo.getSuppliers(activeOnly: !_showInactive);
-      if (mounted) {
-        setState(() {
-          _suppliers = list;
-          _loading = false;
-        });
+      if (isConnected) {
+        final stale = await IsarService.isSuppliersCacheStale();
+        if (stale) {
+          var q = _client
+              .from('suppliers')
+              .select('id, name, contact_name, phone, email, account_number, is_active');
+          if (!_showInactive) q = q.eq('is_active', true);
+          final rows = await q.order('name');
+          final list = List<Map<String, dynamic>>.from(rows as List);
+          final cached = list.map((r) => CachedSupplier.fromSupabase(r)).toList();
+          await IsarService.saveSuppliers(cached);
+          _suppliers = list.map((r) => Supplier.fromJson(r)).toList();
+        } else {
+          await _loadFromCache();
+        }
+      } else {
+        await _loadFromCache();
+        if (_suppliers.isEmpty && mounted) {
+          setState(() => _error = 'No cached data available. Connect to the internet to load data.');
+        }
       }
+      if (mounted) setState(() => _loading = false);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -52,6 +71,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
         });
       }
     }
+  }
+
+  Future<void> _loadFromCache() async {
+    final cached = await IsarService.getAllSuppliers(_showInactive);
+    _suppliers = cached.map((c) => Supplier.fromJson(c.toMap())).toList();
   }
 
   @override
