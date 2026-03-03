@@ -331,6 +331,8 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
         return Colors.brown;
       case 'freezer':
         return Colors.cyan[700]!;
+      case 'sale':
+        return Colors.green[700]!;
       default:
         return Colors.grey;
     }
@@ -358,6 +360,8 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
         return 'Staff Meal';
       case 'freezer':
         return 'Freezer';
+      case 'sale':
+        return 'Sale';
       default:
         return type ?? 'Unknown';
     }
@@ -747,6 +751,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
                       _typeFilterChip('Donation', 'donation'),
                       _typeFilterChip('Staff Meal', 'staff_meal'),
                       _typeFilterChip('Freezer', 'freezer'),
+                      _typeFilterChip('Sale', 'sale'),
                     ],
                   ),
                 ),

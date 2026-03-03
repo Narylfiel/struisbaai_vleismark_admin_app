@@ -27,10 +27,10 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
   static const List<MapEntry<String, String>> paymentOptions = [
     MapEntry('', 'All'),
-    MapEntry('Cash', 'Cash'),
-    MapEntry('Card', 'Card'),
-    MapEntry('Account', 'Account'),
-    MapEntry('Split', 'Split'),
+    MapEntry('cash', 'Cash'),
+    MapEntry('card', 'Card'),
+    MapEntry('account', 'Account'),
+    MapEntry('split', 'Split'),
   ];
 
   @override
@@ -107,7 +107,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
           return CachedTransaction.fromSupabase(row, staffName: staffName);
         }).toList();
         await IsarService.saveTransactions(toSave);
-        if (mounted) _load();
+        if (mounted) setState(() {
+          _transactions = list;
+        });
       });
     } catch (e) {
       if (mounted) setState(() {
@@ -282,6 +284,15 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     final total = (t['total_amount'] as num?)?.toDouble() ?? 0;
     final isVoided = t['is_voided'] == true;
     final isRefund = t['is_refund'] == true;
+    // Resolve customer display name
+    String customerDisplay = 'Walk-in';
+    final businessAccount = t['business_accounts'];
+    final loyaltyCustomer = t['loyalty_customers'];
+    if (businessAccount is Map) {
+      customerDisplay = (businessAccount['name'] as String?) ?? 'Walk-in';
+    } else if (loyaltyCustomer is Map) {
+      customerDisplay = (loyaltyCustomer['full_name'] as String?) ?? 'Walk-in';
+    }
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -296,6 +307,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
               SizedBox(width: 48, child: Text(timeStr, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))),
               Expanded(flex: 2, child: Text(receiptNumber, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
               Expanded(flex: 2, child: Text(cashierName, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
+              Expanded(flex: 2, child: Text(customerDisplay, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
               SizedBox(width: 72, child: Text(paymentMethod, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
               SizedBox(width: 80, child: Text('R ${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
               if (isVoided) Container(margin: const EdgeInsets.only(left: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: AppColors.error, borderRadius: BorderRadius.circular(4)), child: const Text('VOID', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold))),

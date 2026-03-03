@@ -22,9 +22,11 @@ class TransactionRepository {
             receipt_number, discount_total, loyalty_customer_id,
             refund_of_transaction_id, is_refund, is_voided,
             voided_by, voided_at, void_reason,
-            profiles(full_name)
-          ''')
-          .gte('created_at', start.toIso8601String())
+profiles!transactions_staff_id_fkey(full_name),
+          business_accounts(name),
+          loyalty_customers!transactions_loyalty_customer_id_fkey(full_name)
+        ''')
+        .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String());
       if (paymentMethod != null && paymentMethod.isNotEmpty) {
         q = q.eq('payment_method', paymentMethod);
@@ -50,9 +52,9 @@ class TransactionRepository {
             receipt_number, discount_total, loyalty_customer_id,
             refund_of_transaction_id, is_refund, is_voided,
             voided_by, voided_at, void_reason,
-            profiles(full_name),
+            profiles!transactions_staff_id_fkey(full_name),
             business_accounts(name),
-            loyalty_customers(customer_name, full_name)
+            loyalty_customers(full_name)
           ''')
           .eq('id', transactionId)
           .maybeSingle();
@@ -131,7 +133,7 @@ class TransactionRepository {
             id, terminal_id, opened_by, opened_at, opening_float,
             closed_by, closed_at, expected_closing_cash, actual_closing_cash,
             variance, status, notes, created_at,
-            profiles(full_name)
+            profiles!till_sessions_opened_by_fkey(full_name)
           ''')
           .gte('opened_at', start.toIso8601String())
           .lte('opened_at', end.toIso8601String())
@@ -151,7 +153,7 @@ class TransactionRepository {
             id, terminal_id, opened_by, opened_at, opening_float,
             closed_by, closed_at, expected_closing_cash, actual_closing_cash,
             variance, status, notes, created_at,
-            profiles(full_name)
+            profiles!till_sessions_opened_by_fkey(full_name)
           ''')
           .eq('id', sessionId)
           .maybeSingle();

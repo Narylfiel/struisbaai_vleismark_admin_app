@@ -68,36 +68,62 @@ class AnalyticsRepository {
     try {
       final rows = await _client
           .from('inventory_items')
-          .select('id, name, selling_price, sell_price, average_cost, cost_price')
-          .eq('is_active', true);
-      const targetMarginPct = 30.0;
+          .select('id, name, sell_price, average_cost, cost_price, target_margin_pct')
+          .eq('is_active', true)
+          .eq('stock_control_type', 'use_stock_control');
       final suggestions = <Map<String, dynamic>>[];
       for (final r in rows as List) {
         final map = Map<String, dynamic>.from(r as Map<String, dynamic>);
-        final sell = (map['selling_price'] as num?)?.toDouble() ?? (map['sell_price'] as num?)?.toDouble() ?? 0;
-        final cost = (map['average_cost'] as num?)?.toDouble() ?? (map['cost_price'] as num?)?.toDouble() ?? 0;
+        final sell = (map['sell_price'] as num?)?.toDouble() ?? 0;
+        final cost = (map['average_cost'] as num?)?.toDouble() ??
+            (map['cost_price'] as num?)?.toDouble() ?? 0;
         if (cost <= 0 || sell <= 0) continue;
-        final marginPct = ((sell - cost) / sell) * 100;
-        if (marginPct >= targetMarginPct) continue;
+        final targetMarginPct =
+            (map['target_margin_pct'] as num?)?.toDouble() ?? 30.0;
+        final currentMarginPct = ((sell - cost) / sell) * 100;
+        if (currentMarginPct >= targetMarginPct - 3) continue;
         final suggested = cost / (1 - targetMarginPct / 100);
         suggestions.add({
           'id': map['id'],
           'product_name': map['name'],
           'current_sell_price': sell.toStringAsFixed(2),
           'suggested_sell_price': suggested.toStringAsFixed(2),
-          'margin_impact': '${marginPct.toStringAsFixed(1)}% → ${targetMarginPct.toStringAsFixed(0)}% target',
+          'current_margin_pct': currentMarginPct.toStringAsFixed(1),
+          'target_margin_pct': targetMarginPct.toStringAsFixed(0),
+          'margin_impact':
+              '${currentMarginPct.toStringAsFixed(1)}% → ${targetMarginPct.toStringAsFixed(0)}% target',
           'supplier_name': '—',
-          'percentage_increase': ((suggested - sell) / sell * 100).toStringAsFixed(1),
+          'percentage_increase':
+              ((suggested - sell) / sell * 100).toStringAsFixed(1),
+          'cost_price': cost.toStringAsFixed(2),
         });
       }
+      suggestions.sort((a, b) =>
+          double.parse(a['current_margin_pct'])
+              .compareTo(double.parse(b['current_margin_pct'])));
       return suggestions.take(20).toList();
     } catch (_) {
       return [];
     }
   }
 
-  Future<void> updatePricingSuggestion(String id, String status) async {
-    await _client.from('supplier_price_changes').update({'status': status}).eq('id', id);
+  Future<void> updatePricingSuggestion(
+      String id, String status, {double? newSellPrice}) async {
+    try {
+      await _client
+          .from('supplier_price_changes')
+          .update({'status': status})
+          .eq('id', id);
+    } catch (_) {}
+    if (status == 'Applied' && newSellPrice != null) {
+      try {
+        await _client.from('inventory_items').update({
+          'sell_price': newSellPrice,
+          'price_last_changed': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        }).eq('id', id);
+      } catch (_) {}
+    }
   }
 
   // ═════════════════════════════════════════════════════════
@@ -190,17 +216,48 @@ class AnalyticsRepository {
         String status = 'OK';
         if (stock <= reorder || daysRemaining < 2) status = 'URGENT';
         else if (daysRemaining < 5) status = 'WARNING';
+        final weeklyAvg = sold7;
+        String contextMsg;
+        if (dailyVelocity <= 0) {
+          contextMsg = 'No sales in last 7 days — check if product is active';
+        } else if (daysRemaining >= 14) {
+          contextMsg =
+              'Stock OK — ${daysRemaining.toStringAsFixed(0)} days remaining at current velocity';
+        } else if (daysRemaining >= 7) {
+          contextMsg =
+              'Monitor — ${daysRemaining.toStringAsFixed(0)} days remaining. Weekly avg: ${weeklyAvg.toStringAsFixed(2)} kg';
+        } else if (daysRemaining >= 3) {
+          contextMsg =
+              'Consider ordering — ${daysRemaining.toStringAsFixed(0)} days left. Weekly avg: ${weeklyAvg.toStringAsFixed(2)} kg';
+        } else {
+          contextMsg =
+              'Order soon — only ${daysRemaining.toStringAsFixed(1)} days left. Weekly avg: ${weeklyAvg.toStringAsFixed(2)} kg';
+        }
         recs.add({
           'inventory_item_id': id,
           'product_name': map['name'],
-          'days_remaining': daysRemaining.toStringAsFixed(1),
+          'days_remaining': daysRemaining >= 999 ? '—' : daysRemaining.toStringAsFixed(1),
           'recommendation_text': _reorderRecommendationText(daysRemaining, status),
           'status': status,
-          'current_stock': stock,
-          'reorder_point': reorder,
+          'current_stock': stock.toStringAsFixed(3),
+          'reorder_point': reorder.toStringAsFixed(3),
+          'weekly_avg_sales': weeklyAvg.toStringAsFixed(2),
+          'daily_velocity': dailyVelocity.toStringAsFixed(3),
+          'context_message': contextMsg,
         });
       }
-      recs.sort((a, b) => (a['days_remaining'] as String).compareTo(b['days_remaining'] as String));
+      recs.sort((a, b) {
+        final aDays = a['days_remaining'] as String?;
+        final bDays = b['days_remaining'] as String?;
+        if (aDays == '—') {
+          return 1;
+        }
+        if (bDays == '—') {
+          return -1;
+        }
+        return (double.tryParse(aDays ?? '') ?? 999)
+            .compareTo(double.tryParse(bDays ?? '') ?? 999);
+      });
       return recs.take(50).toList();
     } catch (_) {
       return [];

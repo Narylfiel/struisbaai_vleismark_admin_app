@@ -568,6 +568,15 @@ class ProductListScreenState extends State<ProductListScreen> {
                       fontSize: 13, color: AppColors.textSecondary),
                 );
 
+                final refreshButton = IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh from server',
+                  onPressed: () async {
+                    await IsarService.clearInventoryItemsCache();
+                    _loadData();
+                  },
+                );
+
                 if (isWide) {
                   return Row(
                     children: [
@@ -578,6 +587,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                       countText,
                       const SizedBox(width: 12),
                       bulkButton,
+                      refreshButton,
                       sortButton,
                       const SizedBox(width: 8),
                       addButton,
@@ -592,6 +602,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                           Expanded(child: searchField),
                           const SizedBox(width: 8),
                           bulkButton,
+                          refreshButton,
                           sortButton,
                           addButton,
                         ],
@@ -1081,6 +1092,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   List<String> _storageLocationIds = [];
   String? _carcassLinkId;
   bool _dryerBiltongProduct = false;
+  double? _shrinkageAllowancePct;
+  bool _isFrozenVariant = false;
 
   // Section D (barcode in A; D adds prefix)
   String? _barcodePrefix;
@@ -1254,6 +1267,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _storageLocationIds = List<String>.from(p['storage_location_ids'] ?? []);
     _carcassLinkId = p['carcass_link_id'] as String?;
     _dryerBiltongProduct = p['dryer_biltong_product'] as bool? ?? false;
+    _shrinkageAllowancePct = (p['shrinkage_allowance_pct'] as num?)?.toDouble() ?? 2.0;
+    _isFrozenVariant = p['is_frozen_variant'] as bool? ?? false;
     _barcodePrefix = p['barcode_prefix'] as String?;
     _modifierGroupIds = List<String>.from(p['modifier_group_ids'] ?? []);
     _supplierIds = List<String>.from(p['supplier_ids'] ?? []);
@@ -1372,6 +1387,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           : null,
       'dryer_product_type': _dryerProductType,
       'manufactured_item': _manufacturedItem,
+      'shrinkage_allowance_pct': _shrinkageAllowancePct ?? 2.0,
+      'is_frozen_variant': _isFrozenVariant,
       'image_url': _imageUrlController.text.trim().isEmpty ? null : _imageUrlController.text.trim(),
       'dietary_tags': _dietaryTags.isEmpty ? null : _dietaryTags,
       'allergen_info': _allergenInfo.isEmpty ? null : _allergenInfo,
@@ -2161,6 +2178,72 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     ),
                   ],
                 ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Shrinkage Allowance %',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        TextFormField(
+                          initialValue: _shrinkageAllowancePct?.toString() ?? '2.0',
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            hintText: '2.0',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (v) => setState(() =>
+                              _shrinkageAllowancePct = double.tryParse(v)),
+                        ),
+                        const SizedBox(height: 4),
+                        const Text(
+                          'Natural loss % before theft alert triggers',
+                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Frozen Variant',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Switch(
+                              value: _isFrozenVariant,
+                              onChanged: (v) =>
+                                  setState(() => _isFrozenVariant = v),
+                              activeColor: AppColors.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              _isFrozenVariant
+                                  ? 'Yes — deducts frozen stock'
+                                  : 'No — deducts fresh stock',
+                              style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(width: 16),
               Expanded(

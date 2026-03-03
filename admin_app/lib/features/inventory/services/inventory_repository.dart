@@ -186,7 +186,7 @@ class InventoryRepository {
     final row = {
       'item_id': itemId,
       'movement_type': 'adjustment',
-      'quantity': variance.abs(),
+      'quantity': variance, // signed: positive if actual > system, negative if actual < system
       'staff_id': performedBy,
       'notes': notes ?? 'Stock take: was $cur, set to $actualQuantity',
       'metadata': {'previous': cur, 'actual': actualQuantity},
@@ -196,13 +196,10 @@ class InventoryRepository {
         .insert(row)
         .select()
         .single();
-
-    // C1: Adjustment updates current_stock only (never fresh/frozen).
-    if (item.containsKey('current_stock')) {
-      await _client.from('inventory_items').update({
-        'current_stock': actualQuantity,
-      }).eq('id', itemId);
-    }
+    // NOTE: Do NOT manually update current_stock or stock_on_hand_fresh here.
+    // The Supabase trigger on_stock_movement_insert handles all stock level
+    // updates automatically on INSERT. Manual update here would cause a
+    // double-write race condition.
 
     final movement = StockMovement.fromJson(response as Map<String, dynamic>);
     

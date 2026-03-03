@@ -216,8 +216,13 @@ class _PricingTabState extends State<_PricingTab> {
     }
   }
 
-  Future<void> _handleAction(String id, String status) async {
-    await _repo.updatePricingSuggestion(id, status);
+  Future<void> _handleAction(
+      String id, String status, {double? suggestedPrice}) async {
+    await _repo.updatePricingSuggestion(
+      id,
+      status,
+      newSellPrice: status == 'Applied' ? suggestedPrice : null,
+    );
     _load();
   }
 
@@ -271,7 +276,14 @@ class _PricingTabState extends State<_PricingTab> {
                 const SizedBox(height: 16),
                 Row(
                   children: [
-                    ElevatedButton(onPressed: () => _handleAction(id, 'Applied'), child: const Text('Accept Recommendations')),
+                    ElevatedButton(
+                      onPressed: () {
+                        final newPrice = double.tryParse(
+                            sug['suggested_sell_price']?.toString() ?? '');
+                        _handleAction(id, 'Applied', suggestedPrice: newPrice);
+                      },
+                      child: const Text('Accept & Update Price'),
+                    ),
                     const SizedBox(width: 8),
                     TextButton(onPressed: () => _handleAction(id, 'Ignored'), child: const Text('Ignore')),
                   ],
@@ -366,14 +378,69 @@ class _ReorderTabState extends State<_ReorderTab> {
                         if (status == 'URGENT') sColor = AppColors.error;
                         if (status == 'WARNING') sColor = AppColors.warning;
 
-                        return Row(
-                          children: [
-                            Icon(Icons.circle, color: sColor, size: 12),
-                            const SizedBox(width: 16),
-                            SizedBox(width: 150, child: Text(r['product_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold))),
-                            Expanded(child: Text('Velocity/Trend predicts ${r['days_remaining'] ?? '0'} days of stock left')),
-                            Text(r['recommendation_text'] ?? '—', style: const TextStyle(fontWeight: FontWeight.w600)),
-                          ],
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 10),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.only(top: 4),
+                                child: Icon(Icons.circle, color: sColor, size: 12),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(r['product_name'] ?? '—',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      r['context_message'] ?? '',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Text(
+                                    'On hand: ${r['current_stock'] ?? '—'} kg',
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                  Text(
+                                    'Reorder at: ${r['reorder_point'] ?? '—'} kg',
+                                    style: const TextStyle(
+                                        fontSize: 11,
+                                        color: AppColors.textSecondary),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 10, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: sColor.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Text(
+                                  r['recommendation_text'] ?? '—',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
+                                      color: sColor),
+                                ),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     ),

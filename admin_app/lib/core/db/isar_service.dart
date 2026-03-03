@@ -148,7 +148,7 @@ class IsarService {
 
   // ─── Inventory items (offline stock levels) ───────────────────────────────
 
-  static const Duration _inventoryCacheStale = Duration(minutes: 30);
+  static const Duration _inventoryCacheStale = Duration(hours: 4);
   static const Duration _financialCacheStale = Duration(minutes: 5);
   static const Duration _referenceCacheStale = Duration(minutes: 60);
 
@@ -173,7 +173,7 @@ class IsarService {
     return list.where((e) => e.isActive).toList();
   }
 
-  /// True if inventory cache is older than 30 minutes or empty.
+  /// True if inventory cache is older than TTL or empty.
   static Future<bool> isInventoryItemsCacheStale() async {
     final list = await getAllInventoryItems(true);
     if (list.isEmpty) return true;
@@ -183,6 +183,16 @@ class IsarService {
     }
     if (newest == null) return true;
     return DateTime.now().toUtc().difference(newest) > _inventoryCacheStale;
+  }
+
+  /// Force cache bust — deletes all cached inventory items so next load
+  /// fetches fresh from Supabase regardless of TTL.
+  static Future<void> clearInventoryItemsCache() async {
+    final db = _isar;
+    if (db == null) return;
+    await db.writeTxn(() async {
+      await db.cachedInventoryItems.clear();
+    });
   }
 
   // ─── Categories (offline stock levels filter) ─────────────────────────────
