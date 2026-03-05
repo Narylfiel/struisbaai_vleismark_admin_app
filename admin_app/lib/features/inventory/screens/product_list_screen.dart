@@ -1094,6 +1094,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   bool _dryerBiltongProduct = false;
   double? _shrinkageAllowancePct;
   bool _isFrozenVariant = false;
+  double? _minStockAlert;
 
   // Section D (barcode in A; D adds prefix)
   String? _barcodePrefix;
@@ -1269,6 +1270,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _dryerBiltongProduct = p['dryer_biltong_product'] as bool? ?? false;
     _shrinkageAllowancePct = (p['shrinkage_allowance_pct'] as num?)?.toDouble() ?? 2.0;
     _isFrozenVariant = p['is_frozen_variant'] as bool? ?? false;
+    _minStockAlert = (widget.product?['min_stock_alert'] as num?)?.toDouble();
     _barcodePrefix = p['barcode_prefix'] as String?;
     _modifierGroupIds = List<String>.from(p['modifier_group_ids'] ?? []);
     _supplierIds = List<String>.from(p['supplier_ids'] ?? []);
@@ -1388,6 +1390,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'dryer_product_type': _dryerProductType,
       'manufactured_item': _manufacturedItem,
       'shrinkage_allowance_pct': _shrinkageAllowancePct ?? 2.0,
+      'min_stock_alert': _minStockAlert,
       'is_frozen_variant': _isFrozenVariant,
       'image_url': _imageUrlController.text.trim().isEmpty ? null : _imageUrlController.text.trim(),
       'dietary_tags': _dietaryTags.isEmpty ? null : _dietaryTags,
@@ -2137,81 +2140,183 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   }
 
   Widget _buildTabC() {
+    // Read current stock values from the loaded product map (read-only display)
+    final double freshStock = (widget.product?['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0.0;
+    final double frozenStock = (widget.product?['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0.0;
+    final double totalStock = freshStock + frozenStock;
+    final String unitLabel = _unitType;
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+
+          // ── SECTION: CURRENT STOCK LEVELS ──────────────────────────────
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Current Stock Levels',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textPrimary)),
+                const SizedBox(height: 16),
+                Row(
                   children: [
-                    const Text('Stock Control Type',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: _stockControlType,
-                      decoration: const InputDecoration(isDense: true),
-                      items: const [
-                        DropdownMenuItem(
-                            value: 'use_stock_control',
-                            child: Text('Use Stock Control')),
-                        DropdownMenuItem(
-                            value: 'no_stock_control',
-                            child: Text('No Stock Control')),
-                        DropdownMenuItem(
-                            value: 'recipe_based',
-                            child: Text('Recipe Based')),
-                        DropdownMenuItem(
-                            value: 'carcass_linked',
-                            child: Text('Carcass Linked')),
-                        DropdownMenuItem(
-                            value: 'hanger_count',
-                            child: Text('Hanger Count')),
-                      ],
-                      onChanged: (v) =>
-                          setState(() => _stockControlType = v!),
+                    Expanded(
+                      child: _readOnlyStockTile(
+                        label: 'Fresh / On Display',
+                        value: '${freshStock.toStringAsFixed(2)} $unitLabel',
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _readOnlyStockTile(
+                        label: 'Frozen',
+                        value: '${frozenStock.toStringAsFixed(2)} $unitLabel',
+                        color: Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _readOnlyStockTile(
+                        label: 'Total On Hand',
+                        value: '${totalStock.toStringAsFixed(2)} $unitLabel',
+                        color: AppColors.primary,
+                      ),
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
+                const SizedBox(height: 16),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.tune, size: 16),
+                    label: const Text('Adjust Stock'),
+                    onPressed: () => _showStockAdjustDialog(freshStock, frozenStock),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── SECTION: STOCK SETTINGS ─────────────────────────────────────
+          const Text('Stock Settings',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
+          Column(
+            children: [
               Row(
                 children: [
                   Expanded(
+                    flex: 3,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Shrinkage Allowance %',
+                        const Text('Stock Control Type',
                             style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                                 color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
-                        TextFormField(
-                          initialValue: _shrinkageAllowancePct?.toString() ?? '2.0',
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            hintText: '2.0',
-                          ),
-                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                          onChanged: (v) => setState(() =>
-                              _shrinkageAllowancePct = double.tryParse(v)),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'Natural loss % before theft alert triggers',
-                          style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                        DropdownButtonFormField<String>(
+                          value: _stockControlType,
+                          isExpanded: true,
+                          decoration: const InputDecoration(isDense: true),
+                          items: const [
+                            DropdownMenuItem(
+                                value: 'use_stock_control',
+                                child: Text('Use Stock Control')),
+                            DropdownMenuItem(
+                                value: 'no_stock_control',
+                                child: Text('No Stock Control')),
+                            DropdownMenuItem(
+                                value: 'recipe_based',
+                                child: Text('Recipe Based')),
+                            DropdownMenuItem(
+                                value: 'carcass_linked',
+                                child: Text('Carcass Linked')),
+                            DropdownMenuItem(
+                                value: 'hanger_count',
+                                child: Text('Hanger Count')),
+                          ],
+                          onChanged: (v) => setState(() => _stockControlType = v!),
                         ),
                       ],
                     ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Unit Type',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        DropdownButtonFormField<String>(
+                          value: _unitType,
+                          isExpanded: true,
+                          decoration: const InputDecoration(isDense: true),
+                          items: const [
+                            DropdownMenuItem(value: 'kg', child: Text('kg')),
+                            DropdownMenuItem(value: 'units', child: Text('Units')),
+                            DropdownMenuItem(value: 'packs', child: Text('Packs')),
+                          ],
+                          onChanged: (v) => setState(() => _unitType = v!),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Allow Sell by Fraction',
+                            style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textSecondary)),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Switch(
+                              value: _allowFraction,
+                              onChanged: (v) => setState(() => _allowFraction = v),
+                              activeColor: AppColors.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(_allowFraction ? 'Yes' : 'No',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    flex: 3,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -2230,13 +2335,16 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                               activeColor: AppColors.primary,
                             ),
                             const SizedBox(width: 8),
-                            Text(
-                              _isFrozenVariant
-                                  ? 'Yes — deducts frozen stock'
-                                  : 'No — deducts fresh stock',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary),
+                            Flexible(
+                              child: Text(
+                                _isFrozenVariant
+                                    ? 'Yes — deducts frozen'
+                                    : 'No — deducts fresh',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary),
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
                           ],
                         ),
@@ -2244,52 +2352,6 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Unit Type',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary)),
-                    const SizedBox(height: 6),
-                    DropdownButtonFormField<String>(
-                      value: _unitType,
-                      decoration: const InputDecoration(isDense: true),
-                      items: const [
-                        DropdownMenuItem(value: 'kg', child: Text('kg')),
-                        DropdownMenuItem(
-                            value: 'units', child: Text('Units')),
-                        DropdownMenuItem(
-                            value: 'packs', child: Text('Packs')),
-                      ],
-                      onChanged: (v) => setState(() => _unitType = v!),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text('Allow Sell by Fraction',
-                        style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.textSecondary)),
-                    const SizedBox(height: 6),
-                    Switch(
-                      value: _allowFraction,
-                      onChanged: (v) =>
-                          setState(() => _allowFraction = v),
-                      activeThumbColor: AppColors.primary,
-                    ),
-                  ],
-                ),
               ),
             ],
           ),
@@ -2307,6 +2369,47 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ),
               const SizedBox(width: 16),
               Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Shrinkage Allowance %',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      initialValue:
+                          _shrinkageAllowancePct?.toString() ?? '2.0',
+                      decoration: const InputDecoration(
+                          isDense: true, hintText: '2.0'),
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      onChanged: (v) => setState(
+                          () => _shrinkageAllowancePct = double.tryParse(v)),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text('Natural loss % before theft alert triggers',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 24),
+
+          // ── SECTION: ALERTS & THRESHOLDS ────────────────────────────────
+          const Text('Alerts & Thresholds',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
                 child: _field(
                   label: 'Reorder Level',
                   controller: _reorderController,
@@ -2318,12 +2421,42 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ),
               const SizedBox(width: 16),
               Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Minimum Stock Alert',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 6),
+                    TextFormField(
+                      initialValue: _minStockAlert?.toString() ?? '',
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        hintText: 'e.g. 2.0',
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true),
+                      onChanged: (v) => setState(
+                          () => _minStockAlert = double.tryParse(v)),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                        'Critical low threshold — triggers predictive order alert',
+                        style: TextStyle(
+                            fontSize: 11, color: AppColors.textSecondary)),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
                 child: _field(
                   label: 'Slow Moving Trigger (days)',
                   controller: _slowMovingController,
                   hint: '3',
                   keyboardType: TextInputType.number,
-                  note: 'Days without sale = slow-moving alert (per product)',
+                  note: 'Days without sale = slow-moving alert',
                 ),
               ),
             ],
@@ -2348,23 +2481,34 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                   keyboardType: TextInputType.number,
                 ),
               ),
+              const SizedBox(width: 16),
+              const Expanded(child: SizedBox()),
             ],
           ),
-          const SizedBox(height: 16),
+
+          const SizedBox(height: 24),
+
+          // ── SECTION: LINKING ────────────────────────────────────────────
+          const Text('Linking',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 12),
           Row(
             children: [
               Switch(
                 value: _dryerBiltongProduct,
-                onChanged: (v) => setState(() => _dryerBiltongProduct = v),
-                activeThumbColor: AppColors.primary,
+                onChanged: (v) =>
+                    setState(() => _dryerBiltongProduct = v),
+                activeColor: AppColors.primary,
               ),
-              const Text(
-                'Dryer/Biltong Product (links to Dryer module)',
-                style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textSecondary),
-              ),
+              const SizedBox(width: 8),
+              const Text('Dryer/Biltong Product (links to Dryer module)',
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.textSecondary)),
             ],
           ),
         ],
@@ -2892,6 +3036,219 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               ),
             ),
         ],
+      ),
+    );
+  }
+
+  Widget _readOnlyStockTile({
+    required String label,
+    required String value,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: color)),
+          const SizedBox(height: 4),
+          Text(value,
+              style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: color)),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showStockAdjustDialog(
+      double currentFresh, double currentFrozen) async {
+    final adjustQtyController = TextEditingController();
+    String adjustType = 'fresh';
+    String adjustReason = 'count_correction';
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('Adjust Stock'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Current levels summary
+                Row(
+                  children: [
+                    Expanded(
+                      child: _readOnlyStockTile(
+                        label: 'Current Fresh',
+                        value: '${currentFresh.toStringAsFixed(2)} $_unitType',
+                        color: Colors.green,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _readOnlyStockTile(
+                        label: 'Current Frozen',
+                        value: '${currentFrozen.toStringAsFixed(2)} $_unitType',
+                        color: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                // Stock type
+                const Text('Adjust Which Stock?',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: adjustType,
+                  decoration: const InputDecoration(isDense: true),
+                  items: const [
+                    DropdownMenuItem(value: 'fresh', child: Text('Fresh / On Display')),
+                    DropdownMenuItem(value: 'frozen', child: Text('Frozen')),
+                  ],
+                  onChanged: (v) => setDlg(() => adjustType = v!),
+                ),
+                const SizedBox(height: 12),
+                // Reason
+                const Text('Reason',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                DropdownButtonFormField<String>(
+                  value: adjustReason,
+                  decoration: const InputDecoration(isDense: true),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'count_correction',
+                        child: Text('Count Correction')),
+                    DropdownMenuItem(
+                        value: 'received_delivery',
+                        child: Text('Received Delivery')),
+                    DropdownMenuItem(value: 'waste', child: Text('Waste / Spoilage')),
+                    DropdownMenuItem(
+                        value: 'staff_meal', child: Text('Staff Meal')),
+                    DropdownMenuItem(
+                        value: 'donation', child: Text('Donation')),
+                    DropdownMenuItem(value: 'other', child: Text('Other')),
+                  ],
+                  onChanged: (v) => setDlg(() => adjustReason = v!),
+                ),
+                const SizedBox(height: 12),
+                // Quantity — positive to add, negative to subtract
+                const Text('Quantity (+ to add, − to subtract)',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                const SizedBox(height: 6),
+                TextFormField(
+                  controller: adjustQtyController,
+                  decoration: InputDecoration(
+                    isDense: true,
+                    hintText: 'e.g. 5.0 or -2.5',
+                    suffixText: _unitType,
+                  ),
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true, signed: true),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      final qty =
+                          double.tryParse(adjustQtyController.text.trim());
+                      if (qty == null || qty == 0) return;
+
+                      final productId = widget.product?['id']?.toString();
+                      if (productId == null) return;
+
+                      setDlg(() => isSaving = true);
+
+                      try {
+                        final double currentVal =
+                            adjustType == 'fresh' ? currentFresh : currentFrozen;
+                        final double newVal =
+                            (currentVal + qty).clamp(0.0, double.infinity);
+
+                        await _supabase.from('stock_movements').insert({
+                          'item_id': productId,
+                          'movement_type': 'adjustment',
+                          'quantity': qty,
+                          'unit_type': _unitType,
+                          'balance_after': newVal,
+                          'reason': adjustReason,
+                          'notes': 'Manual adjustment ($adjustType stock) — $adjustReason',
+                          'staff_id': _supabase.auth.currentUser?.id,
+                        });
+
+                        // 2. Update inventory_items stock column directly
+                        final String col = adjustType == 'fresh'
+                            ? 'stock_on_hand_fresh'
+                            : 'stock_on_hand_frozen';
+
+                        await _supabase.from('inventory_items').update({
+                          col: newVal,
+                          'current_stock': adjustType == 'fresh'
+                              ? newVal + currentFrozen
+                              : currentFresh + newVal,
+                        }).eq('id', productId);
+
+                        if (ctx.mounted) Navigator.pop(ctx);
+
+                        // 3. Bust cache and notify parent to reload list
+                        await IsarService.clearInventoryItemsCache();
+                        if (mounted) widget.onSaved();
+
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                  'Stock adjusted: ${qty > 0 ? '+' : ''}${qty.toStringAsFixed(2)} $_unitType ($adjustType)'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDlg(() => isSaving = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Error saving adjustment: $e'),
+                              backgroundColor: Colors.red,
+                            ),
+                          );
+                        }
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save Adjustment'),
+            ),
+          ],
+        ),
       ),
     );
   }

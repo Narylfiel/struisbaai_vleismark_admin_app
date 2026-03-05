@@ -279,4 +279,107 @@ class SupplierInvoiceRepository {
     );
     return ReceiveResult(itemsReceived: itemsReceived);
   }
+
+  /// Auto-match supplier invoice line items to inventory products.
+  /// Looks up product_suppliers by supplier_id + supplier_product_code.
+  /// Returns updated line items with inventory_item_id and inventory_item_name
+  /// filled in where a match is found.
+  Future<List<Map<String, dynamic>>> autoMatchLineItems({
+    required String supplierId,
+    required List<Map<String, dynamic>> lineItems,
+  }) async {
+    if (supplierId.isEmpty || lineItems.isEmpty) return lineItems;
+
+    // Load all product_suppliers rows for this supplier
+    final rows = await _client
+        .from('product_suppliers')
+        .select('supplier_product_code, supplier_product_name, inventory_item_id, inventory_items(id, name)')
+        .eq('supplier_id', supplierId);
+
+    // Build lookup map: supplier_product_code (lowercase) → {item_id, item_name}
+    final lookup = <String, Map<String, String>>{};
+    for (final row in rows as List) {
+      final code = (row['supplier_product_code'] as String? ?? '').toLowerCase().trim();
+      final itemId = row['inventory_item_id']?.toString() ?? '';
+      final itemName = (row['inventory_items'] as Map<String, dynamic>?)?['name']?.toString()
+          ?? row['supplier_product_name']?.toString()
+          ?? '';
+      if (code.isNotEmpty && itemId.isNotEmpty) {
+        lookup[code] = {'item_id': itemId, 'item_name': itemName};
+      }
+    }
+
+    if (lookup.isEmpty) return lineItems;
+
+    // Match each line item
+    final updated = <Map<String, dynamic>>[];
+    for (final line in lineItems) {
+      final copy = Map<String, dynamic>.from(line);
+      // Skip if already linked
+      if (copy['inventory_item_id']?.toString().isNotEmpty == true) {
+        updated.add(copy);
+        continue;
+      }
+      // Try to match by description against supplier_product_code
+      final desc = (copy['description'] as String? ?? '').toLowerCase().trim();
+      if (desc.isNotEmpty && lookup.containsKey(desc)) {
+        copy['inventory_item_id'] = lookup[desc]!['item_id'];
+        copy['inventory_item_name'] = lookup[desc]!['item_name'];
+        copy['auto_matched'] = true;
+      }
+      updated.add(copy);
+    }
+    return updated;
+  }
+
+  /// Verify invoice calculations. Returns list of error strings (empty = clean).
+  /// Checks:
+  /// 1. Each line total = quantity * unit_price (within 0.02 rounding tolerance)
+  /// 2. Sum of line totals = subtotal (within 0.05 tolerance)
+  /// 3. subtotal + tax_amount = total (within 0.05 tolerance)
+  List<String> verifyCalculations({
+    required List<Map<String, dynamic>> lineItems,
+    required double subtotal,
+    required double taxAmount,
+    required double total,
+  }) {
+    final errors = <String>[];
+    double lineSum = 0;
+
+    for (int i = 0; i < lineItems.length; i++) {
+      final line = lineItems[i];
+      final qty = (line['quantity'] as num?)?.toDouble() ?? 0;
+      final price = (line['unit_price'] as num?)?.toDouble() ?? 0;
+      final lineTotal = (line['line_total'] as num?)?.toDouble();
+      final expected = qty * price;
+
+      if (lineTotal != null && (lineTotal - expected).abs() > 0.02) {
+        final desc = line['description']?.toString() ?? 'Line ${i + 1}';
+        errors.add(
+          '$desc: line total R${lineTotal.toStringAsFixed(2)} ≠ '
+          '${qty.toStringAsFixed(3)} × R${price.toStringAsFixed(2)} '
+          '= R${expected.toStringAsFixed(2)}',
+        );
+      }
+      lineSum += lineTotal ?? expected;
+    }
+
+    if ((lineSum - subtotal).abs() > 0.05) {
+      errors.add(
+        'Line items sum R${lineSum.toStringAsFixed(2)} ≠ '
+        'subtotal R${subtotal.toStringAsFixed(2)}',
+      );
+    }
+
+    if ((subtotal + taxAmount - total).abs() > 0.05) {
+      errors.add(
+        'Subtotal R${subtotal.toStringAsFixed(2)} + '
+        'tax R${taxAmount.toStringAsFixed(2)} = '
+        'R${(subtotal + taxAmount).toStringAsFixed(2)} ≠ '
+        'total R${total.toStringAsFixed(2)}',
+      );
+    }
+
+    return errors;
+  }
 }

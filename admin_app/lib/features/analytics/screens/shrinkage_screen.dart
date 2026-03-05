@@ -460,21 +460,33 @@ class _EventTab extends StatefulWidget {
 
 class _EventTabState extends State<_EventTab> {
   final _repo = AnalyticsRepository();
-  List<Map<String, dynamic>> _tags = [];
-  List<Map<String, dynamic>> _spikes = [];
-  List<Map<String, dynamic>> _forecast = [];
-  bool _isLoading = true;
-  bool _forecastLoading = false;
-  String? _selectedEventType;
 
-  final _eventNameController = TextEditingController();
+  List<Map<String, dynamic>> _spikes = [];
+  List<Map<String, dynamic>> _tags = [];
+  List<Map<String, dynamic>> _reminders = [];
+
+  bool _isLoading = true;
+  String? _selectedEventForYoY;
+  List<Map<String, dynamic>> _yoyData = [];
+  bool _yoyLoading = false;
+
+  // Tag form state per spike
+  final Map<String, TextEditingController> _nameControllers = {};
+  final Map<String, String> _selectedTypes = {};
+
   static const List<String> _eventTypes = [
+    'fishing_competition',
+    'agri_show',
     'public_holiday',
-    'holiday',
     'school_holiday',
     'sporting_event',
     'local_event',
+    'other',
   ];
+
+  static String _eventTypeLabel(String t) =>
+      t.replaceAll('_', ' ').split(' ').map((w) =>
+          w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
 
   @override
   void initState() {
@@ -484,146 +496,626 @@ class _EventTabState extends State<_EventTab> {
 
   @override
   void dispose() {
-    _eventNameController.dispose();
+    for (final c in _nameControllers.values) c.dispose();
     super.dispose();
   }
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
-    final t = await _repo.getHistoricalEventTags();
-    final s = await _repo.getRecentEvents();
+    final spikes = await _repo.getRecentEvents();
+    final tags = await _repo.getHistoricalEventTags();
+    final reminders = await _repo.getUpcomingEventReminders();
     if (mounted) {
       setState(() {
-        _tags = t;
-        _spikes = s;
+        _spikes = spikes;
+        _tags = tags;
+        _reminders = reminders;
         _isLoading = false;
       });
     }
   }
 
-  Future<void> _loadForecast(String eventType) async {
-    setState(() => _forecastLoading = true);
-    final f = await _repo.getForecastForEvent(eventType);
-    if (mounted) {
-      setState(() {
-        _forecast = f;
-        _forecastLoading = false;
-      });
-    }
+  Future<void> _saveTag(Map<String, dynamic> spike) async {
+    final weekStart = spike['week_start'] as String;
+    final controller = _nameControllers[weekStart];
+    if (controller == null || controller.text.trim().isEmpty) return;
+
+    final eventType = _selectedTypes[weekStart] ?? _eventTypes.first;
+    await _repo.saveEventTag(
+      eventType,
+      controller.text.trim(),
+      startDate: weekStart,
+      endDate: spike['week_end'] as String,
+      revenue: (spike['revenue'] as num?)?.toDouble() ?? 0,
+      baselineRevenue: (spike['baseline_revenue'] as num?)?.toDouble() ?? 0,
+      revenueVariancePct:
+          double.tryParse(spike['revenue_variance_pct']?.toString() ?? '') ?? 0,
+      transactionCount: (spike['transaction_count'] as num?)?.toInt() ?? 0,
+      autoDetected: true,
+    );
+
+    controller.clear();
+    _load();
   }
 
-  Future<void> _saveTag() async {
-    final type = _selectedEventType ?? _eventTypes.first;
-    if (_eventNameController.text.trim().isEmpty) return;
-    await _repo.saveEventTag(type, _eventNameController.text.trim());
-    _eventNameController.clear();
+  Future<void> _dismissSpike(String weekStart) async {
+    await _repo.dismissSpike(weekStart);
     _load();
+  }
+
+  Future<void> _loadYoY(String eventName) async {
+    setState(() => _yoyLoading = true);
+    final data = await _repo.getEventYearOnYear(eventName);
+    if (mounted) {
+      setState(() {
+        _yoyData = data;
+        _yoyLoading = false;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
+
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
-        const Padding(
-          padding: EdgeInsets.only(bottom: 16),
-          child: Text('Event Tag Forecasting', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        // ── SECTION 1: DETECTED SPIKES ──────────────────────────────
+        _sectionHeader(Icons.bar_chart, 'Detected Sales Spikes',
+            subtitle: 'Weeks significantly above your normal trading average'),
+        const SizedBox(height: 8),
+        if (_spikes.isEmpty)
+          _emptyCard('No unusual sales spikes detected in the last 10 weeks. '
+              'Models are stable.')
+        else
+          ..._spikes.map((spike) {
+            final weekStart = spike['week_start'] as String;
+            _nameControllers.putIfAbsent(
+                weekStart, () => TextEditingController());
+            _selectedTypes.putIfAbsent(weekStart, () => _eventTypes.first);
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Icon(Icons.trending_up, color: AppColors.accent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            spike['display_date'] ?? weekStart,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 15),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () => _dismissSpike(weekStart),
+                          child: const Text('Dismiss',
+                              style:
+                                  TextStyle(color: AppColors.textSecondary)),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        _metricChip(
+                          'Revenue',
+                          'R ${((spike['revenue'] as num?)?.toDouble() ?? 0).toStringAsFixed(0)}',
+                          '+${spike['revenue_variance_pct']}% vs avg',
+                          AppColors.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        _metricChip(
+                          'Transactions',
+                          '${spike['transaction_count'] ?? 0}',
+                          '+${spike['tx_variance_pct']}% vs avg',
+                          Colors.blue,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    const Text('What caused this spike?',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textSecondary)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedTypes[weekStart],
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                                isDense: true,
+                                labelText: 'Event type'),
+                            items: _eventTypes
+                                .map((t) => DropdownMenuItem(
+                                    value: t,
+                                    child: Text(_eventTypeLabel(t))))
+                                .toList(),
+                            onChanged: (v) => setState(
+                                () => _selectedTypes[weekStart] = v!),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _nameControllers[weekStart],
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              labelText: 'Event name',
+                              hintText: 'e.g. Fishing Competition 2026',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        FilledButton(
+                          onPressed: () => _saveTag(spike),
+                          child: const Text('Tag'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+        const SizedBox(height: 24),
+
+        // ── SECTION 2: UPCOMING REMINDERS ────────────────────────────
+        _sectionHeader(Icons.notifications_active, 'Upcoming Event Reminders',
+            subtitle: 'Events from previous years with anniversaries coming up'),
+        const SizedBox(height: 8),
+        if (_reminders.isEmpty)
+          _emptyCard('No upcoming event anniversaries in the next 45 days.')
+        else
+          ..._reminders.map((r) {
+            final daysUntil = r['days_until'] as int? ?? 0;
+            final revenue =
+                (r['total_revenue'] as num?)?.toDouble() ?? 0;
+            final variance =
+                (r['revenue_variance_pct'] as num?)?.toDouble() ?? 0;
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: daysUntil <= 14
+                      ? AppColors.error.withValues(alpha: 0.15)
+                      : AppColors.primary.withValues(alpha: 0.12),
+                  child: Text(
+                    '$daysUntil',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: daysUntil <= 14
+                          ? AppColors.error
+                          : AppColors.primary,
+                    ),
+                  ),
+                ),
+                title: Text(r['event_name']?.toString() ?? '—',
+                    style:
+                        const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text(
+                  revenue > 0
+                      ? 'Last recorded: R ${revenue.toStringAsFixed(0)} (+${variance.toStringAsFixed(1)}% above normal)'
+                      : 'Anniversary in $daysUntil days — ${r['anniversary_date'] ?? ''}',
+                ),
+                trailing: Text(
+                  '$daysUntil days',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: daysUntil <= 14
+                        ? AppColors.error
+                        : AppColors.textSecondary,
+                  ),
+                ),
+              ),
+            );
+          }),
+
+        const SizedBox(height: 24),
+
+        // ── SECTION 3: SAVED EVENTS ───────────────────────────────────
+        Row(
+          children: [
+            Expanded(
+              child: _sectionHeader(Icons.event, 'Saved Events',
+                  subtitle: 'All tagged events with year-on-year history'),
+            ),
+            FilledButton.icon(
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text('Add Event'),
+              onPressed: () => _showAddEventDialog(),
+            ),
+          ],
         ),
-        if (_spikes.isNotEmpty)
+        const SizedBox(height: 8),
+        if (_tags.isEmpty)
+          _emptyCard('No events tagged yet. Tag a spike above or add manually.')
+        else
+          ..._tags.map((tag) {
+            final name = tag['event_name']?.toString() ?? '—';
+            final type = _eventTypeLabel(
+                tag['event_type']?.toString() ?? 'other');
+            final startDate = tag['start_date']?.toString() ??
+                tag['event_date']?.toString() ?? '—';
+            final revenue =
+                (tag['total_revenue'] as num?)?.toDouble() ?? 0;
+            final variance =
+                (tag['revenue_variance_pct'] as num?)?.toDouble() ?? 0;
+            final year = startDate.length >= 4
+                ? startDate.substring(0, 4)
+                : '—';
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 8),
+              child: ListTile(
+                leading: const Icon(Icons.event_note,
+                    color: AppColors.primary),
+                title: Text(name,
+                    style:
+                        const TextStyle(fontWeight: FontWeight.w600)),
+                subtitle: Text('$type · $startDate'),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (revenue > 0)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8),
+                        child: Text(
+                          'R ${revenue.toStringAsFixed(0)}\n+${variance.toStringAsFixed(1)}%',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary),
+                        ),
+                      ),
+                    Chip(
+                      label: Text(year,
+                          style: const TextStyle(fontSize: 11)),
+                      padding: EdgeInsets.zero,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    const SizedBox(width: 4),
+                    IconButton(
+                      icon: const Icon(Icons.bar_chart, size: 18),
+                      tooltip: 'Year-on-year comparison',
+                      onPressed: () {
+                        setState(
+                            () => _selectedEventForYoY = name);
+                        _loadYoY(name);
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+
+        const SizedBox(height: 24),
+
+        // ── SECTION 4: YEAR-ON-YEAR COMPARISON ───────────────────────
+        _sectionHeader(Icons.compare_arrows, 'Year-on-Year Comparison',
+            subtitle: 'Compare the same event across multiple years'),
+        const SizedBox(height: 8),
+        if (_selectedEventForYoY == null)
+          _emptyCard(
+              'Tap the chart icon on any saved event to compare years.')
+        else if (_yoyLoading)
+          const Center(child: CircularProgressIndicator())
+        else if (_yoyData.isEmpty)
+          _emptyCard('No data yet for "$_selectedEventForYoY".')
+        else ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Text(
+              _selectedEventForYoY!,
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(2),
+                  1: FlexColumnWidth(2),
+                  2: FlexColumnWidth(2),
+                  3: FlexColumnWidth(2),
+                },
                 children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.stars, color: AppColors.accent),
-                      const SizedBox(width: 8),
-                      Text('Unusual sales: ${_spikes.first['date'] ?? ''}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                  // Header
+                  TableRow(
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.08),
+                    ),
+                    children: const [
+                      _TableCell('Year', header: true),
+                      _TableCell('Revenue', header: true),
+                      _TableCell('vs Normal', header: true),
+                      _TableCell('Transactions', header: true),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text('Sales +${_spikes.first['variance_percentage'] ?? '0'}% vs 14-day average. Tag for future forecasts:'),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<String>(
-                    value: _selectedEventType ?? _eventTypes.first,
-                    decoration: const InputDecoration(labelText: 'Event type'),
-                    items: _eventTypes.map((t) => DropdownMenuItem(value: t, child: Text(t.replaceAll('_', ' ')))).toList(),
-                    onChanged: (v) => setState(() => _selectedEventType = v),
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: _eventNameController,
-                    decoration: const InputDecoration(labelText: 'Event name (e.g. Easter Weekend)'),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton(onPressed: _saveTag, child: const Text('Save Event Tag')),
+                  // Data rows
+                  ..._yoyData.map((inst) {
+                    final year = (inst['start_date'] as String?)
+                            ?.substring(0, 4) ??
+                        (inst['event_date'] as String?)
+                            ?.substring(0, 4) ??
+                        '—';
+                    final rev =
+                        (inst['total_revenue'] as num?)?.toDouble() ??
+                            0;
+                    final variance =
+                        (inst['revenue_variance_pct'] as num?)
+                                ?.toDouble() ??
+                            0;
+                    final tx =
+                        (inst['total_transactions'] as num?)?.toInt() ??
+                            0;
+                    return TableRow(
+                      children: [
+                        _TableCell(year),
+                        _TableCell(
+                            rev > 0 ? 'R ${rev.toStringAsFixed(0)}' : '—'),
+                        _TableCell(
+                          variance != 0
+                              ? '+${variance.toStringAsFixed(1)}%'
+                              : '—',
+                          color: variance > 0
+                              ? Colors.green
+                              : AppColors.textSecondary,
+                        ),
+                        _TableCell(tx > 0 ? '$tx' : '—'),
+                      ],
+                    );
+                  }),
                 ],
               ),
             ),
-          )
-        else
-          const Card(
-            color: AppColors.surfaceBg,
-            child: Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('No recent unusual sales spikes detected requiring tagging. Models are currently stable.'),
-            ),
           ),
-        const SizedBox(height: 16),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Demand prediction for upcoming events', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                const SizedBox(height: 8),
-                if (_tags.isEmpty)
-                  const Text('No historical events tagged yet. Tag spikes above to build forecasts.')
-                else ...[
-                  DropdownButtonFormField<String>(
-                    decoration: const InputDecoration(labelText: 'Select tagged event type'),
-                    value: _tags.any((t) => (t['event_type'] ?? t['event_name']) == _selectedEventType)
-                        ? _selectedEventType
-                        : (_tags.isNotEmpty ? _tags.first['event_type']?.toString() ?? _tags.first['event_name']?.toString() : null),
-                    items: _tags.map((t) {
-                      final type = t['event_type']?.toString() ?? t['event_name']?.toString() ?? 'unknown';
-                      return DropdownMenuItem<String>(
-                        value: type,
-                        child: Text(t['event_name']?.toString() ?? type),
-                      );
-                    }).toList(),
-                    onChanged: (v) {
-                      setState(() {
-                        _selectedEventType = v;
-                        _forecast = [];
-                      });
-                      if (v != null) _loadForecast(v);
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  if (_selectedEventType != null) ...[
-                    if (_forecastLoading)
-                      const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
-                    else if (_forecast.isEmpty)
-                      const Text('No forecast data for this event type yet.', style: TextStyle(color: AppColors.textSecondary))
-                    else
-                      ..._forecast.map((f) => ListTile(
-                            leading: const Icon(Icons.trending_up, color: AppColors.primary),
-                            title: Text(f['product_name']?.toString() ?? '—'),
-                            subtitle: Text('Suggested: ${f['suggested_quantity_kg'] ?? f['suggested_quantity'] ?? '—'} kg'),
-                          )),
-                  ] else
-                    const Text('Select an event type to load forecast from historical performance.', style: TextStyle(color: AppColors.textSecondary)),
-                ],
-              ],
-            ),
+        ],
+
+        const SizedBox(height: 32),
+      ],
+    );
+  }
+
+  // ── HELPERS ────────────────────────────────────────────────────
+
+  Widget _sectionHeader(IconData icon, String title,
+      {String? subtitle}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, color: AppColors.primary, size: 20),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontSize: 15, fontWeight: FontWeight.bold)),
+              if (subtitle != null)
+                Text(subtitle,
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary)),
+            ],
           ),
         ),
       ],
+    );
+  }
+
+  Widget _emptyCard(String message) {
+    return Card(
+      color: AppColors.surfaceBg,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(message,
+            style: const TextStyle(color: AppColors.textSecondary)),
+      ),
+    );
+  }
+
+  Widget _metricChip(
+      String label, String value, String sub, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: color.withValues(alpha: 0.2)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: color)),
+            Text(value,
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: color)),
+            Text(sub,
+                style: const TextStyle(
+                    fontSize: 11, color: AppColors.textSecondary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _showAddEventDialog() async {
+    final nameController = TextEditingController();
+    String selectedType = _eventTypes.first;
+    DateTime startDate = DateTime.now().subtract(
+        Duration(days: DateTime.now().weekday - 1));
+    DateTime endDate = startDate.add(const Duration(days: 6));
+
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('Add Event Manually'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                DropdownButtonFormField<String>(
+                  value: selectedType,
+                  isExpanded: true,
+                  decoration:
+                      const InputDecoration(labelText: 'Event Type'),
+                  items: _eventTypes
+                      .map((t) => DropdownMenuItem(
+                          value: t, child: Text(_eventTypeLabel(t))))
+                      .toList(),
+                  onChanged: (v) => setDlg(() => selectedType = v!),
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: nameController,
+                  decoration: const InputDecoration(
+                    labelText: 'Event Name',
+                    hintText: 'e.g. Struisbaai Fishing Competition 2026',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Start Date',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary)),
+                          const SizedBox(height: 4),
+                          OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: ctx,
+                                initialDate: startDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDlg(() {
+                                  startDate = picked;
+                                  endDate = picked
+                                      .add(const Duration(days: 6));
+                                });
+                              }
+                            },
+                            child: Text(
+                                startDate.toIso8601String().substring(0, 10)),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('End Date',
+                              style: TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary)),
+                          const SizedBox(height: 4),
+                          OutlinedButton(
+                            onPressed: () async {
+                              final picked = await showDatePicker(
+                                context: ctx,
+                                initialDate: endDate,
+                                firstDate: DateTime(2020),
+                                lastDate: DateTime(2030),
+                              );
+                              if (picked != null) {
+                                setDlg(() => endDate = picked);
+                              }
+                            },
+                            child: Text(
+                                endDate.toIso8601String().substring(0, 10)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                if (nameController.text.trim().isEmpty) return;
+                await _repo.saveEventTag(
+                  selectedType,
+                  nameController.text.trim(),
+                  startDate:
+                      startDate.toIso8601String().substring(0, 10),
+                  endDate: endDate.toIso8601String().substring(0, 10),
+                  autoDetected: false,
+                );
+                if (ctx.mounted) Navigator.pop(ctx);
+                _load();
+              },
+              child: const Text('Save Event'),
+            ),
+          ],
+        ),
+      ),
+    );
+    nameController.dispose();
+  }
+}
+
+// ── TABLE CELL HELPER ─────────────────────────────────────────────
+class _TableCell extends StatelessWidget {
+  final String text;
+  final bool header;
+  final Color? color;
+
+  const _TableCell(this.text, {this.header = false, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontWeight: header ? FontWeight.bold : FontWeight.normal,
+          fontSize: header ? 12 : 13,
+          color: color ??
+              (header ? AppColors.textSecondary : AppColors.textPrimary),
+        ),
+      ),
     );
   }
 }

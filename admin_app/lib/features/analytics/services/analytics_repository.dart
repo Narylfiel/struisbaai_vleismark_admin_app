@@ -266,9 +266,26 @@ class AnalyticsRepository {
 
 
   // ═════════════════════════════════════════════════════════
-  // 4. EVENT TAG FORECASTING (Blueprint §10.4)
+  // 4. EVENT TAG FORECASTING
   // ═════════════════════════════════════════════════════════
-  /// Days with sales significantly above rolling average (e.g. 200%) for tagging.
+
+  /// Reads the spike detection threshold from business_settings.
+  /// event_spike_multiplier is stored as a percentage (e.g. 30 = 30% above normal).
+  Future<double> _getSpikeThresholdPct() async {
+    try {
+      final row = await _client
+          .from('business_settings')
+          .select('event_spike_multiplier')
+          .limit(1)
+          .single();
+      return (row['event_spike_multiplier'] as num?)?.toDouble() ?? 30.0;
+    } catch (_) {
+      return 30.0;
+    }
+  }
+
+  /// Detects weeks (Mon–Sun) where revenue, kg sold, OR transaction count
+  /// exceeded the 8-week rolling average by more than the configured threshold.
   Future<List<Map<String, dynamic>>> getRecentEvents() async {
     try {
       return _getSalesSpikesFromTransactions();
@@ -279,69 +296,216 @@ class AnalyticsRepository {
 
   Future<List<Map<String, dynamic>>> _getSalesSpikesFromTransactions() async {
     try {
+      final thresholdPct = await _getSpikeThresholdPct();
+
+      // Fetch 10 weeks of transactions to build 8-week baseline + 2 recent weeks
       final end = DateTime.now();
-      final start = end.subtract(const Duration(days: 14));
+      final start = end.subtract(const Duration(days: 70));
+
       final txns = await _client
           .from('transactions')
-          .select('created_at, total_amount')
+          .select('created_at, total_amount, item_count')
           .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String());
-      final byDate = <String, double>{};
+
+      // Aggregate by ISO week start (Monday)
+      final byWeek = <String, Map<String, double>>{};
       for (final t in txns as List) {
-        final map = t as Map<String, dynamic>;
-        final dateStr = (map['created_at'] as String?)?.substring(0, 10) ?? '';
-        if (dateStr.isEmpty) continue;
+        final map = Map<String, dynamic>.from(t as Map);
+        final dateStr = (map['created_at'] as String?)?.substring(0, 10);
+        if (dateStr == null) continue;
+        final date = DateTime.tryParse(dateStr);
+        if (date == null) continue;
+
+        // Find Monday of this week
+        final monday = date.subtract(Duration(days: date.weekday - 1));
+        final weekKey = monday.toIso8601String().substring(0, 10);
+
         final amt = (map['total_amount'] as num?)?.toDouble() ?? 0;
-        byDate[dateStr] = (byDate[dateStr] ?? 0) + amt;
+        final txCount = 1.0;
+
+        byWeek[weekKey] ??= {'revenue': 0, 'transactions': 0};
+        byWeek[weekKey]!['revenue'] = (byWeek[weekKey]!['revenue'] ?? 0) + amt;
+        byWeek[weekKey]!['transactions'] =
+            (byWeek[weekKey]!['transactions'] ?? 0) + txCount;
       }
-      if (byDate.length < 3) return [];
-      final values = byDate.values.toList();
-      final avg = values.reduce((a, b) => a + b) / values.length;
-      const threshold = 2.0;
+
+      if (byWeek.length < 4) return [];
+
+      // Sort weeks chronologically
+      final sortedWeeks = byWeek.keys.toList()..sort();
+
+      // Use all but last 2 weeks as baseline (minimum 4 weeks)
+      final baselineWeeks = sortedWeeks.length > 2
+          ? sortedWeeks.sublist(0, sortedWeeks.length - 2)
+          : sortedWeeks;
+
+      if (baselineWeeks.isEmpty) return [];
+
+      final baselineRevenues =
+          baselineWeeks.map((w) => byWeek[w]!['revenue']!).toList();
+      final baselineTxCounts =
+          baselineWeeks.map((w) => byWeek[w]!['transactions']!).toList();
+
+      final avgRevenue =
+          baselineRevenues.reduce((a, b) => a + b) / baselineRevenues.length;
+      final avgTxCount =
+          baselineTxCounts.reduce((a, b) => a + b) / baselineTxCounts.length;
+
+      // Check last 2 weeks for spikes
+      final recentWeeks = sortedWeeks.length >= 2
+          ? sortedWeeks.sublist(sortedWeeks.length - 2)
+          : sortedWeeks;
+
       final spikes = <Map<String, dynamic>>[];
-      for (final e in byDate.entries) {
-        if (avg <= 0) continue;
-        final pct = (e.value / avg) * 100;
-        if (pct >= threshold * 100) {
+
+      for (final weekStart in recentWeeks) {
+        final weekData = byWeek[weekStart]!;
+        final revenue = weekData['revenue']!;
+        final txCount = weekData['transactions']!;
+
+        if (avgRevenue <= 0) continue;
+
+        final revenueVariancePct = ((revenue - avgRevenue) / avgRevenue) * 100;
+        final txVariancePct = avgTxCount > 0
+            ? ((txCount - avgTxCount) / avgTxCount) * 100
+            : 0.0;
+
+        // Flag if revenue OR transaction count exceeds threshold
+        if (revenueVariancePct >= thresholdPct ||
+            txVariancePct >= thresholdPct) {
+          // Calculate Sunday (end of week)
+          final monday = DateTime.parse(weekStart);
+          final sunday = monday.add(const Duration(days: 6));
+
           spikes.add({
-            'date': e.key,
-            'sales_amount': e.value,
-            'variance_percentage': (pct - 100).toStringAsFixed(0),
+            'week_start': weekStart,
+            'week_end': sunday.toIso8601String().substring(0, 10),
+            'revenue': revenue,
+            'transaction_count': txCount.toInt(),
+            'baseline_revenue': avgRevenue,
+            'revenue_variance_pct': revenueVariancePct.toStringAsFixed(1),
+            'tx_variance_pct': txVariancePct.toStringAsFixed(1),
+            'display_date':
+                '${_formatDate(monday)} – ${_formatDate(sunday)}',
           });
         }
       }
-      spikes.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
-      return spikes.take(5).toList();
+
+      spikes.sort((a, b) =>
+          (b['week_start'] as String).compareTo(a['week_start'] as String));
+      return spikes;
     } catch (_) {
       return [];
     }
   }
 
+  String _formatDate(DateTime d) {
+    const months = [
+      'Jan','Feb','Mar','Apr','May','Jun',
+      'Jul','Aug','Sep','Oct','Nov','Dec'
+    ];
+    return '${d.day} ${months[d.month - 1]}';
+  }
+
+  /// Returns all saved event tags ordered by most recent start_date.
   Future<List<Map<String, dynamic>>> getHistoricalEventTags() async {
     try {
       final response = await _client
           .from('event_tags')
           .select()
-          .order('event_date', ascending: false)
-          .limit(20);
+          .eq('dismissed', false)
+          .order('start_date', ascending: false)
+          .limit(50);
       return List<Map<String, dynamic>>.from(response);
     } catch (_) {
       try {
-        return List<Map<String, dynamic>>.from(
-            await _client.from('event_tags').select().order('date', ascending: false).limit(20));
+        final response = await _client
+            .from('event_tags')
+            .select()
+            .order('event_date', ascending: false)
+            .limit(50);
+        return List<Map<String, dynamic>>.from(response);
       } catch (_) {
         return [];
       }
     }
   }
 
-  /// event_type must be one of: holiday, school_holiday, public_holiday, sporting_event, local_event
-  Future<void> saveEventTag(String eventType, String eventName) async {
+  /// Returns saved events whose anniversary falls within the next
+  /// [reminder_days_before] days (default 45).
+  Future<List<Map<String, dynamic>>> getUpcomingEventReminders() async {
     try {
+      final tags = await getHistoricalEventTags();
+      final today = DateTime.now();
+      final reminders = <Map<String, dynamic>>[];
+
+      for (final tag in tags) {
+        final startDate = DateTime.tryParse(
+            tag['start_date']?.toString() ??
+            tag['event_date']?.toString() ?? '');
+        if (startDate == null) continue;
+
+        final reminderDays =
+            (tag['reminder_days_before'] as num?)?.toInt() ?? 45;
+
+        // Shift start_date to current year for anniversary check
+        DateTime anniversary = DateTime(today.year, startDate.month, startDate.day);
+
+        // If anniversary already passed this year, check next year
+        if (anniversary.isBefore(today)) {
+          anniversary = DateTime(today.year + 1, startDate.month, startDate.day);
+        }
+
+        final daysUntil = anniversary.difference(today).inDays;
+
+        if (daysUntil <= reminderDays) {
+          reminders.add({
+            ...tag,
+            'days_until': daysUntil,
+            'anniversary_date': anniversary.toIso8601String().substring(0, 10),
+          });
+        }
+      }
+
+      reminders.sort((a, b) =>
+          (a['days_until'] as int).compareTo(b['days_until'] as int));
+      return reminders;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Saves a new event tag with full date range and captured sales metrics.
+  Future<void> saveEventTag(
+    String eventType,
+    String eventName, {
+    required String startDate,
+    required String endDate,
+    double revenue = 0,
+    double baselineRevenue = 0,
+    double revenueVariancePct = 0,
+    int transactionCount = 0,
+    bool autoDetected = false,
+  }) async {
+    try {
+      final start = DateTime.parse(startDate);
       await _client.from('event_tags').insert({
         'event_name': eventName,
-        'event_date': DateTime.now().toIso8601String().substring(0, 10),
         'event_type': eventType,
+        'event_date': startDate,
+        'start_date': startDate,
+        'end_date': endDate,
+        'spike_date': startDate,
+        'recurrence_month': start.month,
+        'recurrence_week': _isoWeekNumber(start),
+        'total_revenue': revenue,
+        'baseline_revenue': baselineRevenue,
+        'revenue_variance_pct': revenueVariancePct,
+        'total_transactions': transactionCount,
+        'auto_detected': autoDetected,
+        'reminder_days_before': 45,
+        'dismissed': false,
       });
     } catch (e, stack) {
       debugPrint('DATABASE WRITE FAILED: event_tags insert');
@@ -351,44 +515,81 @@ class AnalyticsRepository {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getForecastForEvent(String eventType) async {
+  /// Marks a detected spike as dismissed (won't show again).
+  Future<void> dismissSpike(String weekStart) async {
     try {
-      final response = await _client.rpc('get_event_forecast', params: {'p_event_type': eventType});
-      final list = List<Map<String, dynamic>>.from(response ?? []);
-      if (list.isNotEmpty) return list;
+      await _client.from('event_tags').insert({
+        'event_name': 'Dismissed spike',
+        'event_type': 'dismissed',
+        'event_date': weekStart,
+        'start_date': weekStart,
+        'dismissed': true,
+        'auto_detected': true,
+      });
     } catch (_) {}
-    return _getForecastFromEventHistory(eventType);
   }
 
-  Future<List<Map<String, dynamic>>> _getForecastFromEventHistory(String eventType) async {
+  int _isoWeekNumber(DateTime date) {
+    final startOfYear = DateTime(date.year, 1, 1);
+    final firstMonday = startOfYear.weekday <= 4
+        ? startOfYear.subtract(Duration(days: startOfYear.weekday - 1))
+        : startOfYear.add(Duration(days: 8 - startOfYear.weekday));
+    return ((date.difference(firstMonday).inDays) / 7).floor() + 1;
+  }
+
+  /// Year-on-year comparison for a specific event name.
+  Future<List<Map<String, dynamic>>> getEventYearOnYear(
+      String eventName) async {
     try {
       final tags = await _client
           .from('event_tags')
-          .select('id')
-          .eq('event_type', eventType)
-          .limit(10);
-      final tagIds = (tags as List).map((t) => (t as Map)['id']).whereType<String>().toList();
-      if (tagIds.isEmpty) return [];
-      final history = await _client
-          .from('event_sales_history')
-          .select('top_products, sales_amount')
-          .inFilter('event_id', tagIds);
-      final productTotals = <String, double>{};
-      for (final h in history as List) {
-        final top = (h as Map)['top_products'];
-        if (top is List) {
-          for (final p in top) {
-            if (p is Map) {
-              final name = p['name']?.toString() ?? p['product_name']?.toString() ?? '—';
-              final qty = (p['quantity'] as num?)?.toDouble() ?? (p['qty'] as num?)?.toDouble() ?? 0;
-              productTotals[name] = (productTotals[name] ?? 0) + qty;
-            }
-          }
+          .select()
+          .ilike('event_name', '%$eventName%')
+          .eq('dismissed', false)
+          .order('start_date', ascending: true);
+
+      return List<Map<String, dynamic>>.from(tags);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> getForecastForEvent(
+      String eventName) async {
+    try {
+      final instances = await getEventYearOnYear(eventName);
+      if (instances.isEmpty) return [];
+
+      // Calculate average metrics across all recorded instances
+      double totalRevenue = 0;
+      double totalVariance = 0;
+      int totalTx = 0;
+      int count = 0;
+
+      for (final inst in instances) {
+        final rev = (inst['total_revenue'] as num?)?.toDouble() ?? 0;
+        final variance =
+            (inst['revenue_variance_pct'] as num?)?.toDouble() ?? 0;
+        final tx = (inst['total_transactions'] as num?)?.toInt() ?? 0;
+        if (rev > 0) {
+          totalRevenue += rev;
+          totalVariance += variance;
+          totalTx += tx;
+          count++;
         }
       }
-      return productTotals.entries
-          .map((e) => {'product_name': e.key, 'suggested_quantity_kg': e.value.toStringAsFixed(1)})
-          .toList();
+
+      if (count == 0) return [];
+
+      return [
+        {
+          'avg_revenue': (totalRevenue / count).toStringAsFixed(2),
+          'avg_variance_pct': (totalVariance / count).toStringAsFixed(1),
+          'avg_transactions': (totalTx / count).toStringAsFixed(0),
+          'years_recorded': count,
+          'instances': instances,
+        }
+      ];
     } catch (_) {
       return [];
     }

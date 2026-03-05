@@ -8,6 +8,9 @@ import '../../../core/widgets/offline_required_gate.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../models/customer_invoice.dart';
 import '../services/customer_invoice_repository.dart';
+import '../../../core/services/email_service.dart';
+import '../services/invoice_pdf_service.dart';
+import 'package:printing/printing.dart';
 
 /// Customer invoice — picks from business_accounts, saves to customer_invoices with line_items jsonb.
 class CustomerInvoiceFormScreen extends StatefulWidget {
@@ -49,6 +52,9 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
   final List<_LineRow> _lineRows = [];
   bool _loading = true;
   bool _saving = false;
+  bool _sendingEmail = false;
+  final _emailService = EmailService();
+  final _pdfService = InvoicePdfService();
 
   void _updateDateDisplays() {
     _invoiceDateController.text = _formatDate(_invoiceDate);
@@ -66,7 +72,7 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
     try {
       final data = await _client
           .from('business_accounts')
-          .select('id, name')
+          .select('id, name, email, vat_number, address')
           .eq('is_active', true)
           .order('name');
       _accounts = List<Map<String, dynamic>>.from(data);
@@ -256,6 +262,129 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
   String _formatDate(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
 
+  Future<void> _sendEmail() async {
+    final inv = widget.invoice;
+    if (inv == null) return;
+
+    final account = _accounts.firstWhere(
+      (a) => a['id'] == inv.accountId,
+      orElse: () => {},
+    );
+    final email = account['email']?.toString() ?? '';
+    if (email.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No email address on this account — update the account first'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sendingEmail = true);
+    try {
+      final invoiceMap = inv.toJson()
+        ..['account_name'] = account['name'];
+      final pdfBytes = await _pdfService.generateCustomerInvoice(invoiceMap);
+      final success = await _emailService.sendInvoiceEmail(
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        recipientEmail: email,
+        recipientName: account['name']?.toString() ?? '',
+        pdfBytes: pdfBytes,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(success
+              ? 'Invoice emailed to $email'
+              : 'Email failed — check Settings → Email'),
+          backgroundColor: success ? AppColors.success : AppColors.error,
+        ),
+      );
+      if (success) Navigator.pop(context, true);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingEmail = false);
+    }
+  }
+
+  Future<void> _previewPdf() async {
+    final inv = widget.invoice;
+    final invoiceMap = inv != null
+        ? inv.toJson()
+        : {
+            'invoice_number': _invoiceNumberController.text,
+            'account_id': _selectedAccountId,
+            'invoice_date': _invoiceDate.toIso8601String(),
+            'due_date': _dueDate.toIso8601String(),
+            'line_items': _buildLineItems(),
+            'subtotal': _subtotal(),
+            'tax_amount': _taxAmount(),
+            'tax_rate': 15.0,
+            'total': _total(),
+          };
+    final pdfBytes = await _pdfService.generateCustomerInvoice(invoiceMap);
+    if (!mounted) return;
+    await Printing.layoutPdf(onLayout: (_) => pdfBytes);
+  }
+
+  Widget _buildEmailStatusBadge(CustomerInvoice inv) {
+    final status = inv.toJson()['email_delivery_status']?.toString()
+        ?? 'not_sent';
+    Color color;
+    IconData icon;
+    String label;
+    switch (status) {
+      case 'sent':
+        color = AppColors.success;
+        icon = Icons.check_circle_outline;
+        label = 'Email sent';
+        break;
+      case 'pending_email':
+        color = AppColors.warning;
+        icon = Icons.schedule;
+        label = 'Email pending — will send on next sync';
+        break;
+      case 'failed':
+        color = AppColors.error;
+        icon = Icons.error_outline;
+        label = 'Email failed — tap email button to retry';
+        break;
+      default:
+        color = AppColors.textSecondary;
+        icon = Icons.mail_outline;
+        label = 'Not yet emailed';
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 16),
+          const SizedBox(width: 8),
+          Text(label,
+              style: TextStyle(
+                  fontSize: 12,
+                  color: color,
+                  fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _invoiceNumberController.dispose();
@@ -284,6 +413,24 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
               onPressed: () => _confirmCancelInvoice(widget.invoice!),
               tooltip: 'Cancel invoice',
             ),
+          if (widget.invoice != null) ...[
+            IconButton(
+              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: _previewPdf,
+              tooltip: 'Preview PDF',
+            ),
+            IconButton(
+              icon: _sendingEmail
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.email_outlined),
+              onPressed: _sendingEmail ? null : _sendEmail,
+              tooltip: 'Send by email',
+            ),
+          ],
         ],
       ),
       body: OfflineRequiredGate(
@@ -295,6 +442,10 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (widget.invoice != null) ...[
+                _buildEmailStatusBadge(widget.invoice!),
+                const SizedBox(height: 16),
+              ],
               Row(
                 children: [
                   Expanded(

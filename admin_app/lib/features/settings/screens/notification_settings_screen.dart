@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import '../../../core/services/email_service.dart';
 
 /// M2: Notification Settings — alert toggles, thresholds, WhatsApp.
 /// Load/save from business_settings as json object.
@@ -33,6 +34,15 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   double _shrinkageThreshold = 15;
   int _invoiceOverdueDays = 30;
   int _documentExpiryDays = 30;
+  final _emailService = EmailService();
+  final _smtpHostController = TextEditingController();
+  final _smtpPortController = TextEditingController(text: '465');
+  final _smtpUsernameController = TextEditingController();
+  final _smtpPasswordController = TextEditingController();
+  final _smtpFromNameController = TextEditingController();
+  bool _smtpLoading = false;
+  bool _smtpTesting = false;
+  bool _smtpObscure = true;
 
   @override
   void initState() {
@@ -73,6 +83,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       if (whatsappRow?['setting_value'] != null) {
         _whatsappController.text = whatsappRow!['setting_value'].toString();
       }
+      await _loadSmtpSettings();
       if (mounted) setState(() => _loading = false);
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -122,6 +133,67 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
     final uri = Uri.parse('https://wa.me/$num?text=${Uri.encodeComponent('Test alert from Admin App')}');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _loadSmtpSettings() async {
+    final creds = await _emailService.loadCredentials();
+    if (mounted) {
+      setState(() {
+        _smtpHostController.text = creds['host'] ?? 'mail.struisbaai-slaghuis.co.za';
+        _smtpPortController.text = creds['port'] ?? '465';
+        _smtpUsernameController.text = creds['username'] ?? 'leon@struisbaai-slaghuis.co.za';
+        _smtpPasswordController.text = creds['password'] ?? '';
+        _smtpFromNameController.text = creds['from_name'] ?? 'Struisbaai Vleismark';
+      });
+    }
+  }
+
+  Future<void> _saveSmtpSettings() async {
+    setState(() => _smtpLoading = true);
+    try {
+      await _emailService.saveCredentials(
+        host: _smtpHostController.text.trim(),
+        port: int.tryParse(_smtpPortController.text.trim()) ?? 465,
+        username: _smtpUsernameController.text.trim(),
+        password: _smtpPasswordController.text,
+        fromName: _smtpFromNameController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content: Text('Email settings saved'),
+              backgroundColor: AppColors.success),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Save failed: $e'),
+              backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _smtpLoading = false);
+    }
+  }
+
+  Future<void> _testSmtpConnection() async {
+    setState(() => _smtpTesting = true);
+    final result = await _emailService.testConnection();
+    if (mounted) {
+      setState(() => _smtpTesting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['success'] == true
+              ? 'Connection successful'
+              : 'Connection failed: ${result['error']}'),
+          backgroundColor: result['success'] == true
+              ? AppColors.success
+              : AppColors.error,
+        ),
+      );
     }
   }
 
@@ -229,6 +301,97 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           ElevatedButton(
             onPressed: _saving ? null : _save,
             child: Text(_saving ? 'Saving...' : 'Save'),
+          ),
+          const SizedBox(height: 24),
+          const Text('Email / Invoice Delivery',
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary)),
+          const SizedBox(height: 4),
+          const Text(
+              'SMTP credentials for sending customer invoices automatically. '
+              'Password is stored securely on this device only.',
+              style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextFormField(
+                  controller: _smtpHostController,
+                  decoration: const InputDecoration(
+                      labelText: 'SMTP Host', isDense: true),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 80,
+                child: TextFormField(
+                  controller: _smtpPortController,
+                  decoration: const InputDecoration(
+                      labelText: 'Port', isDense: true),
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _smtpUsernameController,
+            decoration: const InputDecoration(
+                labelText: 'Email address (username)', isDense: true),
+            keyboardType: TextInputType.emailAddress,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _smtpPasswordController,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              isDense: true,
+              suffixIcon: IconButton(
+                icon: Icon(
+                    _smtpObscure ? Icons.visibility_off : Icons.visibility,
+                    size: 18),
+                onPressed: () =>
+                    setState(() => _smtpObscure = !_smtpObscure),
+              ),
+            ),
+            obscureText: _smtpObscure,
+          ),
+          const SizedBox(height: 10),
+          TextFormField(
+            controller: _smtpFromNameController,
+            decoration: const InputDecoration(
+                labelText: 'From name (shown to recipient)', isDense: true),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _smtpTesting ? null : _testSmtpConnection,
+                icon: _smtpTesting
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Icon(Icons.wifi_tethering, size: 16),
+                label:
+                    Text(_smtpTesting ? 'Testing…' : 'Test connection'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: _smtpLoading ? null : _saveSmtpSettings,
+                icon: _smtpLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Icon(Icons.save, size: 16),
+                label: Text(_smtpLoading ? 'Saving…' : 'Save email settings'),
+              ),
+            ],
           ),
         ],
       ),

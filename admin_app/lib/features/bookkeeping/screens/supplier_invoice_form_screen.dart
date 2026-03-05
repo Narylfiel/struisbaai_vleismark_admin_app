@@ -9,6 +9,7 @@ import '../../inventory/models/supplier.dart';
 import '../../inventory/services/supplier_repository.dart';
 import '../models/supplier_invoice.dart';
 import '../services/supplier_invoice_repository.dart';
+import '../../../core/services/ocr_service.dart';
 
 /// Supplier invoice — manual entry; saves to supplier_invoices with line_items jsonb.
 class SupplierInvoiceFormScreen extends StatefulWidget {
@@ -52,6 +53,10 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
   final List<_LineRow> _lineRows = [];
   bool _loading = true;
   bool _saving = false;
+  List<String> _calcErrors = [];
+  bool _autoMatching = false;
+  int _autoMatchedCount = 0;
+  bool _scanning = false;
 
   void _updateDateDisplays() {
     _invoiceDateController.text = _formatDate(_invoiceDate);
@@ -251,6 +256,170 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     return items;
   }
 
+  /// Run auto-match when supplier is selected and there are line items.
+  Future<void> _runAutoMatch() async {
+    if (_selectedSupplierId == null || _selectedSupplierId!.isEmpty) return;
+    if (_lineRows.isEmpty) return;
+    setState(() => _autoMatching = true);
+    try {
+      final currentItems = _buildLineItems();
+      final matched = await _repo.autoMatchLineItems(
+        supplierId: _selectedSupplierId!,
+        lineItems: currentItems,
+      );
+      int count = 0;
+      for (int i = 0; i < matched.length && i < _lineRows.length; i++) {
+        final m = matched[i];
+        if (m['auto_matched'] == true) {
+          _lineRows[i].inventoryItemId = m['inventory_item_id']?.toString();
+          _lineRows[i].inventoryItemName = m['inventory_item_name']?.toString();
+          count++;
+        }
+      }
+      setState(() {
+        _autoMatchedCount = count;
+        _autoMatching = false;
+      });
+      if (mounted && count > 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '$count line item${count == 1 ? '' : 's'} auto-matched to products'),
+            backgroundColor: const Color(0xFF2E7D32),
+          ),
+        );
+      } else if (mounted && count == 0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No matches found — link products manually using the product picker'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) setState(() => _autoMatching = false);
+      debugPrint('autoMatch error: $e');
+    }
+  }
+
+  void _verifyCalculations() {
+    final errors = _repo.verifyCalculations(
+      lineItems: _buildLineItems(),
+      subtotal: _subtotal(),
+      taxAmount: _taxAmount(),
+      total: _total(),
+    );
+    setState(() => _calcErrors = errors);
+  }
+
+  Future<void> _scanInvoice() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Scan supplier invoice'),
+        content: const Text('Choose source:'),
+        actions: [
+          TextButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'camera'),
+            icon: const Icon(Icons.camera_alt, size: 18),
+            label: const Text('Camera'),
+          ),
+          TextButton.icon(
+            onPressed: () => Navigator.pop(ctx, 'file'),
+            icon: const Icon(Icons.upload_file, size: 18),
+            label: const Text('File / PDF'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, null),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+    setState(() => _scanning = true);
+
+    final ocr = OcrService();
+    OcrResult result;
+
+    if (choice == 'camera') {
+      result = await ocr.scanFromCamera();
+    } else {
+      result = await ocr.scanFromFile();
+    }
+
+    setState(() => _scanning = false);
+
+    if (!mounted) return;
+
+    if (result.cancelled) return;
+
+    if (!result.success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result.errorMessage ?? 'Scan failed'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Pre-fill form fields with extracted data
+    if (result.invoiceNumber != null && result.invoiceNumber!.isNotEmpty) {
+      _invoiceNumberController.text = result.invoiceNumber!;
+    }
+    if (result.invoiceDate != null && result.invoiceDate!.isNotEmpty) {
+      _invoiceDateController.text = result.invoiceDate!;
+    }
+    if (result.dueDate != null && result.dueDate!.isNotEmpty) {
+      _dueDateController.text = result.dueDate!;
+    }
+    if (result.taxAmount != null) {
+      _taxAmountController.text = result.taxAmount!.toStringAsFixed(2);
+    }
+
+    // Pre-fill line items if extracted
+    if (result.lineItems.isNotEmpty) {
+      setState(() {
+        for (final r in _lineRows) r.dispose();
+        _lineRows.clear();
+        for (final item in result.lineItems) {
+          final row = _LineRow();
+          row.description.text = item.description;
+          row.quantity.text = item.quantity.toString();
+          row.unitPrice.text = item.unitPrice.toStringAsFixed(2);
+          _lineRows.add(row);
+        }
+      });
+    }
+
+    // Show confidence banner
+    final confidenceColor = result.isHighConfidence
+        ? const Color(0xFF2E7D32)
+        : result.isLowConfidence
+            ? Colors.red
+            : Colors.orange;
+    final confidenceMsg = result.isHighConfidence
+        ? '✓ High confidence — all fields extracted clearly'
+        : result.isLowConfidence
+            ? '⚠ Low confidence — please check all fields carefully'
+            : '~ Medium confidence — review highlighted fields';
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(confidenceMsg),
+        backgroundColor: confidenceColor,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+
+    // Auto-match products if supplier already selected
+    if (_selectedSupplierId != null && result.lineItems.isNotEmpty) {
+      await _runAutoMatch();
+    }
+  }
+
   Future<void> _confirmCancelInvoice(SupplierInvoice invoice) async {
     if (invoice.status != SupplierInvoiceStatus.draft) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -402,6 +571,22 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         actions: [
+          if (_scanning)
+            const Padding(
+              padding: EdgeInsets.all(14),
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: Colors.white),
+              ),
+            )
+          else
+            IconButton(
+              onPressed: _scanInvoice,
+              icon: const Icon(Icons.document_scanner_outlined),
+              tooltip: 'Scan invoice with AI',
+            ),
           if (widget.invoice != null && widget.invoice!.status == SupplierInvoiceStatus.draft)
             IconButton(
               icon: const Icon(Icons.delete_outline),
@@ -550,11 +735,90 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
                   ),
                 );
               }),
-              TextButton.icon(
-                onPressed: _addLineRow,
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add line'),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: _addLineRow,
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('Add line'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _autoMatching ? null : _runAutoMatch,
+                    icon: _autoMatching
+                        ? const SizedBox(
+                            width: 14,
+                            height: 14,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.auto_fix_high, size: 18),
+                    label: Text(_autoMatching ? 'Matching…' : 'Auto-match products'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: _verifyCalculations,
+                    icon: const Icon(Icons.calculate_outlined, size: 18),
+                    label: const Text('Verify totals'),
+                  ),
+                ],
               ),
+              if (_calcErrors.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFEBEE),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFEF9A9A)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Row(
+                        children: [
+                          Icon(Icons.warning_amber_rounded,
+                              color: Color(0xFFC62828), size: 16),
+                          SizedBox(width: 6),
+                          Text('Calculation errors detected',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  color: Color(0xFFC62828),
+                                  fontSize: 13)),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      ..._calcErrors.map((e) => Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
+                            child: Text('• $e',
+                                style: const TextStyle(
+                                    fontSize: 12, color: Color(0xFFC62828))),
+                          )),
+                    ],
+                  ),
+                ),
+              ],
+              if (_calcErrors.isEmpty && _autoMatchedCount > 0) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFA5D6A7)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.check_circle_outline,
+                          color: Color(0xFF2E7D32), size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        '$_autoMatchedCount product${_autoMatchedCount == 1 ? '' : 's'} linked — calculations verified',
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF2E7D32)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 16),
               TextFormField(
                 controller: _taxAmountController,

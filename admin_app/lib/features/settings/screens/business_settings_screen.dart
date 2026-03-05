@@ -7,6 +7,9 @@ import 'package:admin_app/features/settings/screens/scale_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/notification_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/utilities_settings_screen.dart';
 import 'package:admin_app/features/settings/screens/user_management_screen.dart';
+import '../../../core/services/email_service.dart';
+import '../../../core/services/ai_service.dart';
+import '../../../core/services/google_drive_service.dart';
 
 class BusinessSettingsScreen extends StatefulWidget {
   const BusinessSettingsScreen({super.key});
@@ -22,7 +25,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
   }
 
   @override
@@ -51,6 +54,9 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 Tab(icon: Icon(Icons.notifications_active, size: 18), text: 'Notifications'),
                 Tab(icon: Icon(Icons.bolt, size: 18), text: 'Utilities'),
                 Tab(icon: Icon(Icons.manage_accounts, size: 18), text: 'Users'),
+                Tab(icon: Icon(Icons.email_outlined, size: 18), text: 'Email'),
+                Tab(icon: Icon(Icons.auto_awesome, size: 18), text: 'AI'),
+                Tab(icon: Icon(Icons.folder_shared_outlined, size: 18), text: 'Drive'),
               ],
             ),
           ),
@@ -65,6 +71,9 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 const NotificationSettingsScreen(embedded: true),
                 const UtilitiesSettingsScreen(embedded: true),
                 const UserManagementScreen(embedded: true),
+                const _EmailSettingsTab(),
+                const _AiSettingsTab(),
+                const _DriveSettingsTab(),
               ],
             ),
           ),
@@ -170,6 +179,641 @@ class _BusinessTabState extends State<_BusinessTab> {
         Align(
           alignment: Alignment.centerLeft,
           child: ElevatedButton(onPressed: _save, child: const Text('SAVE SETTINGS')),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 7: EMAIL / INVOICE DELIVERY
+// ══════════════════════════════════════════════════════════════════
+class _EmailSettingsTab extends StatefulWidget {
+  const _EmailSettingsTab();
+
+  @override
+  State<_EmailSettingsTab> createState() => _EmailSettingsTabState();
+}
+
+class _EmailSettingsTabState extends State<_EmailSettingsTab> {
+  final _emailService = EmailService();
+  final _smtpHostController = TextEditingController();
+  final _smtpPortController = TextEditingController(text: '465');
+  final _smtpUsernameController = TextEditingController();
+  final _smtpPasswordController = TextEditingController();
+  final _smtpFromNameController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+  bool _testing = false;
+  bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _smtpHostController.dispose();
+    _smtpPortController.dispose();
+    _smtpUsernameController.dispose();
+    _smtpPasswordController.dispose();
+    _smtpFromNameController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final creds = await _emailService.loadCredentials();
+    if (mounted) {
+      setState(() {
+        _smtpHostController.text =
+            creds['host']?.isNotEmpty == true
+                ? creds['host']!
+                : 'mail.struisbaai-slaghuis.co.za';
+        _smtpPortController.text = creds['port'] ?? '465';
+        _smtpUsernameController.text =
+            creds['username']?.isNotEmpty == true
+                ? creds['username']!
+                : 'leon@struisbaai-slaghuis.co.za';
+        _smtpPasswordController.text = creds['password'] ?? '';
+        _smtpFromNameController.text =
+            creds['from_name']?.isNotEmpty == true
+                ? creds['from_name']!
+                : 'Struisbaai Vleismark';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await _emailService.saveCredentials(
+        host: _smtpHostController.text.trim(),
+        port: int.tryParse(_smtpPortController.text.trim()) ?? 465,
+        username: _smtpUsernameController.text.trim(),
+        password: _smtpPasswordController.text,
+        fromName: _smtpFromNameController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Email settings saved'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    final result = await _emailService.testConnection();
+    if (mounted) {
+      setState(() => _testing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['success'] == true
+              ? '✓ Connection successful'
+              : 'Connection failed: ${result['error']}'),
+          backgroundColor: result['success'] == true
+              ? const Color(0xFF2E7D32)
+              : Colors.red,
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text('Email / Invoice Delivery',
+            style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text(
+          'Configure SMTP to automatically email tax invoices to account '
+          'customers when a POS sale is completed. '
+          'Your password is stored securely on this device only — '
+          'it is never uploaded to the server.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+        ),
+        const SizedBox(height: 24),
+        const Text('SMTP Server',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              flex: 3,
+              child: TextFormField(
+                controller: _smtpHostController,
+                decoration: const InputDecoration(
+                  labelText: 'SMTP Host',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 90,
+              child: TextFormField(
+                controller: _smtpPortController,
+                decoration: const InputDecoration(
+                  labelText: 'Port',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _smtpUsernameController,
+          decoration: const InputDecoration(
+            labelText: 'Email address (username)',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          keyboardType: TextInputType.emailAddress,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _smtpPasswordController,
+          obscureText: _obscure,
+          decoration: InputDecoration(
+            labelText: 'Password',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            suffixIcon: IconButton(
+              icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  size: 18),
+              onPressed: () => setState(() => _obscure = !_obscure),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _smtpFromNameController,
+          decoration: const InputDecoration(
+            labelText: 'From name (shown to recipient)',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        const SizedBox(height: 24),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _testing ? null : _test,
+              icon: _testing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.wifi_tethering, size: 16),
+              label: Text(_testing ? 'Testing…' : 'Test connection'),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Icon(Icons.save, size: 16),
+              label: Text(_saving ? 'Saving…' : 'Save email settings'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 16),
+        const Text('How it works',
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text(
+          '1. When the POS completes a sale for an account customer, '
+          'an invoice is automatically created.\n'
+          '2. When you open the Bookkeeping screen, any unsent invoices '
+          'are emailed automatically.\n'
+          '3. A PDF tax invoice is attached — compliant with the '
+          'SA VAT Act 89 of 1991.\n'
+          '4. Delivery status is tracked on each invoice.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF444444), height: 1.6),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 8: AI SETTINGS
+// ══════════════════════════════════════════════════════════════════
+class _AiSettingsTab extends StatefulWidget {
+  const _AiSettingsTab();
+
+  @override
+  State<_AiSettingsTab> createState() => _AiSettingsTabState();
+}
+
+class _AiSettingsTabState extends State<_AiSettingsTab> {
+  final _aiService = AiService();
+  final _keyController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+  bool _testing = false;
+  bool _obscure = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _keyController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final key = await _aiService.loadApiKey();
+    if (mounted) {
+      setState(() {
+        _keyController.text = key ?? '';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await _aiService.saveApiKey(_keyController.text.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('AI key saved'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    try {
+      final result = await _aiService.prompt(
+        'Reply with exactly this text and nothing else: '
+        'Gemini connection successful',
+      );
+      if (mounted) {
+        setState(() => _testing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(result.contains('successful')
+                ? '✓ Gemini connected successfully'
+                : 'Unexpected response: $result'),
+            backgroundColor: result.contains('successful')
+                ? const Color(0xFF2E7D32)
+                : Colors.orange,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _testing = false);
+        final msg = e.toString();
+        final friendlyMsg = msg.contains('429')
+            ? '✓ API key is valid — rate limit hit, wait 30 seconds and retry'
+            : msg.contains('403') || msg.contains('API_KEY_INVALID')
+                ? 'Invalid API key — check your key in AI Studio'
+                : 'Connection failed: $msg';
+        final color = msg.contains('429')
+            ? Colors.orange
+            : Colors.red;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(friendlyMsg),
+            backgroundColor: color,
+            duration: const Duration(seconds: 6),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text('AI Assistant (Gemini)',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text(
+          'Gemini powers supplier invoice scanning, smart reorder '
+          'suggestions, pricing analysis, and more. '
+          'Free tier: 1,500 requests/day. '
+          'Get your key at aistudio.google.com. '
+          'Your key is stored securely on this device only.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+        ),
+        const SizedBox(height: 24),
+        TextFormField(
+          controller: _keyController,
+          obscureText: _obscure,
+          decoration: InputDecoration(
+            labelText: 'Gemini API Key',
+            border: const OutlineInputBorder(),
+            isDense: true,
+            hintText: 'AIza...',
+            suffixIcon: IconButton(
+              icon: Icon(
+                  _obscure ? Icons.visibility_off : Icons.visibility,
+                  size: 18),
+              onPressed: () =>
+                  setState(() => _obscure = !_obscure),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _testing ? null : _test,
+              icon: _testing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2))
+                  : const Icon(Icons.bolt, size: 16),
+              label: Text(_testing ? 'Testing…' : 'Test connection'),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white))
+                  : const Icon(Icons.save, size: 16),
+              label: Text(_saving ? 'Saving…' : 'Save key'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 16),
+        const Text('AI features available',
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text(
+          '• Supplier invoice scanning — photo or PDF → auto-fills form\n'
+          '• Reorder suggestions — AI analyses stock levels and history\n'
+          '• Pricing analysis — suggests sell prices for target margin\n'
+          '• Demand forecasting — predicts stock needs for events\n'
+          '• More features coming as the app grows',
+          style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF444444),
+              height: 1.7),
+        ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 9: GOOGLE DRIVE SYNC
+// ══════════════════════════════════════════════════════════════════
+class _DriveSettingsTab extends StatefulWidget {
+  const _DriveSettingsTab();
+
+  @override
+  State<_DriveSettingsTab> createState() => _DriveSettingsTabState();
+}
+
+class _DriveSettingsTabState extends State<_DriveSettingsTab> {
+  final _driveService = GoogleDriveService();
+  final _folderIdController = TextEditingController();
+  bool _loading = true;
+  bool _saving = false;
+  bool _testing = false;
+  bool _enabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _folderIdController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final folderId = await _driveService.loadFolderId();
+    final enabled = await _driveService.isEnabled();
+    if (mounted) {
+      setState(() {
+        _folderIdController.text = folderId ?? '';
+        _enabled = enabled;
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await _driveService.saveFolderId(
+          _folderIdController.text.trim());
+      await _driveService.setEnabled(_enabled);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Drive settings saved'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Save failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    await _driveService.saveFolderId(
+        _folderIdController.text.trim());
+    final result = await _driveService.testConnection();
+    if (mounted) {
+      setState(() => _testing = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(result['success'] == true
+              ? '✓ ${result['message']}'
+              : 'Failed: ${result['error']}'),
+          backgroundColor: result['success'] == true
+              ? const Color(0xFF2E7D32)
+              : Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        const Text('Google Drive Sync',
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 4),
+        const Text(
+          'Drop supplier invoice PDFs or photos into a shared '
+          'Google Drive folder. The app will scan the folder '
+          'automatically, extract invoice data using Gemini AI, '
+          'and create pending supplier invoices for review.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+        ),
+        const SizedBox(height: 24),
+        SwitchListTile(
+          title: const Text('Enable Drive sync'),
+          subtitle: const Text(
+              'Scan folder for new invoices when Bookkeeping opens'),
+          value: _enabled,
+          onChanged: (v) => setState(() => _enabled = v),
+          contentPadding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 16),
+        TextFormField(
+          controller: _folderIdController,
+          decoration: const InputDecoration(
+            labelText: 'Google Drive Folder ID',
+            border: OutlineInputBorder(),
+            isDense: true,
+            hintText: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs',
+            helperText:
+                'Copy from Drive URL: drive.google.com/drive/folders/FOLDER_ID',
+          ),
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            OutlinedButton.icon(
+              onPressed: _testing ? null : _test,
+              icon: _testing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2))
+                  : const Icon(Icons.wifi_tethering, size: 16),
+              label: Text(_testing ? 'Testing…' : 'Test connection'),
+            ),
+            const SizedBox(width: 12),
+            FilledButton.icon(
+              onPressed: _saving ? null : _save,
+              icon: _saving
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white))
+                  : const Icon(Icons.save, size: 16),
+              label: Text(_saving ? 'Saving…' : 'Save settings'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
+        const Divider(),
+        const SizedBox(height: 16),
+        const Text('Setup instructions',
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        const Text(
+          '1. Create a folder in Google Drive named "Supplier Invoices"\n'
+          '2. Share the folder with the service account email '
+          '(found in assets/secrets/google_service_account.json → client_email)\n'
+          '3. Give the service account Viewer access\n'
+          '4. Copy the folder ID from the Drive URL and paste above\n'
+          '5. Enable sync and save\n'
+          '6. Drop PDF or image invoices into the folder — '
+          'they will be scanned next time Bookkeeping opens',
+          style: TextStyle(
+              fontSize: 12,
+              color: Color(0xFF444444),
+              height: 1.7),
         ),
       ],
     );

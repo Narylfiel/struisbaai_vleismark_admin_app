@@ -1,312 +1,243 @@
-import 'dart:convert';
 import 'dart:io';
-import 'package:http/http.dart' as http;
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
-import 'base_service.dart';
-import '../utils/app_constants.dart';
+import 'package:file_picker/file_picker.dart';
+import 'ai_service.dart';
 
-/// OCR service for processing receipts and invoices using Google Cloud Vision API
-class OcrService extends BaseService {
+/// OCR service — uses Gemini AI to extract data from supplier invoice
+/// photos and PDF files. Replaces the old Google Vision implementation.
+class OcrService {
   static final OcrService _instance = OcrService._internal();
   factory OcrService() => _instance;
   OcrService._internal();
 
-  final String _apiKey = ''; // TODO: Add Google Cloud Vision API key
-  final String _apiUrl = 'https://vision.googleapis.com/v1/images:annotate';
+  final _aiService = AiService();
+  final _imagePicker = ImagePicker();
 
-  /// Process image for OCR with retry logic
-  Future<String> processImageForText(File imageFile) async {
-    if (_apiKey.isEmpty || _apiKey.trim().isEmpty) {
-      throw Exception('OCR not configured — enter invoice details manually');
+  // ── Source selection ──────────────────────────────────────────
+
+  /// Pick image from camera and extract invoice data.
+  Future<OcrResult> scanFromCamera() async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 90,
+        maxWidth: 2048,
+      );
+      if (picked == null) return OcrResult.cancelled();
+      final bytes = await picked.readAsBytes();
+      final mimeType = _mimeFromPath(picked.path);
+      return await _extractFromBytes(bytes, mimeType);
+    } catch (e) {
+      return OcrResult.error('Camera error: $e');
     }
-    if (!await isOnline()) {
-      throw Exception('OCR requires an active internet connection. Please try again later.');
+  }
+
+  /// Pick image or PDF from file system and extract invoice data.
+  Future<OcrResult> scanFromFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf', 'webp'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) {
+        return OcrResult.cancelled();
+      }
+      final file = result.files.first;
+      final bytes = file.bytes;
+      if (bytes == null) {
+        // Fallback: read from path
+        if (file.path == null) return OcrResult.error('Cannot read file');
+        final fileObj = File(file.path!);
+        final fileBytes = await fileObj.readAsBytes();
+        final mimeType = _mimeFromPath(file.path!);
+        return await _extractFromBytes(fileBytes, mimeType);
+      }
+      final mimeType = _mimeFromExtension(file.extension ?? 'jpg');
+      return await _extractFromBytes(bytes, mimeType);
+    } catch (e) {
+      return OcrResult.error('File error: $e');
     }
+  }
 
-    int attempts = 0;
-    while (attempts < 3) {
-      try {
-        // Convert image to base64
-        final bytes = await imageFile.readAsBytes();
-        final base64Image = base64Encode(bytes);
+  // ── Core extraction ───────────────────────────────────────────
 
-        // Prepare request
-        final request = {
-          'requests': [
-            {
-              'image': {'content': base64Image},
-              'features': [
-                {'type': 'TEXT_DETECTION', 'maxResults': 1}
-              ],
-            }
-          ]
-        };
+  Future<OcrResult> _extractFromBytes(
+      Uint8List bytes, String mimeType) async {
+    try {
+      final configured = await _aiService.isConfigured();
+      if (!configured) {
+        return OcrResult.error(
+            'Gemini AI not configured — go to Settings → AI to add your API key');
+      }
 
-        // Make API call
-        final response = await http.post(
-          Uri.parse('$_apiUrl?key=$_apiKey'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode(request),
+      final data = await _aiService.extractInvoiceData(
+        imageBytes: bytes,
+        mimeType: mimeType,
+      );
+
+      if (data.containsKey('error')) {
+        return OcrResult.error(
+            'AI could not read invoice: ${data['error']}');
+      }
+
+      return OcrResult.success(
+        supplierName: data['supplier_name']?.toString(),
+        invoiceNumber: data['invoice_number']?.toString(),
+        invoiceDate: data['invoice_date']?.toString(),
+        dueDate: data['due_date']?.toString(),
+        lineItems: _parseLineItems(data['line_items']),
+        subtotal: _toDouble(data['subtotal']),
+        taxRate: _toDouble(data['tax_rate']),
+        taxAmount: _toDouble(data['tax_amount']),
+        total: _toDouble(data['total']),
+        confidence: data['confidence']?.toString() ?? 'medium',
+        rawData: data,
+      );
+    } catch (e) {
+      debugPrint('OCR extraction error: $e');
+      return OcrResult.error('Extraction failed: $e');
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────
+
+  List<OcrLineItem> _parseLineItems(dynamic raw) {
+    if (raw == null) return [];
+    try {
+      final list = raw as List;
+      return list.map((item) {
+        final m = item as Map<String, dynamic>;
+        return OcrLineItem(
+          description: m['description']?.toString() ?? '',
+          supplierCode: m['supplier_code']?.toString(),
+          quantity: _toDouble(m['quantity']) ?? 1,
+          unit: m['unit']?.toString(),
+          unitPrice: _toDouble(m['unit_price']) ?? 0,
+          lineTotal: _toDouble(m['line_total']) ?? 0,
         );
-
-        if (response.statusCode == 200) {
-          final data = jsonDecode(response.body);
-          return _extractTextFromResponse(data);
-        } else {
-          throw Exception('OCR API error: ${response.statusCode}');
-        }
-      } catch (e) {
-        attempts++;
-        print('⚠️ OCR attempt $attempts failed: $e');
-        if (attempts >= 3) {
-          throw Exception('Failed to process image after 3 attempts: $e');
-        }
-        await Future.delayed(Duration(seconds: attempts * 2)); // Exponential backoff
-      }
-    }
-    throw Exception('Failed to process image');
-  }
-
-  /// Process receipt/invoice from camera
-  Future<Map<String, dynamic>?> processReceiptFromCamera() async {
-    try {
-      final picker = ImagePicker();
-      final image = await picker.pickImage(source: ImageSource.camera);
-
-      if (image == null) return null;
-
-      final file = File(image.path);
-      final extractedText = await processImageForText(file);
-
-      return await _parseReceiptText(extractedText);
+      }).toList();
     } catch (e) {
-      throw Exception('Failed to process receipt: $e');
+      debugPrint('Line item parse error: $e');
+      return [];
     }
   }
 
-  /// Process receipt/invoice from gallery
-  Future<Map<String, dynamic>?> processReceiptFromGallery() async {
-    try {
-      final picker = ImagePicker();
-      final image = await picker.pickImage(source: ImageSource.gallery);
+  double? _toDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is int) return value.toDouble();
+    return double.tryParse(value.toString());
+  }
 
-      if (image == null) return null;
+  String _mimeFromPath(String path) {
+    return _mimeFromExtension(path.split('.').last);
+  }
 
-      final file = File(image.path);
-      final extractedText = await processImageForText(file);
-
-      return await _parseReceiptText(extractedText);
-    } catch (e) {
-      throw Exception('Failed to process receipt: $e');
+  String _mimeFromExtension(String ext) {
+    switch (ext.toLowerCase()) {
+      case 'pdf':
+        return 'application/pdf';
+      case 'png':
+        return 'image/png';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/jpeg';
     }
   }
+}
 
-  /// Parse extracted text to extract receipt data
-  Future<Map<String, dynamic>?> _parseReceiptText(String text) async {
-    try {
-      // Basic text parsing - in production, this would use more sophisticated NLP
-      final lines = text.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList();
+// ── Result types ──────────────────────────────────────────────────
 
-      // Extract vendor name (usually first line or prominent text)
-      String vendorName = _extractVendorName(lines);
+class OcrResult {
+  final bool success;
+  final bool cancelled;
+  final String? errorMessage;
+  final String? supplierName;
+  final String? invoiceNumber;
+  final String? invoiceDate;
+  final String? dueDate;
+  final List<OcrLineItem> lineItems;
+  final double? subtotal;
+  final double? taxRate;
+  final double? taxAmount;
+  final double? total;
+  final String confidence;
+  final Map<String, dynamic> rawData;
 
-      // Extract total amount
-      double? totalAmount = _extractTotalAmount(lines);
+  OcrResult._({
+    required this.success,
+    required this.cancelled,
+    this.errorMessage,
+    this.supplierName,
+    this.invoiceNumber,
+    this.invoiceDate,
+    this.dueDate,
+    this.lineItems = const [],
+    this.subtotal,
+    this.taxRate,
+    this.taxAmount,
+    this.total,
+    this.confidence = 'medium',
+    this.rawData = const {},
+  });
 
-      // Extract date
-      DateTime? date = _extractDate(lines);
+  factory OcrResult.success({
+    String? supplierName,
+    String? invoiceNumber,
+    String? invoiceDate,
+    String? dueDate,
+    List<OcrLineItem> lineItems = const [],
+    double? subtotal,
+    double? taxRate,
+    double? taxAmount,
+    double? total,
+    String confidence = 'medium',
+    Map<String, dynamic> rawData = const {},
+  }) =>
+      OcrResult._(
+        success: true,
+        cancelled: false,
+        supplierName: supplierName,
+        invoiceNumber: invoiceNumber,
+        invoiceDate: invoiceDate,
+        dueDate: dueDate,
+        lineItems: lineItems,
+        subtotal: subtotal,
+        taxRate: taxRate,
+        taxAmount: taxAmount,
+        total: total,
+        confidence: confidence,
+        rawData: rawData,
+      );
 
-      // Extract items (basic implementation)
-      List<Map<String, dynamic>> items = _extractItems(lines);
+  factory OcrResult.cancelled() =>
+      OcrResult._(success: false, cancelled: true);
 
-      if (vendorName.isEmpty && totalAmount == null) {
-        return null; // Not enough data extracted
-      }
+  factory OcrResult.error(String message) =>
+      OcrResult._(success: false, cancelled: false, errorMessage: message);
 
-      return {
-        'vendor_name': vendorName,
-        'total_amount': totalAmount,
-        'date': date?.toIso8601String(),
-        'items': items,
-        'raw_text': text,
-        'confidence': _calculateConfidence(vendorName, totalAmount, items),
-      };
-    } catch (e) {
-      print('Error parsing receipt text: $e');
-      return null;
-    }
-  }
+  /// Confidence color: green = high, orange = medium, red = low
+  bool get isHighConfidence => confidence == 'high';
+  bool get isLowConfidence => confidence == 'low';
+}
 
-  /// Extract vendor/supplier name from text
-  String _extractVendorName(List<String> lines) {
-    // Look for common vendor patterns
-    final vendorPatterns = [
-      RegExp(r'^(.*?(MARKET|STORE|SUPER|WHOLESALE|MEAT|FRESH|BUTCHERY).*)', caseSensitive: false),
-      RegExp(r'^(.*?(PTY|LTD|INC|CO).*)', caseSensitive: false),
-    ];
+class OcrLineItem {
+  final String description;
+  final String? supplierCode;
+  final double quantity;
+  final String? unit;
+  final double unitPrice;
+  final double lineTotal;
 
-    for (final line in lines) {
-      for (final pattern in vendorPatterns) {
-        final match = pattern.firstMatch(line);
-        if (match != null) {
-          return match.group(1)?.trim() ?? '';
-        }
-      }
-    }
-
-    // Fallback: first non-empty line that's not a date or total
-    for (final line in lines) {
-      if (!_isDateLine(line) && !_isTotalLine(line) && line.length > 3) {
-        return line;
-      }
-    }
-
-    return '';
-  }
-
-  /// Extract total amount from text
-  double? _extractTotalAmount(List<String> lines) {
-    final totalPatterns = [
-      RegExp(r'TOTAL[:\s]*R?(\d+[.,]\d{2})', caseSensitive: false),
-      RegExp(r'AMOUNT[:\s]*R?(\d+[.,]\d{2})', caseSensitive: false),
-      RegExp(r'R?\s*(\d+[.,]\d{2})\s*$'), // Amount at end of line
-    ];
-
-    for (final line in lines) {
-      for (final pattern in totalPatterns) {
-        final match = pattern.firstMatch(line);
-        if (match != null) {
-          final amountStr = match.group(1)?.replaceAll(',', '.') ?? '0';
-          return double.tryParse(amountStr);
-        }
-      }
-    }
-
-    return null;
-  }
-
-  /// Extract date from text
-  DateTime? _extractDate(List<String> lines) {
-    final datePatterns = [
-      RegExp(r'(\d{1,2})[/-](\d{1,2})[/-](\d{4})'), // DD/MM/YYYY or DD-MM-YYYY
-      RegExp(r'(\d{4})[/-](\d{1,2})[/-](\d{1,2})'), // YYYY/MM/DD
-      RegExp(r'(\d{1,2})\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{4})', caseSensitive: false),
-    ];
-
-    for (final line in lines) {
-      for (final pattern in datePatterns) {
-        final match = pattern.firstMatch(line);
-        if (match != null) {
-          try {
-            if (match.groupCount == 3) {
-              final part1 = int.parse(match.group(1)!);
-              final part2 = int.parse(match.group(2)!);
-              final part3 = int.parse(match.group(3)!);
-
-              // Assume DD/MM/YYYY format
-              if (part1 <= 31 && part2 <= 12 && part3 >= 2000) {
-                return DateTime(part3, part2, part1);
-              }
-            }
-          } catch (e) {
-            continue;
-          }
-        }
-      }
-    }
-
-    return null;
-  }
-
-  /// Extract items from receipt (basic implementation)
-  List<Map<String, dynamic>> _extractItems(List<String> lines) {
-    final items = <Map<String, dynamic>>[];
-
-    // Look for lines that might be items (contain quantity and price)
-    final itemPattern = RegExp(r'(.+?)\s+(\d+(?:\.\d+)?)\s*[xX]\s*R?(\d+(?:[.,]\d{2})?)');
-
-    for (final line in lines) {
-      final match = itemPattern.firstMatch(line);
-      if (match != null) {
-        final name = match.group(1)?.trim() ?? '';
-        final quantity = double.tryParse(match.group(2) ?? '0') ?? 0;
-        final priceStr = match.group(3)?.replaceAll(',', '.') ?? '0';
-        final unitPrice = double.tryParse(priceStr) ?? 0;
-
-        if (name.isNotEmpty && quantity > 0 && unitPrice > 0) {
-          items.add({
-            'name': name,
-            'quantity': quantity,
-            'unit_price': unitPrice,
-            'line_total': quantity * unitPrice,
-          });
-        }
-      }
-    }
-
-    return items;
-  }
-
-  /// Extract text from Google Vision API response
-  String _extractTextFromResponse(Map<String, dynamic> response) {
-    try {
-      final responses = response['responses'] as List?;
-      if (responses != null && responses.isNotEmpty) {
-        final textAnnotations = responses[0]['textAnnotations'] as List?;
-        if (textAnnotations != null && textAnnotations.isNotEmpty) {
-          return textAnnotations[0]['description'] ?? '';
-        }
-      }
-      return '';
-    } catch (e) {
-      throw Exception('Failed to extract text from API response: $e');
-    }
-  }
-
-  /// Calculate confidence score for extracted data
-  double _calculateConfidence(String vendorName, double? totalAmount, List<Map<String, dynamic>> items) {
-    double confidence = 0;
-
-    if (vendorName.isNotEmpty) confidence += 0.4;
-    if (totalAmount != null) confidence += 0.4;
-    if (items.isNotEmpty) confidence += 0.2;
-
-    return confidence;
-  }
-
-  /// Check if line appears to be a date
-  bool _isDateLine(String line) {
-    return RegExp(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}').hasMatch(line) ||
-           RegExp(r'\d{1,2}\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)', caseSensitive: false).hasMatch(line);
-  }
-
-  /// Check if line appears to contain a total
-  bool _isTotalLine(String line) {
-    return RegExp(r'TOTAL|AMOUNT|SUM', caseSensitive: false).hasMatch(line);
-  }
-
-  /// Validate API key is configured
-  bool get isConfigured => _apiKey.isNotEmpty;
-
-  /// Get OCR processing status
-  Future<Map<String, dynamic>> getProcessingStatus() async {
-    return {
-      'is_configured': isConfigured,
-      'api_available': await _testApiConnection(),
-      'last_used': DateTime.now().toIso8601String(), // Would track actual usage
-    };
-  }
-
-  /// Test API connection
-  Future<bool> _testApiConnection() async {
-    if (!isConfigured) return false;
-
-    try {
-      // Simple test request
-      final response = await http.get(Uri.parse('https://vision.googleapis.com/v1/images:annotate?key=$_apiKey'));
-      return response.statusCode == 400; // 400 is expected for missing image
-    } catch (e) {
-      return false;
-    }
-  }
+  const OcrLineItem({
+    required this.description,
+    this.supplierCode,
+    required this.quantity,
+    this.unit,
+    required this.unitPrice,
+    required this.lineTotal,
+  });
 }
