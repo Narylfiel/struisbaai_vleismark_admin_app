@@ -21,6 +21,7 @@ import 'package:admin_app/features/bookkeeping/screens/vat_report_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/cash_flow_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/equipment_register_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/pty_conversion_screen.dart';
+import 'package:admin_app/features/bookkeeping/screens/bank_reconciliation_screen.dart';
 import 'package:admin_app/features/inventory/services/supplier_repository.dart';
 import '../../../core/services/email_service.dart';
 import '../services/invoice_pdf_service.dart';
@@ -44,7 +45,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
   }
 
   @override
@@ -75,6 +76,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 Tab(icon: Icon(Icons.waterfall_chart, size: 18), text: 'Cash Flow'),
                 Tab(icon: Icon(Icons.build, size: 18), text: 'Equipment'),
                 Tab(icon: Icon(Icons.business, size: 18), text: 'PTY Conversion'),
+                Tab(icon: Icon(Icons.account_balance, size: 18), text: 'Bank Recon'),
               ],
             ),
           ),
@@ -91,6 +93,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 CashFlowScreen(embedded: true),
                 EquipmentRegisterScreen(embedded: true),
                 PtyConversionScreen(embedded: true),
+                BankReconciliationScreen(embedded: true),
               ],
             ),
           ),
