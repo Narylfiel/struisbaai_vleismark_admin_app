@@ -155,31 +155,58 @@ class SupplierInvoiceRepository {
     required String createdBy,
     String? supplierId,
   }) async {
-    final totalAmount = (ocrResult['total_amount'] as num?)?.toDouble() ?? 0;
+    // Map Gemini response fields to invoice fields
+    final total = (ocrResult['total'] as num?)?.toDouble() ?? 0;
+    final subtotal = (ocrResult['subtotal'] as num?)?.toDouble() ?? total;
+    final taxAmount = (ocrResult['tax_amount'] as num?)?.toDouble() ?? 0;
+    final taxRate = (ocrResult['tax_rate'] as num?)?.toDouble() ?? 0;
+
     DateTime invoiceDate = DateTime.now();
-    if (ocrResult['date'] != null) {
-      invoiceDate = DateTime.tryParse(ocrResult['date'] as String) ?? invoiceDate;
+    if (ocrResult['invoice_date'] != null) {
+      invoiceDate =
+          DateTime.tryParse(ocrResult['invoice_date'] as String) ??
+              invoiceDate;
     }
-    final dueDate = invoiceDate.add(const Duration(days: 30));
-    final rawItems = ocrResult['items'] as List<dynamic>?;
+
+    DateTime? dueDate;
+    if (ocrResult['due_date'] != null) {
+      dueDate = DateTime.tryParse(ocrResult['due_date'] as String);
+    }
+    dueDate ??= invoiceDate.add(const Duration(days: 30));
+
+    // Map line_items from Gemini response
+    final rawItems = ocrResult['line_items'] as List<dynamic>?;
     final lineItems = <Map<String, dynamic>>[];
     if (rawItems != null) {
       for (final item in rawItems) {
-        final m = item is Map<String, dynamic> ? item : Map<String, dynamic>.from(item as Map);
+        final m = item is Map<String, dynamic>
+            ? item
+            : Map<String, dynamic>.from(item as Map);
         lineItems.add({
-          'description': m['name'] ?? m['description'] ?? '',
+          'description': m['description'] ?? m['name'] ?? '',
+          'supplier_code': m['supplier_code']?.toString(),
           'quantity': (m['quantity'] as num?)?.toDouble() ?? 1,
+          'unit': m['unit']?.toString(),
           'unit_price': (m['unit_price'] as num?)?.toDouble() ?? 0,
+          'line_total': (m['line_total'] as num?)?.toDouble() ??
+              ((m['quantity'] as num?)?.toDouble() ?? 1) *
+                  ((m['unit_price'] as num?)?.toDouble() ?? 0),
         });
       }
     }
-    String? notes;
-    final rawText = ocrResult['raw_text'];
-    if (rawText != null) {
-      final s = rawText.toString();
-      if (s.isNotEmpty) notes = 'OCR: ${s.length > 500 ? s.substring(0, 500) : s}';
-    }
-    final invoiceNumber = await nextInvoiceNumber();
+
+    // Use supplier name from OCR as notes if no supplier matched
+    final extractedSupplierName =
+        ocrResult['supplier_name']?.toString();
+    final extractedInvoiceNumber =
+        ocrResult['invoice_number']?.toString();
+
+    // Use extracted invoice number if available
+    final invoiceNumber = (extractedInvoiceNumber != null &&
+            extractedInvoiceNumber.isNotEmpty)
+        ? extractedInvoiceNumber
+        : await nextInvoiceNumber();
+
     final invoice = SupplierInvoice(
       id: '',
       invoiceNumber: invoiceNumber,
@@ -187,11 +214,14 @@ class SupplierInvoiceRepository {
       invoiceDate: invoiceDate,
       dueDate: dueDate,
       lineItems: lineItems,
-      subtotal: totalAmount,
-      taxAmount: 0,
-      total: totalAmount,
+      subtotal: subtotal,
+      taxRate: taxRate,
+      taxAmount: taxAmount,
+      total: total,
       status: SupplierInvoiceStatus.pendingReview,
-      notes: notes,
+      notes: extractedSupplierName != null && supplierId == null
+          ? 'Supplier from invoice: $extractedSupplierName'
+          : null,
       createdBy: createdBy,
     );
     return create(invoice);

@@ -7,7 +7,6 @@ import '../../hr/services/awol_repository.dart';
 import '../../hr/services/staff_credit_repository.dart';
 import '../../hr/services/compliance_service.dart';
 import '../../hr/models/awol_record.dart';
-import '../../hr/models/staff_credit.dart';
 
 /// Repository for generating reports defined in AdminAppBluePrintTruth §11.
 /// Real data for view and export (CSV, PDF, Excel).
@@ -41,6 +40,8 @@ class ReportRepository {
     DateTime start,
     DateTime end, {
     DateTime? singleDate,
+    String? staffId,
+    String? paymentMethod,
   }) async {
     final def = ReportDefinitions.byKey(reportKey);
     final title = def?.title ?? reportKey;
@@ -51,7 +52,14 @@ class ReportRepository {
     switch (reportKey) {
       case 'daily_sales': {
         final date = singleDate ?? start;
-        final rows = await getDailySales(date);
+        List<Map<String, dynamic>> rows = await getDailySales(date);
+        if (paymentMethod != null && paymentMethod.isNotEmpty) {
+          rows = rows
+              .where((r) =>
+                  r['payment_method']?.toString().toLowerCase() ==
+                  paymentMethod.toLowerCase())
+              .toList();
+        }
         final data = rows.map((r) => {
           'created_at': r['created_at']?.toString().substring(0, 19),
           'total_amount': r['total_amount'],
@@ -68,6 +76,7 @@ class ReportRepository {
           },
           title: title,
           subtitle: '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}',
+          monetaryColumns: const {'total_amount'},
         );
       }
       case 'weekly_sales': {
@@ -87,6 +96,7 @@ class ReportRepository {
           },
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'total_amount'},
         );
       }
       case 'monthly_pl': {
@@ -103,6 +113,7 @@ class ReportRepository {
           columnHeaders: {'account_code': 'Account', 'debit': 'Debit', 'credit': 'Credit', 'net': 'Net'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'debit', 'credit', 'net'},
         );
       }
       case 'vat201': {
@@ -118,6 +129,7 @@ class ReportRepository {
           columnHeaders: {'metric': 'Metric', 'amount': 'Amount (R)'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'amount'},
         );
       }
       case 'cash_flow': {
@@ -135,10 +147,11 @@ class ReportRepository {
           summary: {'Cash net': cf.cashIn - cf.cashOut, 'Bank net': cf.bankIn - cf.bankOut},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'amount'},
         );
       }
       case 'staff_hours': {
-        final rows = await getStaffHours(start, end);
+        final rows = await getStaffHours(start, end, staffId: staffId);
         final data = rows.map((r) {
           final prof = r['staff_profiles'];
           final name = prof is Map ? prof['full_name']?.toString() : null;
@@ -176,6 +189,7 @@ class ReportRepository {
           },
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'gross_pay', 'total_deductions', 'net_pay'},
         );
       }
       case 'inventory_valuation': {
@@ -194,6 +208,7 @@ class ReportRepository {
           summary: {'Total Value': data.fold<double>(0, (s, r) => s + ((r['value'] as num?)?.toDouble() ?? 0))},
           title: title,
           subtitle: 'As at $endStr',
+          monetaryColumns: const {'cost_price', 'selling_price', 'value'},
         );
       }
       case 'shrinkage': {
@@ -212,6 +227,7 @@ class ReportRepository {
           columnHeaders: {'created_at': 'Date', 'product_name': 'Product', 'theoretical_stock': 'Expected', 'actual_stock': 'Actual', 'gap_amount': 'Variance', 'possible_reasons': 'Reason'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'theoretical_stock', 'actual_stock', 'gap_amount'},
         );
       }
       case 'supplier_spend': {
@@ -224,11 +240,12 @@ class ReportRepository {
             columnHeaders: {'supplier_name': 'Supplier', 'total_amount': 'Total (R)', 'invoice_count': 'Invoices'},
             title: title,
             subtitle: subtitle,
+            monetaryColumns: const {'total_amount'},
           );
         }
         final keys = rows.isNotEmpty ? rows.first.keys.toList() : ['supplier_id', 'total_amount'];
         final headers = {for (var k in keys) k: k.toString().replaceAll('_', ' ')};
-        return ReportData(data: rows, columns: keys, columnHeaders: headers, title: title, subtitle: subtitle);
+        return ReportData(data: rows, columns: keys, columnHeaders: headers, title: title, subtitle: subtitle, monetaryColumns: const {'total_amount'});
       }
       case 'audit_trail': {
         final rows = await getAuditTrail(start, end);
@@ -264,6 +281,7 @@ class ReportRepository {
           summary: {'Outstanding': data.where((r) => r['status'] == 'pending' || r['status'] == 'partial').fold<double>(0, (s, r) => s + (r['amount'] as num).toDouble())},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'amount'},
         );
       }
       case 'awol': {
@@ -313,6 +331,7 @@ class ReportRepository {
           columnHeaders: {'account_code': 'Account', 'debit': 'Debit', 'credit': 'Credit'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'debit', 'credit'},
         );
       case 'product_performance':
         final rows = await _getProductPerformance(start, end);
@@ -322,6 +341,7 @@ class ReportRepository {
           columnHeaders: {'product_name': 'Product', 'quantity_sold': 'Qty Sold', 'revenue': 'Revenue'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'revenue'},
         );
       case 'customer_loyalty':
         final rows = await _getCustomerLoyalty();
@@ -331,6 +351,7 @@ class ReportRepository {
           columnHeaders: {'name': 'Customer', 'tier': 'Tier', 'spend': 'Spend'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'spend'},
         );
       case 'hunter_jobs':
         final rows = await _getHunterJobs(start, end);
@@ -340,7 +361,11 @@ class ReportRepository {
           columnHeaders: {'job_number': 'Job #', 'customer_name': 'Customer', 'status': 'Status', 'total': 'Total'},
           title: title,
           subtitle: subtitle,
+          monetaryColumns: const {'total'},
         );
+      case 'stock_movement': {
+        return await _getStockMovementReport(start, end, title, subtitle);
+      }
       case 'equipment_depreciation':
       case 'purchase_sale_agreement':
       case 'blockman_performance':
@@ -373,7 +398,7 @@ class ReportRepository {
     }
   }
 
-  Future<List<Map<String, dynamic>>> _getPayrollInRange(DateTime start, DateTime end) async {
+  Future<List<Map<String, dynamic>>> _getPayrollInRange(DateTime start, DateTime end, {String? staffId}) async {
     try {
       final startStr = start.toIso8601String().substring(0, 10);
       final endStr = end.toIso8601String().substring(0, 10);
@@ -386,11 +411,12 @@ class ReportRepository {
       if ((periods as List).isEmpty) return [];
       final list = <Map<String, dynamic>>[];
       for (final p in periods as List) {
-        final entries = await _client
+        var q = _client
             .from('payroll_entries')
             .select('*, staff_profiles(full_name)')
-            .eq('payroll_period_id', p['id'])
-            .order('staff_id');
+            .eq('payroll_period_id', p['id']);
+        if (staffId != null) q = q.eq('staff_profile_id', staffId);
+        final entries = await q.order('staff_id');
         for (final e in entries as List) {
           final row = Map<String, dynamic>.from(e as Map<String, dynamic>);
           row['period_end'] = p['period_end'];
@@ -533,14 +559,15 @@ class ReportRepository {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getStaffHours(DateTime startDate, DateTime endDate) async {
+  Future<List<Map<String, dynamic>>> getStaffHours(DateTime startDate, DateTime endDate, {String? staffId}) async {
     try {
-      final response = await _client
+      var q = _client
           .from('timecards')
           .select('*, staff_profiles(full_name)')
           .gte('clock_in', startDate.toIso8601String())
-          .lte('clock_in', endDate.toIso8601String())
-          .order('clock_in', ascending: false);
+          .lte('clock_in', endDate.toIso8601String());
+      if (staffId != null) q = q.eq('staff_id', staffId);
+      final response = await q.order('clock_in', ascending: false);
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       return [];
@@ -583,5 +610,191 @@ class ReportRepository {
       buffer.writeln(values.join(','));
     }
     return buffer.toString();
+  }
+
+  /// Stock Movement Report — shows inventory changes from received supplier
+  /// invoices in the given date range, with opening/closing stock and source.
+  Future<ReportData> _getStockMovementReport(
+    DateTime start,
+    DateTime end,
+    String title,
+    String subtitle,
+  ) async {
+    try {
+      // Fetch all 'in' movements from supplier invoices in the date range
+      final movements = await _client
+          .from('stock_movements')
+          .select(
+            'item_id, quantity, unit_cost, reference_id, created_at, '
+            'inventory_items(name, current_stock), '
+            'supplier_invoices:reference_id(invoice_number, total_amount, tax_amount, suppliers(name))',
+          )
+          .eq('movement_type', 'in')
+          .eq('reference_type', 'supplier_invoice')
+          .gte('created_at', start.toIso8601String())
+          .lte('created_at', end.toIso8601String())
+          .order('created_at', ascending: true);
+
+      if ((movements as List).isEmpty) {
+        // No movements — still return summary from approved invoices
+        final invoices = await _client
+            .from('supplier_invoices')
+            .select('invoice_number, total_amount, tax_amount, suppliers(name)')
+            .eq('status', 'received')
+            .gte('created_at', start.toIso8601String())
+            .lte('created_at', end.toIso8601String());
+
+        final invList = invoices as List;
+        final totalAP = invList.fold<double>(
+            0, (s, r) => s + ((r['total_amount'] as num?)?.toDouble() ?? 0));
+        final totalVAT = invList.fold<double>(
+            0, (s, r) => s + ((r['tax_amount'] as num?)?.toDouble() ?? 0));
+
+        return ReportData(
+          data: [],
+          columns: ['product', 'opening', 'received', 'closing', 'source'],
+          columnHeaders: {
+            'product': 'Product',
+            'opening': 'Opening',
+            'received': 'Received',
+            'closing': 'Closing',
+            'source': 'Source Invoice',
+          },
+          summary: {
+            'Invoices processed': invList.length,
+            'Items updated': 0,
+            'Total AP': totalAP,
+            'VAT claimed': totalVAT,
+          },
+          title: title,
+          subtitle: subtitle,
+          monetaryColumns: const {'Total AP', 'VAT claimed'},
+        );
+      }
+
+      // Aggregate received quantity per product
+      final byProduct = <String, Map<String, dynamic>>{};
+      for (final m in movements as List) {
+        final itemId = m['item_id']?.toString() ?? '';
+        final itemInfo = m['inventory_items'];
+        final name = (itemInfo is Map ? itemInfo['name'] : null)?.toString() ?? itemId;
+        final currentStock = (itemInfo is Map
+            ? (itemInfo['current_stock'] as num?)?.toDouble()
+            : null) ?? 0.0;
+        final qty = (m['quantity'] as num?)?.toDouble() ?? 0;
+
+        // Source invoice label
+        final invInfo = m['supplier_invoices'];
+        String sourceLabel = '—';
+        if (invInfo is Map) {
+          final supplierInfo = invInfo['suppliers'];
+          final supplierName = (supplierInfo is Map
+              ? supplierInfo['name']
+              : null)?.toString() ?? '';
+          final invNum = invInfo['invoice_number']?.toString() ?? '';
+          sourceLabel = [supplierName, invNum]
+              .where((s) => s.isNotEmpty)
+              .join(' ');
+        }
+
+        if (byProduct.containsKey(itemId)) {
+          byProduct[itemId]!['received'] =
+              (byProduct[itemId]!['received'] as double) + qty;
+          // Append additional invoice sources if different
+          final existing = byProduct[itemId]!['source'] as String;
+          if (sourceLabel != '—' && !existing.contains(sourceLabel)) {
+            byProduct[itemId]!['source'] = '$existing; $sourceLabel';
+          }
+        } else {
+          byProduct[itemId] = {
+            'product': name,
+            'current_stock': currentStock,
+            'received': qty,
+            'source': sourceLabel,
+          };
+        }
+      }
+
+      // Build rows: opening = current_stock - received (approximate)
+      final rows = byProduct.values.map((p) {
+        final received = p['received'] as double;
+        final current = p['current_stock'] as double;
+        final opening = (current - received).clamp(0.0, double.infinity);
+        return {
+          'product': p['product'],
+          'opening': opening,
+          'received': received,
+          'closing': current,
+          'source': p['source'],
+        };
+      }).toList();
+
+      // Summary: fetch invoice-level totals for the period
+      final invoices = await _client
+          .from('supplier_invoices')
+          .select('id, total_amount, tax_amount')
+          .eq('status', 'received')
+          .gte('created_at', start.toIso8601String())
+          .lte('created_at', end.toIso8601String());
+
+      final invList = invoices as List;
+      final totalAP = invList.fold<double>(
+          0, (s, r) => s + ((r['total_amount'] as num?)?.toDouble() ?? 0));
+      final totalVAT = invList.fold<double>(
+          0, (s, r) => s + ((r['tax_amount'] as num?)?.toDouble() ?? 0));
+
+      // Expense entries = ledger rows for these invoices
+      int expenseEntries = 0;
+      try {
+        final invoiceIds = invList.map((r) => r['id']?.toString()).whereType<String>().toList();
+        if (invoiceIds.isNotEmpty) {
+          final ledger = await _client
+              .from('journal_entries')
+              .select('id')
+              .eq('reference_type', 'supplier_invoice')
+              .inFilter('reference_id', invoiceIds);
+          expenseEntries = (ledger as List).length;
+        }
+      } catch (_) {
+        // journal_entries table may use a different name — silently ignore
+      }
+
+      return ReportData(
+        data: rows,
+        columns: ['product', 'opening', 'received', 'closing', 'source'],
+        columnHeaders: {
+          'product': 'Product',
+          'opening': 'Opening',
+          'received': 'Received',
+          'closing': 'Closing',
+          'source': 'Source Invoice',
+        },
+        summary: {
+          'Invoices processed': invList.length,
+          'Items updated': rows.length,
+          'Expense entries': expenseEntries,
+          'VAT claimed': totalVAT,
+          'Total AP': totalAP,
+        },
+        title: title,
+        subtitle: subtitle,
+        monetaryColumns: const {'closing'},
+      );
+    } catch (e) {
+      return ReportData(
+        data: [],
+        columns: ['product', 'opening', 'received', 'closing', 'source'],
+        columnHeaders: {
+          'product': 'Product',
+          'opening': 'Opening',
+          'received': 'Received',
+          'closing': 'Closing',
+          'source': 'Source Invoice',
+        },
+        summary: {'Error': e.toString()},
+        title: title,
+        subtitle: subtitle,
+      );
+    }
   }
 }

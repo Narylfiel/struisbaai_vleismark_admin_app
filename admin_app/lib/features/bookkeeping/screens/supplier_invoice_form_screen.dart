@@ -474,7 +474,8 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     try {
       if (widget.invoice != null) {
         final inv = widget.invoice!;
-        if (inv.status != SupplierInvoiceStatus.draft) {
+        if (inv.status != SupplierInvoiceStatus.draft &&
+            inv.status != SupplierInvoiceStatus.pendingReview) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Only draft invoices can be edited'), backgroundColor: AppColors.warning),
           );

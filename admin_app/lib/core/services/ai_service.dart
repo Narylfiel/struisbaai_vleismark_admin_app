@@ -14,7 +14,7 @@ class AiService {
   static const _storage = FlutterSecureStorage();
   static const _keyApiKey = 'gemini_api_key';
   static const _baseUrl =
-      'https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-001:generateContent';
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
 
   final _dio = Dio();
 
@@ -42,28 +42,36 @@ class AiService {
       throw Exception('Gemini API key not configured — go to Settings → AI');
     }
 
-    final response = await _dio.post(
-      '$_baseUrl?key=$apiKey',
-      options: Options(headers: {'Content-Type': 'application/json'}),
-      data: {
-        'contents': [
-          {
-            'parts': [
-              {'text': text}
-            ]
-          }
-        ],
-        'generationConfig': {
-          'temperature': 0.1,
-          'maxOutputTokens': 2048,
+    try {
+      final response = await _dio.post(
+        '$_baseUrl?key=$apiKey',
+        options: Options(headers: {'Content-Type': 'application/json'}),
+        data: {
+          'contents': [
+            {
+              'parts': [
+                {'text': text}
+              ]
+            }
+          ],
+          'generationConfig': {
+            'temperature': 0.1,
+            'maxOutputTokens': 2048,
+          },
         },
-      },
-    );
+      );
 
-    if (response.statusCode == 200) {
-      return _extractText(response.data);
+      if (response.statusCode == 200) {
+        return _extractText(response.data);
+      }
+      throw Exception('Gemini error ${response.statusCode}: ${response.data}');
+    } on DioException catch (e) {
+      final status = e.response?.statusCode;
+      final body = e.response?.data?.toString() ?? '';
+      throw Exception('Gemini $status: $body');
+    } catch (e) {
+      throw Exception('Gemini error: $e');
     }
-    throw Exception('Gemini error ${response.statusCode}: ${response.data}');
   }
 
   /// Send an image + prompt to Gemini Vision.
@@ -101,7 +109,7 @@ class AiService {
         ],
         'generationConfig': {
           'temperature': 0.1,
-          'maxOutputTokens': 2048,
+          'maxOutputTokens': 8192,
         },
       },
     );
@@ -144,7 +152,7 @@ class AiService {
         ],
         'generationConfig': {
           'temperature': 0.1,
-          'maxOutputTokens': 2048,
+          'maxOutputTokens': 8192,
         },
       },
     );
@@ -158,18 +166,22 @@ class AiService {
   // ── Supplier invoice OCR ──────────────────────────────────────
 
   /// Extract supplier invoice data from an image or PDF page.
-  /// Returns structured JSON with supplier, invoice number, date,
-  /// line items, subtotal, tax, total.
-  Future<Map<String, dynamic>> extractInvoiceData({
+  /// Returns a list — normally one invoice, but may return multiple
+  /// if the PDF contained more than one invoice on the same page.
+  Future<List<Map<String, dynamic>>> extractInvoiceData({
     required Uint8List imageBytes,
     required String mimeType,
   }) async {
     const invoicePrompt = '''
 You are an invoice data extraction assistant for a South African butchery.
-Extract all data from this supplier invoice image and return ONLY a JSON object.
+Extract all invoice data from this document and return ONLY valid JSON.
 No explanation, no markdown, no code blocks — raw JSON only.
 
-Required JSON structure:
+IMPORTANT: If the document contains MORE THAN ONE invoice, return a JSON ARRAY
+of invoice objects. If it contains exactly one invoice, you may return either
+a single JSON object or a single-element array — both are accepted.
+
+Each invoice object must have this structure:
 {
   "supplier_name": "string or null",
   "invoice_number": "string or null",
@@ -208,7 +220,7 @@ Rules:
       promptText: invoicePrompt,
     );
 
-    return _parseJsonResponse(result);
+    return _parseInvoiceResponse(result);
   }
 
   // ── Smart analysis ────────────────────────────────────────────
@@ -260,49 +272,83 @@ Rules:
     }
   }
 
-  Map<String, dynamic> _parseJsonResponse(String raw) {
+  /// Parse Gemini invoice response — handles single object, array,
+  /// or concatenated JSON objects (multiple invoices in one PDF).
+  /// Always returns a list; never throws.
+  List<Map<String, dynamic>> _parseInvoiceResponse(String raw) {
     try {
       String cleaned = raw.trim();
-      // Strip markdown code blocks (```json ... ``` or ``` ... ```)
-      if (cleaned.contains('```')) {
-        final start = cleaned.indexOf('```');
-        final afterStart = cleaned.substring(start + 3).trimLeft();
-        final langEnd = afterStart.startsWith('json')
-            ? 4
-            : afterStart.startsWith('JSON')
-                ? 4
-                : 0;
-        cleaned = (langEnd > 0 ? afterStart.substring(langEnd) : afterStart)
-            .trimLeft();
-        final endBlock = cleaned.indexOf('```');
-        if (endBlock >= 0) cleaned = cleaned.substring(0, endBlock).trim();
+      // Strip markdown fences
+      if (cleaned.startsWith('```')) {
+        cleaned = cleaned
+            .replaceFirst(RegExp(r'^```json?\s*'), '')
+            .replaceFirst(RegExp(r'```\s*$'), '')
+            .trim();
       }
-      // Remove leading/trailing whitespace and newlines
-      cleaned = cleaned.trim();
-      // If response has text before/after JSON, try to extract first { ... }
-      if (!cleaned.startsWith('{')) {
-        final start = cleaned.indexOf('{');
-        if (start >= 0) {
-          int depth = 0;
-          int end = -1;
-          for (int i = start; i < cleaned.length; i++) {
-            if (cleaned[i] == '{') depth++;
-            if (cleaned[i] == '}') {
-              depth--;
-              if (depth == 0) {
-                end = i;
-                break;
-              }
-            }
+
+      // Try parsing as-is first
+      final decoded = jsonDecode(cleaned);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map<String, dynamic>>()
+            .toList();
+      }
+      if (decoded is Map<String, dynamic>) {
+        return [decoded];
+      }
+    } catch (_) {
+      // Fall through to multi-object split attempt
+    }
+
+    // Gemini may return two JSON objects concatenated: {...}{...}
+    // Split by finding top-level object boundaries
+    final objects = _splitTopLevelObjects(raw);
+    if (objects.isNotEmpty) {
+      debugPrint('_parseInvoiceResponse: split into '
+          '${objects.length} JSON object(s)');
+      return objects;
+    }
+
+    debugPrint('_parseInvoiceResponse: all parsing failed\nRaw: $raw');
+    return [
+      {'error': 'Could not parse response', 'raw': raw}
+    ];
+  }
+
+  /// Split a string that may contain multiple concatenated top-level
+  /// JSON objects (e.g. "{...}{...}") into individual parsed maps.
+  List<Map<String, dynamic>> _splitTopLevelObjects(String raw) {
+    final results = <Map<String, dynamic>>[];
+    int depth = 0;
+    int start = -1;
+    bool inString = false;
+    bool escape = false;
+
+    for (int i = 0; i < raw.length; i++) {
+      final c = raw[i];
+      if (escape) { escape = false; continue; }
+      if (c == '\\') { escape = true; continue; }
+      if (c == '"') { inString = !inString; continue; }
+      if (inString) continue;
+
+      if (c == '{') {
+        if (depth == 0) start = i;
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0 && start >= 0) {
+          final fragment = raw.substring(start, i + 1);
+          try {
+            final obj = jsonDecode(fragment) as Map<String, dynamic>;
+            results.add(obj);
+          } catch (_) {
+            // Skip malformed fragment
           }
-          if (end >= 0) cleaned = cleaned.substring(start, end + 1);
+          start = -1;
         }
       }
-      return jsonDecode(cleaned) as Map<String, dynamic>;
-    } catch (e) {
-      debugPrint('JSON parse error: $e\nRaw: $raw');
-      return {'error': 'Could not parse response', 'raw': raw};
     }
+    return results;
   }
 
   String _mimeType(String path) {

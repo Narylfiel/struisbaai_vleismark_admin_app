@@ -1,9 +1,9 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
-import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/features/reports/models/report_data.dart';
@@ -38,11 +38,35 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   }
 
   Future<void> _viewReport(ReportDefinition def) async {
+    // Show filter dialog first — data loads only when user presses Run
+    final filters = await showDialog<_ReportFilters>(
+      context: context,
+      builder: (_) => _ReportFilterDialog(
+        def: def,
+        initialStart: _rangeStart,
+        initialEnd: _rangeEnd,
+        initialSingleDate: _singleDate,
+      ),
+    );
+    if (filters == null || !mounted) return; // user cancelled
+
+    // Update global date range to match what was run
+    setState(() {
+      _rangeStart = filters.start;
+      _rangeEnd = filters.end;
+      _singleDate = filters.singleDate;
+    });
+
     setState(() => _isLoadingView = true);
     try {
-      final start = def.requiresDateRange ? _rangeStart : _singleDate;
-      final end = def.requiresDateRange ? _rangeEnd : _singleDate;
-      final reportData = await _repo.getReportData(def.key, start, end, singleDate: def.key == 'daily_sales' ? _singleDate : null);
+      final reportData = await _repo.getReportData(
+        def.key,
+        filters.start,
+        filters.end,
+        singleDate: def.key == 'daily_sales' ? filters.singleDate : null,
+        staffId: filters.staffId,
+        paymentMethod: filters.paymentMethod,
+      );
       if (!mounted) return;
       await showDialog<void>(
         context: context,
@@ -50,9 +74,10 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
       );
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ErrorHandler.friendlyMessage(e)),
+          backgroundColor: AppColors.error,
+        ));
       }
     } finally {
       if (mounted) setState(() => _isLoadingView = false);
@@ -64,13 +89,22 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
     try {
       final start = def.requiresDateRange ? _rangeStart : _singleDate;
       final end = def.requiresDateRange ? _rangeEnd : _singleDate;
-      final reportData = await _repo.getReportData(def.key, start, end, singleDate: def.key == 'daily_sales' ? _singleDate : null);
+      final reportData = await _repo.getReportData(
+        def.key, start, end,
+        singleDate: def.key == 'daily_sales' ? _singleDate : null,
+      );
       final isEmpty = reportData.data.isEmpty;
 
-      final safeTitle = def.title.replaceAll(RegExp(r'[^\w\s-]'), '').replaceAll(' ', '_');
-      final fileName = '${safeTitle}_${start.toIso8601String().substring(0, 10)}_${end.toIso8601String().substring(0, 10)}';
-      File file;
+      final safeTitle = def.title
+          .replaceAll(RegExp(r'[^\w\s-]'), '')
+          .replaceAll(' ', '_');
+      final dateTag =
+          '${start.toIso8601String().substring(0, 10)}_'
+          '${end.toIso8601String().substring(0, 10)}';
+      final fileName = '${safeTitle}_$dateTag';
+
       if (format == 'csv') {
+        // CSV: Windows Save As dialog / Downloads on other platforms
         final path = await _export.saveCsvToFile(
           suggestedFileName: '$fileName.csv',
           data: reportData.data,
@@ -78,25 +112,20 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
         );
         if (mounted && path != null) {
           final shortName = path.split(RegExp(r'[/\\]')).last;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(isEmpty ? 'Report generated — no data. Exported to $shortName' : 'Exported to Downloads/$shortName'),
-              backgroundColor: AppColors.success,
-            ),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text(isEmpty
+                ? 'No data for this period — empty CSV saved: $shortName'
+                : 'CSV saved: $shortName'),
+            backgroundColor: AppColors.success,
+          ));
         }
-        if (mounted) setState(() => _isExporting = false);
         return;
-      } else if (format == 'xlsx') {
-        file = await _export.exportToExcel(
-          fileName: fileName,
-          data: reportData.data,
-          columns: reportData.columns,
-          columnHeaders: reportData.columnHeaders,
-          sheetName: def.title.length > 31 ? def.title.substring(0, 31) : def.title,
-        );
-      } else {
-        file = await _export.exportToPdf(
+      }
+
+      // PDF and Excel: show Save As dialog on Windows, Downloads elsewhere
+      if (format == 'pdf') {
+        // Build the PDF bytes first
+        final pdfFile = await _export.exportToPdf(
           fileName: fileName,
           title: reportData.title,
           data: reportData.data,
@@ -105,32 +134,89 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
           subtitle: reportData.subtitle,
           summary: reportData.summary,
         );
-      }
-      if (mounted) {
-        try {
-          await Share.shareXFiles([XFile(file.path)], text: '${def.title} export');
-        } catch (_) { /* share not supported */ }
-        if (mounted) {
-          final dir = await getApplicationDocumentsDirectory();
-          final shortPath = file.path.startsWith(dir.path) ? file.path.substring(dir.path.length) : file.path;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                isEmpty
-                    ? 'Report generated — no data for this period. File: $shortPath'
-                    : 'Report generated. Save via dialog or find in: $shortPath',
-              ),
-              backgroundColor: AppColors.success,
-              duration: const Duration(seconds: 4),
-            ),
+
+        if (Platform.isWindows) {
+          // Show Save As dialog so the user picks the location
+          final savePath = await FilePicker.platform.saveFile(
+            type: FileType.custom,
+            allowedExtensions: ['pdf'],
+            fileName: '$fileName.pdf',
           );
+          if (savePath != null) {
+            final dest = File(savePath);
+            await dest.writeAsBytes(await pdfFile.readAsBytes());
+            // Open PDF in default viewer
+            await Process.run('cmd', ['/c', 'start', '', dest.path]);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(isEmpty
+                    ? 'No data — PDF saved to ${dest.path.split(r'\').last}'
+                    : 'PDF saved and opened'),
+                backgroundColor: AppColors.success,
+              ));
+            }
+          }
+        } else {
+          // Non-Windows: open directly from temp location
+          final filePath = pdfFile.path;
+          await Process.run('open', [filePath]); // macOS
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(isEmpty ? 'No data for this period' : 'PDF opened'),
+              backgroundColor: AppColors.success,
+            ));
+          }
         }
+        return;
+      }
+
+      if (format == 'xlsx') {
+        final xlsxFile = await _export.exportToExcel(
+          fileName: fileName,
+          data: reportData.data,
+          columns: reportData.columns,
+          columnHeaders: reportData.columnHeaders,
+          sheetName: def.title.length > 31
+              ? def.title.substring(0, 31)
+              : def.title,
+        );
+
+        if (Platform.isWindows) {
+          final savePath = await FilePicker.platform.saveFile(
+            type: FileType.custom,
+            allowedExtensions: ['xlsx'],
+            fileName: '$fileName.xlsx',
+          );
+          if (savePath != null) {
+            final dest = File(savePath);
+            await dest.writeAsBytes(await xlsxFile.readAsBytes());
+            await Process.run('cmd', ['/c', 'start', '', dest.path]);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(isEmpty
+                    ? 'No data — Excel saved to ${dest.path.split(r'\').last}'
+                    : 'Excel saved and opened'),
+                backgroundColor: AppColors.success,
+              ));
+            }
+          }
+        } else {
+          await Process.run('open', [xlsxFile.path]);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(isEmpty ? 'No data for this period' : 'Excel opened'),
+              backgroundColor: AppColors.success,
+            ));
+          }
+        }
+        return;
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ErrorHandler.friendlyMessage(e)),
+          backgroundColor: AppColors.error,
+        ));
       }
     } finally {
       if (mounted) setState(() => _isExporting = false);
@@ -333,54 +419,581 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   }
 }
 
+/// Holds filter values returned by _ReportFilterDialog.
+class _ReportFilters {
+  final DateTime start;
+  final DateTime end;
+  final DateTime singleDate;
+  final String? staffId;
+  final String? paymentMethod;
+
+  const _ReportFilters({
+    required this.start,
+    required this.end,
+    required this.singleDate,
+    this.staffId,
+    this.paymentMethod,
+  });
+}
+
+/// Per-report filter dialog. Shows relevant filters then
+/// returns _ReportFilters when user presses Run Report.
+class _ReportFilterDialog extends StatefulWidget {
+  final ReportDefinition def;
+  final DateTime initialStart;
+  final DateTime initialEnd;
+  final DateTime initialSingleDate;
+
+  const _ReportFilterDialog({
+    required this.def,
+    required this.initialStart,
+    required this.initialEnd,
+    required this.initialSingleDate,
+  });
+
+  @override
+  State<_ReportFilterDialog> createState() => _ReportFilterDialogState();
+}
+
+class _ReportFilterDialogState extends State<_ReportFilterDialog> {
+  late DateTime _start;
+  late DateTime _end;
+  late DateTime _singleDate;
+  String? _staffId;
+  String? _paymentMethod;
+
+  // Staff list for reports that filter by staff
+  List<Map<String, dynamic>> _staffList = [];
+  bool _loadingStaff = false;
+
+  // Reports that need a staff dropdown
+  static const _staffFilterReports = {
+    'staff_hours', 'payroll', 'blockman_performance',
+    'staff_loan_credit', 'awol', 'bcea_compliance',
+  };
+
+  // Reports that use a single date instead of a range
+  static const _singleDateReports = {'daily_sales'};
+
+  bool get _needsStaff =>
+      _staffFilterReports.contains(widget.def.key);
+  bool get _isSingleDate =>
+      _singleDateReports.contains(widget.def.key);
+  bool get _needsPaymentFilter =>
+      widget.def.key == 'daily_sales' ||
+      widget.def.key == 'weekly_sales';
+
+  @override
+  void initState() {
+    super.initState();
+    _start = widget.initialStart;
+    _end = widget.initialEnd;
+    _singleDate = widget.initialSingleDate;
+    if (_needsStaff) _loadStaffList();
+  }
+
+  Future<void> _loadStaffList() async {
+    setState(() => _loadingStaff = true);
+    try {
+      final rows = await Supabase.instance.client
+          .from('staff_profiles')
+          .select('id, full_name')
+          .eq('is_active', true)
+          .order('full_name');
+      if (mounted) {
+        setState(() {
+          _staffList = List<Map<String, dynamic>>.from(rows);
+        });
+      }
+    } catch (_) {
+      // Leave empty — user can still run without filter
+    } finally {
+      if (mounted) setState(() => _loadingStaff = false);
+    }
+  }
+
+  Future<void> _pickStart() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _start,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d != null && mounted) setState(() => _start = d);
+  }
+
+  Future<void> _pickEnd() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _end.isBefore(_start) ? _start : _end,
+      firstDate: _start,
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d != null && mounted) setState(() => _end = d);
+  }
+
+  Future<void> _pickSingleDate() async {
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _singleDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (d != null && mounted) setState(() => _singleDate = d);
+  }
+
+  String _fmt(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/'
+      '${d.month.toString().padLeft(2, '0')}/'
+      '${d.year}';
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12)),
+      titlePadding: EdgeInsets.zero,
+      title: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: 20, vertical: 14),
+        decoration: const BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(widget.def.icon,
+                color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(widget.def.title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+            ),
+            const Text('Set filters',
+                style: TextStyle(
+                    color: Colors.white70, fontSize: 12)),
+          ],
+        ),
+      ),
+      content: SizedBox(
+        width: 440,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 8),
+
+            // ── Date filter ──────────────────────────────
+            if (_isSingleDate) ...[
+              const Text('Date',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              const SizedBox(height: 6),
+              OutlinedButton.icon(
+                onPressed: _pickSingleDate,
+                icon: const Icon(Icons.calendar_today,
+                    size: 16),
+                label: Text(_fmt(_singleDate)),
+              ),
+            ] else ...[
+              const Text('Date Range',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              const SizedBox(height: 6),
+              Row(children: [
+                OutlinedButton.icon(
+                  onPressed: _pickStart,
+                  icon: const Icon(Icons.calendar_today,
+                      size: 16),
+                  label: Text('From: ${_fmt(_start)}'),
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  onPressed: _pickEnd,
+                  icon: const Icon(Icons.calendar_today,
+                      size: 16),
+                  label: Text('To: ${_fmt(_end)}'),
+                ),
+              ]),
+            ],
+
+            // ── Staff filter ─────────────────────────────
+            if (_needsStaff) ...[
+              const SizedBox(height: 16),
+              const Text('Staff Member',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              const SizedBox(height: 6),
+              _loadingStaff
+                  ? const SizedBox(
+                      height: 36,
+                      child: Center(
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2)))
+                  : DropdownButtonFormField<String>(
+                      initialValue: _staffId,
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                        contentPadding:
+                            EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 10),
+                      ),
+                      hint: const Text('All staff'),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('All staff'),
+                        ),
+                        ..._staffList.map((s) =>
+                            DropdownMenuItem<String>(
+                              value: s['id']
+                                  ?.toString(),
+                              child: Text(
+                                  s['full_name']
+                                          ?.toString() ??
+                                      '—'),
+                            )),
+                      ],
+                      onChanged: (v) =>
+                          setState(() => _staffId = v),
+                    ),
+            ],
+
+            // ── Payment method filter ────────────────────
+            if (_needsPaymentFilter) ...[
+              const SizedBox(height: 16),
+              const Text('Payment Method',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13)),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: _paymentMethod ?? '',
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                      value: '',
+                      child: Text('All methods')),
+                  DropdownMenuItem(
+                      value: 'cash',
+                      child: Text('Cash')),
+                  DropdownMenuItem(
+                      value: 'card',
+                      child: Text('Card')),
+                  DropdownMenuItem(
+                      value: 'account',
+                      child: Text('Account')),
+                  DropdownMenuItem(
+                      value: 'eft',
+                      child: Text('EFT')),
+                ],
+                onChanged: (v) => setState(
+                    () => _paymentMethod =
+                        (v == null || v.isEmpty)
+                            ? null
+                            : v),
+              ),
+            ],
+
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton.icon(
+          onPressed: () => Navigator.pop(
+            context,
+            _ReportFilters(
+              start: _start,
+              end: _end,
+              singleDate: _singleDate,
+              staffId: _staffId,
+              paymentMethod: _paymentMethod,
+            ),
+          ),
+          icon: const Icon(Icons.play_arrow, size: 18),
+          style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white),
+          label: const Text('Run Report'),
+        ),
+      ],
+    );
+  }
+}
+
 class _ReportPreviewDialog extends StatelessWidget {
   final ReportData data;
-
   const _ReportPreviewDialog({required this.data});
 
   @override
   Widget build(BuildContext context) {
-    final headers = data.columns.map((c) => data.columnHeaders[c] ?? c).toList();
+    final currencyFmt = NumberFormat.currency(
+        locale: 'en_ZA', symbol: 'R ', decimalDigits: 2);
+
+    final headers =
+        data.columns.map((c) => data.columnHeaders[c] ?? c).toList();
+
+    // Build totals row for monetary columns (only if data is non-empty)
+    Map<String, double>? totals;
+    if (data.data.isNotEmpty && data.monetaryColumns.isNotEmpty) {
+      totals = {};
+      for (final col in data.monetaryColumns) {
+        totals[col] = data.data.fold<double>(
+            0, (s, r) => s + ((r[col] as num?)?.toDouble() ?? 0));
+      }
+    }
+
     return AlertDialog(
-      title: Text(data.title),
-      content: SizedBox(
-        width: 640,
-        height: 480,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
+      contentPadding: EdgeInsets.zero,
+      titlePadding: EdgeInsets.zero,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      title: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        decoration: const BoxDecoration(
+          color: AppColors.primary,
+          borderRadius: BorderRadius.only(
+            topLeft: Radius.circular(12),
+            topRight: Radius.circular(12),
+          ),
+        ),
+        child: Row(
           children: [
-            if (data.subtitle != null) Text(data.subtitle!, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            const SizedBox(height: 12),
+            const Icon(Icons.assessment_outlined, color: Colors.white, size: 20),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(data.title,
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold)),
+            ),
+            if (data.subtitle != null)
+              Text(data.subtitle!,
+                  style: const TextStyle(
+                      color: Colors.white70, fontSize: 12)),
+          ],
+        ),
+      ),
+      content: SizedBox(
+        width: 720,
+        height: 520,
+        child: Column(
+          children: [
+            // ── Table area ──────────────────────────────────────
             Expanded(
               child: data.data.isEmpty
-                  ? const Center(child: Text('No data for this range.'))
+                  ? const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.inbox_outlined,
+                              size: 48, color: AppColors.textLight),
+                          SizedBox(height: 8),
+                          Text('No data for this range.',
+                              style:
+                                  TextStyle(color: AppColors.textSecondary)),
+                        ],
+                      ),
+                    )
                   : SingleChildScrollView(
                       scrollDirection: Axis.horizontal,
                       child: SingleChildScrollView(
-                        child: DataTable(
-                          columns: headers.map((h) => DataColumn(label: Text(h, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
-                          rows: data.data.take(100).map((row) {
-                            return DataRow(
-                              cells: data.columns.map((col) => DataCell(Text('${row[col] ?? ""}'))).toList(),
-                            );
-                          }).toList(),
+                        child: Table(
+                          defaultColumnWidth:
+                              const IntrinsicColumnWidth(),
+                          border: TableBorder(
+                            horizontalInside: BorderSide(
+                                color: AppColors.border, width: 0.5),
+                            bottom: BorderSide(
+                                color: AppColors.border, width: 0.5),
+                          ),
+                          children: [
+                            // Header row
+                            TableRow(
+                              decoration: BoxDecoration(
+                                  color: AppColors.primary
+                                      .withValues(alpha: 0.08)),
+                              children: headers
+                                  .map((h) => Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 12, vertical: 10),
+                                        child: Text(h,
+                                            style: const TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 12,
+                                                color: AppColors.textPrimary)),
+                                      ))
+                                  .toList(),
+                            ),
+                            // Data rows (max 100)
+                            ...data.data.take(100).toList().asMap().entries.map(
+                              (entry) {
+                                final i = entry.key;
+                                final row = entry.value;
+                                return TableRow(
+                                  decoration: BoxDecoration(
+                                    color: i.isEven
+                                        ? AppColors.cardBg
+                                        : AppColors.surfaceBg,
+                                  ),
+                                  children: data.columns.map((col) {
+                                    final isMoney =
+                                        data.monetaryColumns.contains(col);
+                                    final raw = row[col];
+                                    final display = isMoney
+                                        ? (raw == null
+                                            ? '—'
+                                            : currencyFmt.format(
+                                                (raw as num).toDouble()))
+                                        : '${raw ?? ""}';
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 12, vertical: 8),
+                                      child: Text(
+                                        display,
+                                        textAlign: isMoney
+                                            ? TextAlign.right
+                                            : TextAlign.left,
+                                        style: const TextStyle(fontSize: 12),
+                                      ),
+                                    );
+                                  }).toList(),
+                                );
+                              },
+                            ),
+                            // Totals row
+                            if (totals != null)
+                              TableRow(
+                                decoration: BoxDecoration(
+                                  color: AppColors.accent
+                                      .withValues(alpha: 0.12),
+                                ),
+                                children: data.columns.map((col) {
+                                  final t = totals![col];
+                                  return Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12, vertical: 9),
+                                    child: Text(
+                                      t != null
+                                          ? currencyFmt.format(t)
+                                          : (col == data.columns.first
+                                              ? 'TOTAL'
+                                              : ''),
+                                      textAlign: data.monetaryColumns
+                                              .contains(col)
+                                          ? TextAlign.right
+                                          : TextAlign.left,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 12),
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                          ],
                         ),
                       ),
                     ),
             ),
-            if (data.summary != null && data.summary!.isNotEmpty) ...[
-              const Divider(height: 24),
-              Wrap(
-                spacing: 16,
-                runSpacing: 8,
-                children: data.summary!.entries.map((e) => Chip(label: Text('${e.key}: ${e.value}'))).toList(),
+
+            // ── Summary tiles ────────────────────────────────────
+            if (data.summary != null && data.summary!.isNotEmpty)
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                decoration: const BoxDecoration(
+                  color: AppColors.surfaceBg,
+                  border: Border(
+                      top: BorderSide(color: AppColors.border)),
+                ),
+                child: Wrap(
+                  spacing: 12,
+                  runSpacing: 8,
+                  children: data.summary!.entries.map((e) {
+                    final valStr = e.value is double
+                        ? currencyFmt.format(e.value as double)
+                        : '${e.value}';
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.cardBg,
+                        borderRadius: BorderRadius.circular(6),
+                        border:
+                            Border.all(color: AppColors.border),
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(e.key,
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  color: AppColors.textSecondary)),
+                          Text(valStr,
+                              style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.textPrimary)),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
               ),
-            ],
+
+            // ── Footer ───────────────────────────────────────────
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              decoration: const BoxDecoration(
+                color: AppColors.cardBg,
+                border:
+                    Border(top: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Text(
+                    data.data.isEmpty
+                        ? 'No records'
+                        : data.data.length > 100
+                            ? 'Showing 100 of ${data.data.length} records'
+                            : '${data.data.length} record${data.data.length == 1 ? "" : "s"}',
+                    style: const TextStyle(
+                        fontSize: 11, color: AppColors.textSecondary),
+                  ),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Close'),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
     );
   }
 }

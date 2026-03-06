@@ -27,7 +27,7 @@ class AuditService {
   /// - staff_id: uuid
   /// - module: text
   /// - entity_type: text
-  /// - entity_id: text
+  /// - record_id: text
   /// - old_values: jsonb
   /// - new_values: jsonb
   static Future<void> log({
@@ -74,7 +74,7 @@ class AuditService {
         'staff_id': staffId,
         'staff_name': staffName.isNotEmpty ? staffName : 'System',
         'entity_type': entityType,
-        'entity_id': entityId,
+        'record_id': entityId,
         'old_values': oldValues,
         'new_values': newValues,
       };

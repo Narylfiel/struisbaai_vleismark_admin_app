@@ -72,15 +72,17 @@ class OcrService {
             'Gemini AI not configured — go to Settings → AI to add your API key');
       }
 
-      final data = await _aiService.extractInvoiceData(
+      final list = await _aiService.extractInvoiceData(
         imageBytes: bytes,
         mimeType: mimeType,
       );
-
-      if (data.containsKey('error')) {
+      final valid = list.where((e) => !e.containsKey('error')).toList();
+      if (valid.isEmpty) {
+        final err = list.isNotEmpty ? list.first['error'] : 'no data';
         return OcrResult.error(
-            'AI could not read invoice: ${data['error']}');
+            'AI could not read invoice: $err');
       }
+      final data = valid.first;
 
       return OcrResult.success(
         supplierName: data['supplier_name']?.toString(),

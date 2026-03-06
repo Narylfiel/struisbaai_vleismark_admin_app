@@ -18,6 +18,7 @@ class GoogleDriveService {
   static const _keyFolderId = 'drive_folder_id';
   static const _keyLastScan = 'drive_last_scan';
   static const _keyEnabled = 'drive_sync_enabled';
+  static const _keyProcessedFiles = 'drive_processed_file_ids';
   static const _scopes = [drive.DriveApi.driveReadonlyScope];
   static const _serviceAccountAsset =
       'assets/secrets/google_service_account.json';
@@ -55,6 +56,43 @@ class GoogleDriveService {
     return folderId != null && folderId.isNotEmpty;
   }
 
+  /// Load set of already-processed Drive file IDs.
+  Future<Set<String>> _loadProcessedIds() async {
+    final raw = await _storage.read(key: _keyProcessedFiles);
+    if (raw == null || raw.isEmpty) return {};
+    return raw.split(',').toSet();
+  }
+
+  /// Save a file ID as processed so it's never imported again.
+  Future<void> _markFileProcessed(String fileId) async {
+    final existing = await _loadProcessedIds();
+    existing.add(fileId);
+    // Keep only last 500 IDs to prevent unbounded growth
+    final trimmed = existing.length > 500
+        ? existing.skip(existing.length - 500).toSet()
+        : existing;
+    await _storage.write(key: _keyProcessedFiles, value: trimmed.join(','));
+  }
+
+  /// Check if a file has already been processed.
+  Future<bool> _isProcessed(String fileId) async {
+    final existing = await _loadProcessedIds();
+    return existing.contains(fileId);
+  }
+
+  /// Mark a file as processed (e.g. after successful invoice creation).
+  Future<void> markFileAsProcessed(String fileId) async {
+    await _markFileProcessed(fileId);
+  }
+
+  /// Clear processed file IDs so the next scan re-processes all files.
+  Future<void> clearProcessedIds() async {
+    await _storage.delete(key: _keyProcessedFiles);
+    await _storage.delete(key: _keyLastScan);
+    // Reset in-memory cache too
+    debugPrint('DRIVE: Cleared all processed IDs and last scan timestamp');
+  }
+
   // ── Authentication ────────────────────────────────────────────
 
   Future<drive.DriveApi> _getApi() async {
@@ -86,6 +124,7 @@ class GoogleDriveService {
 
     final api = await _getApi();
     final lastScanStr = await _storage.read(key: _keyLastScan);
+    debugPrint('DRIVE: Raw lastScan from storage: $lastScanStr');
     final lastScan = lastScanStr != null
         ? DateTime.tryParse(lastScanStr)
         : null;
@@ -98,19 +137,34 @@ class GoogleDriveService {
         "mimeType = 'image/png' or "
         "mimeType = 'image/webp')";
 
+    // Only apply date filter if last scan was more than 60 seconds ago
+    // This prevents filtering out files when doing a fresh/reset scan
     if (lastScan != null) {
-      final iso = lastScan.toUtc().toIso8601String();
-      query += " and createdTime > '$iso'";
+      final age = DateTime.now().toUtc().difference(lastScan);
+      if (age.inSeconds > 60) {
+        final iso = lastScan.toUtc().toIso8601String();
+        query += " and createdTime > '$iso'";
+      } else {
+        debugPrint('DRIVE: Skipping date filter — recent scan reset');
+      }
     }
 
     try {
+      debugPrint('DRIVE: Scanning folder ID: $folderId');
+      debugPrint('DRIVE: Last scan was: $lastScanStr');
+      debugPrint('DRIVE: Query: $query');
       final result = await api.files.list(
         q: query,
         $fields: 'files(id,name,mimeType,createdTime,size)',
         orderBy: 'createdTime asc',
         pageSize: 50,
       );
-      return result.files ?? [];
+      final files = result.files ?? [];
+      debugPrint('DRIVE: Raw file count: ${files.length}');
+      for (final f in files) {
+        debugPrint('DRIVE: Found file: ${f.name} (${f.id})');
+      }
+      return files;
     } catch (e) {
       debugPrint('Drive list error: $e');
       return [];
@@ -188,6 +242,8 @@ class GoogleDriveService {
     final results = <DriveInvoiceFile>[];
     for (final file in files) {
       if (file.id == null) continue;
+      // Skip already-processed files
+      if (await _isProcessed(file.id!)) continue;
       final bytes = await downloadFile(file.id!);
       if (bytes == null) continue;
       results.add(DriveInvoiceFile(
@@ -199,7 +255,13 @@ class GoogleDriveService {
       ));
     }
 
-    await markScanned();
+    // NOTE: Do NOT mark files as processed here.
+    // markFileAsProcessed is called by _scanDriveFolder only
+    // after each invoice is successfully created in the database.
+    // This prevents files being marked processed if OCR or DB insert fails.
+    if (results.isNotEmpty) {
+      await markScanned();
+    }
     return results;
   }
 }

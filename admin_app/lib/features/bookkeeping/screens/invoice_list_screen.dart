@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
@@ -25,6 +26,9 @@ import '../../../core/services/email_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../../../core/services/google_drive_service.dart';
 import '../../../core/services/ai_service.dart';
+import 'supplier_mapping_screen.dart';
+import '../../../core/services/supplier_mapping_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -336,7 +340,9 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
   String? _statusFilter;
   final _driveService = GoogleDriveService();
   final _aiService = AiService();
+  final _mappingService = SupplierMappingService();
   bool _driveScanRunning = false;
+  Timer? _dailyScanTimer;
 
   static const List<MapEntry<String, String>> _statusOptions = [
     MapEntry('', 'All'),
@@ -354,6 +360,17 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     super.initState();
     _load();
     _scanDriveFolder();
+    // Schedule daily auto-scan every 24 hours
+    _dailyScanTimer = Timer.periodic(
+      const Duration(hours: 24),
+      (_) => _scanDriveFolder(),
+    );
+  }
+
+  @override
+  void dispose() {
+    _dailyScanTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -611,31 +628,6 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     }
   }
 
-  Future<void> _approve(SupplierInvoice inv) async {
-    final userId = AuthService().getCurrentStaffId();
-    if (userId.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Sign in with PIN to approve'), backgroundColor: AppColors.warning),
-      );
-      return;
-    }
-    try {
-      await _repo.approve(inv.id, userId);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Invoice approved and posted to ledger'), backgroundColor: AppColors.success),
-        );
-        _load();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
-        );
-      }
-    }
-  }
-
   Future<void> _receiveGoods(SupplierInvoice inv) async {
     final userId = AuthService().getCurrentStaffId();
     if (userId.isEmpty) {
@@ -680,6 +672,218 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     }
   }
 
+  Future<void> _openMappingScreen(Map<String, dynamic> invoice) async {
+    final lineItems = (invoice['line_items'] as List?)
+        ?.map((e) => e as Map<String, dynamic>)
+        .toList() ?? [];
+
+    if (lineItems.isEmpty) return;
+
+    final supplierId = invoice['supplier_id']?.toString();
+    final supplierName = invoice['supplier_name']?.toString() ??
+        invoice['suppliers']?['name']?.toString();
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SupplierMappingScreen(
+          invoiceId: invoice['id']?.toString(),
+          pendingItems: lineItems,
+          supplierId: supplierId,
+          supplierName: supplierName,
+          onMappingsComplete: () {
+            Navigator.pop(context);
+            _approveInvoice(invoice);
+          },
+        ),
+      ),
+    );
+    _load();
+  }
+
+  Future<void> _approveInvoice(Map<String, dynamic> invoice) async {
+    final invoiceId = invoice['id']?.toString();
+    if (invoiceId == null) return;
+
+    try {
+      final lineItems = (invoice['line_items'] as List?)
+          ?.map((e) => e as Map<String, dynamic>)
+          .toList() ?? [];
+
+      final supplierId = invoice['supplier_id']?.toString();
+
+      // Apply all mappings to line items
+      final mapped = await _mappingService.applyMappings(
+        lineItems: lineItems,
+        supplierId: supplierId,
+      );
+
+      // Check all items are mapped
+      final pending = mapped.where((i) => i.isPending).toList();
+      if (pending.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                '${pending.length} item${pending.length == 1 ? '' : 's'} '
+                'still need mapping'),
+            backgroundColor: Colors.orange,
+            action: SnackBarAction(
+              label: 'Map Now',
+              onPressed: () => _openMappingScreen(invoice),
+            ),
+          ),
+        );
+        return;
+      }
+
+      final client = Supabase.instance.client;
+
+      // Process each mapped line item
+      for (final item in mapped) {
+        if (item.mapping == null) continue;
+        final m = item.mapping!;
+
+        // Update inventory stock if applicable
+        if (m.updateStock && m.inventoryItemId != null) {
+          final current = await client
+              .from('inventory_items')
+              .select('stock_qty')
+              .eq('id', m.inventoryItemId!)
+              .single();
+          final currentQty =
+              (current['stock_qty'] as num?)?.toDouble() ?? 0;
+          await client
+              .from('inventory_items')
+              .update({'stock_qty': currentQty + item.quantity})
+              .eq('id', m.inventoryItemId!);
+        }
+
+        // Post ledger entry
+        await client.from('ledger_entries').insert({
+          'account_id': null,
+          'account_code': m.accountCode,
+          'entry_date': invoice['invoice_date'] ??
+              DateTime.now().toIso8601String().substring(0, 10),
+          'description':
+              '${item.description} — Invoice ${invoice['invoice_number'] ?? ''}',
+          'debit': item.lineTotal,
+          'credit': 0,
+          'reference': invoice['invoice_number']?.toString(),
+          'reference_type': 'supplier_invoice',
+          'reference_id': invoiceId,
+        });
+      }
+
+      // Post AP credit entry (total payable to supplier)
+      await client.from('ledger_entries').insert({
+        'account_code': '2000',
+        'entry_date': invoice['invoice_date'] ??
+            DateTime.now().toIso8601String().substring(0, 10),
+        'description':
+            'Accounts Payable — Invoice ${invoice['invoice_number'] ?? ''}',
+        'debit': 0,
+        'credit': (invoice['total'] as num?)?.toDouble() ?? 0,
+        'reference': invoice['invoice_number']?.toString(),
+        'reference_type': 'supplier_invoice',
+        'reference_id': invoiceId,
+      });
+
+      // Post VAT entry if applicable
+      final taxAmount =
+          (invoice['tax_amount'] as num?)?.toDouble() ?? 0;
+      if (taxAmount > 0) {
+        await client.from('ledger_entries').insert({
+          'account_code': '2100',
+          'entry_date': invoice['invoice_date'] ??
+              DateTime.now().toIso8601String().substring(0, 10),
+          'description':
+              'Input VAT — Invoice ${invoice['invoice_number'] ?? ''}',
+          'debit': taxAmount,
+          'credit': 0,
+          'reference': invoice['invoice_number']?.toString(),
+          'reference_type': 'supplier_invoice',
+          'reference_id': invoiceId,
+        });
+      }
+
+      // Update invoice status to approved
+      await client
+          .from('supplier_invoices')
+          .update({
+            'status': 'approved',
+            'mappings_complete': true,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', invoiceId);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice approved — stock and ledger updated'),
+            backgroundColor: Color(0xFF2E7D32),
+          ),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Approval failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Returns a similarity score 0.0–1.0 between two strings.
+  /// Normalises to lowercase, strips punctuation, then computes
+  /// the proportion of character bigrams shared between the two strings.
+  double _stringSimilarity(String a, String b) {
+    String norm(String s) => s
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9 ]'), '')
+        .trim();
+    final na = norm(a);
+    final nb = norm(b);
+    if (na == nb) return 1.0;
+    if (na.isEmpty || nb.isEmpty) return 0.0;
+    Set<String> bigrams(String s) {
+      final result = <String>{};
+      for (int i = 0; i < s.length - 1; i++) {
+        result.add(s.substring(i, i + 2));
+      }
+      return result;
+    }
+    final ba = bigrams(na);
+    final bb = bigrams(nb);
+    final intersection = ba.intersection(bb).length;
+    return (2.0 * intersection) / (ba.length + bb.length);
+  }
+
+  /// Finds the best-matching supplier from [suppliers] for [name].
+  /// Returns the supplier ID if similarity >= [threshold], otherwise null.
+  String? _fuzzyMatchSupplier(
+    String name,
+    List<dynamic> suppliers, {
+    double threshold = 0.80,
+  }) {
+    String? bestId;
+    double bestScore = 0.0;
+    for (final s in suppliers) {
+      final score = _stringSimilarity(name, s.name as String);
+      if (score > bestScore) {
+        bestScore = score;
+        bestId = s.id as String;
+      }
+    }
+    if (bestScore >= threshold) {
+      return bestId;
+    }
+    return null;
+  }
+
   Future<void> _scanDriveFolder() async {
     final enabled = await _driveService.isEnabled();
     final configured = await _driveService.isConfigured();
@@ -690,8 +894,12 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     setState(() => _driveScanRunning = true);
 
     try {
+      debugPrint('DRIVE SCAN: Starting scan...');
       final files = await _driveService.scanForNewInvoices();
+      debugPrint('DRIVE SCAN: Found ${files.length} new files');
       if (files.isEmpty) {
+        debugPrint('DRIVE SCAN: No new files found — '
+            'either all processed or folder empty');
         setState(() => _driveScanRunning = false);
         return;
       }
@@ -701,40 +909,104 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
 
       for (final file in files) {
         try {
-          // Extract invoice data using Gemini
-          final extracted = await _aiService.extractInvoiceData(
+          debugPrint('DRIVE SCAN: Processing ${file.fileName}...');
+          // Extract invoice data using Gemini (may return multiple invoices)
+          final extractedList = await _aiService.extractInvoiceData(
             imageBytes: file.bytes,
             mimeType: file.mimeType,
           );
 
-          if (extracted.containsKey('error')) {
+          // Filter out error entries
+          final validInvoices = extractedList
+              .where((e) => !e.containsKey('error'))
+              .toList();
+
+          if (validInvoices.isEmpty) {
+            final err = extractedList.isNotEmpty
+                ? extractedList.first['error']
+                : 'no data';
+            debugPrint('DRIVE SCAN: Extraction failed for '
+                '${file.fileName}: $err');
             failed++;
             continue;
           }
 
-          // Try to match supplier by name
-          String? supplierId;
-          final supplierName =
-              extracted['supplier_name']?.toString().trim();
-          if (supplierName != null && supplierName.isNotEmpty) {
-            final suppliers =
-                await _supplierRepo.getSuppliers(activeOnly: true);
-            final matched = suppliers
-                .where((s) => s.name
-                    .toLowerCase()
-                    .contains(supplierName.toLowerCase()))
-                .toList();
-            if (matched.isNotEmpty) supplierId = matched.first.id;
+          debugPrint('DRIVE SCAN: Extracted ${validInvoices.length} '
+              'invoice(s) from ${file.fileName}');
+
+          final userId = AuthService().getCurrentStaffId();
+          // Load suppliers once per file (shared across all invoices in PDF)
+          final suppliers =
+              await _supplierRepo.getSuppliers(activeOnly: true);
+
+          for (final extracted in validInvoices) {
+            // Try to match supplier by name (exact → fuzzy → auto-create)
+            String? supplierId;
+            final supplierName =
+                extracted['supplier_name']?.toString().trim();
+            if (supplierName != null && supplierName.isNotEmpty) {
+              // 1. Exact / contains match
+              final exactMatched = suppliers
+                  .where((s) => s.name
+                      .toLowerCase()
+                      .contains(supplierName.toLowerCase()))
+                  .toList();
+
+              if (exactMatched.isNotEmpty) {
+                supplierId = exactMatched.first.id;
+                debugPrint('DRIVE SCAN: Exact match for supplier '
+                    '"$supplierName" → ${exactMatched.first.name}');
+              } else {
+                // 2. Fuzzy match (≥80% bigram similarity)
+                final fuzzyId =
+                    _fuzzyMatchSupplier(supplierName, suppliers);
+                if (fuzzyId != null) {
+                  supplierId = fuzzyId;
+                  final fuzzyName =
+                      suppliers.firstWhere((s) => s.id == fuzzyId).name;
+                  debugPrint('DRIVE SCAN: Fuzzy match for supplier '
+                      '"$supplierName" → "$fuzzyName"');
+                } else {
+                  // 3. No match — auto-create
+                  try {
+                    final newSupplier = await Supabase.instance.client
+                        .from('suppliers')
+                        .insert({
+                          'name': supplierName,
+                          'contact_name': null,
+                          'phone': null,
+                          'email': null,
+                          'account_number': null,
+                          'notes':
+                              'Auto-created from supplier invoice scan',
+                          'is_active': true,
+                        })
+                        .select('id')
+                        .single();
+                    supplierId = newSupplier['id']?.toString();
+                    debugPrint('DRIVE SCAN: Auto-created supplier: '
+                        '"$supplierName" ($supplierId)');
+                  } catch (e) {
+                    debugPrint('DRIVE SCAN: Failed to auto-create '
+                        'supplier "$supplierName": $e');
+                  }
+                }
+              }
+            }
+
+            await _repo.createFromOcrResult(
+              ocrResult: extracted,
+              createdBy: userId,
+              supplierId: supplierId,
+            );
+            debugPrint('DRIVE SCAN: Created invoice — '
+                'supplier: $supplierName, '
+                'number: ${extracted['invoice_number']}');
           }
 
-          // Create pending supplier invoice
-          final userId = AuthService().getCurrentStaffId();
-          await _repo.createFromOcrResult(
-            ocrResult: extracted,
-            createdBy: userId,
-            supplierId: supplierId,
-          );
-          created++;
+          // Mark file processed only after all invoices created
+          await _driveService.markFileAsProcessed(file.fileId);
+          created += validInvoices.length;
         } catch (e) {
           debugPrint('Drive invoice create error for '
               '${file.fileName}: $e');
@@ -813,6 +1085,21 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                 icon: const Icon(Icons.add, size: 18),
                 label: const Text('Add Manually'),
               ),
+              IconButton(
+    onPressed: _driveScanRunning ? null : () async {
+      await _driveService.clearProcessedIds();
+      // Small delay to ensure storage is cleared before scan starts
+      await Future.delayed(const Duration(milliseconds: 200));
+      await _scanDriveFolder();
+    },
+                icon: const Icon(Icons.refresh, size: 18),
+                tooltip: 'Force re-scan Drive folder',
+              ),
+              IconButton(
+                onPressed: _driveScanRunning ? null : _scanDriveFolder,
+                icon: const Icon(Icons.cloud_sync_outlined, size: 20),
+                tooltip: 'Scan Drive folder now',
+              ),
               if (_driveScanRunning)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
@@ -881,7 +1168,12 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                                 SizedBox(width: 120, child: Text(inv.status.displayLabel, style: TextStyle(color: inv.canApprove ? AppColors.warning : (inv.canReceive ? AppColors.info : AppColors.textSecondary)))),
                                 if (inv.canApprove)
                                   TextButton(
-                                    onPressed: () => _approve(inv),
+                                    onPressed: () {
+                                      final m = inv.toJson();
+                                      m['supplier_name'] = inv.supplierName;
+                                      m['suppliers'] = inv.supplierName != null ? {'name': inv.supplierName} : null;
+                                      _openMappingScreen(m);
+                                    },
                                     child: const Text('Approve'),
                                   ),
                                 if (inv.canReceive)

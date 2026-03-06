@@ -6,6 +6,8 @@ class ReportData {
   final Map<String, dynamic>? summary;
   final String title;
   final String? subtitle;
+  /// Column keys whose values are monetary amounts (formatted as R 1,234.56).
+  final Set<String> monetaryColumns;
 
   const ReportData({
     required this.data,
@@ -14,5 +16,6 @@ class ReportData {
     this.summary,
     required this.title,
     this.subtitle,
+    this.monetaryColumns = const {},
   });
 }
