@@ -1,5 +1,53 @@
-﻿Analyzing inventory_repository.dart...                          
+﻿Analyzing product_list_screen.dart...                           
 
-warning - Unnecessary cast - admin_app\lib\features\inventory\services\inventory_repository.dart:53:45 - unnecessary_cast
-warning - Unnecessary cast - admin_app\lib\features\inventory\services\inventory_repository.dart:203:45 - unnecessary_cast
+warning - Unused import: 'package:supabase_flutter/supabase_flutter.dart' - admin_app\lib\features\inventory\screens\product_list_screen.dart:2:8 - unused_import
+warning - The declaration '_sortLabel' isn't referenced - admin_app\lib\features\inventory\screens\product_list_screen.dart:163:10 - unused_element
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:704:54 - deprecated_member_use
+   info - Use 'const' with the constructor to improve performance - admin_app\lib\features\inventory\screens\product_list_screen.dart:795:43 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - admin_app\lib\features\inventory\screens\product_list_screen.dart:798:43 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - admin_app\lib\features\inventory\screens\product_list_screen.dart:801:43 - prefer_const_constructors
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:915:65 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:916:63 - deprecated_member_use
+warning - The value of the field '_shelfLifeFreshController' isn't used - admin_app\lib\features\inventory\screens\product_list_screen.dart:1045:9 - unused_field
+warning - The value of the field '_shelfLifeFrozenController' isn't used - admin_app\lib\features\inventory\screens\product_list_screen.dart:1046:9 - unused_field
+   info - Use 'const' with the constructor to improve performance - admin_app\lib\features\inventory\screens\product_list_screen.dart:1073:18 - prefer_const_constructors
+   info - Use 'const' with the constructor to improve performance - admin_app\lib\features\inventory\screens\product_list_screen.dart:1073:64 - prefer_const_constructors
+  error - The name '_shelfLifeFreshController' is already defined - admin_app\lib\features\inventory\screens\product_list_screen.dart:1102:9 - duplicate_definition
+  error - The name '_shelfLifeFrozenController' is already defined - admin_app\lib\features\inventory\screens\product_list_screen.dart:1103:9 - duplicate_definition
+   info - The private field _dryerTypes could be 'final' - admin_app\lib\features\inventory\screens\product_list_screen.dart:1128:30 - prefer_final_fields
+warning - The value of the field '_dryerTypes' isn't used - admin_app\lib\features\inventory\screens\product_list_screen.dart:1128:30 - unused_field
+   info - Statements in an if should be enclosed in a block - admin_app\lib\features\inventory\screens\product_list_screen.dart:1231:20 - curly_braces_in_flow_control_structures
+warning - Two keys in a map literal shouldn't be equal - admin_app\lib\features\inventory\screens\product_list_screen.dart:1417:7 - equal_keys_in_map
+warning - Two keys in a map literal shouldn't be equal - admin_app\lib\features\inventory\screens\product_list_screen.dart:1418:7 - equal_keys_in_map
+   info - Don't use 'BuildContext's across async gaps - admin_app\lib\features\inventory\screens\product_list_screen.dart:1535:28 - use_build_context_synchronously
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:1784:23 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:1829:23 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:1865:23 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:1901:23 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:1943:13 - deprecated_member_use
+warning - The value of the local variable 'supplierId' isn't used - admin_app\lib\features\inventory\screens\product_list_screen.dart:2028:11 - unused_local_variable
+   info - Don't use 'BuildContext's across async gaps - admin_app\lib\features\inventory\screens\product_list_screen.dart:2054:30 - use_build_context_synchronously
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2193:23 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2312:27 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2350:27 - deprecated_member_use
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeThumbColor instead. This feature was deprecated after v3.31.0-2.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2380:31 - deprecated_member_use
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeThumbColor instead. This feature was deprecated after v3.31.0-2.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2410:31 - deprecated_member_use
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeThumbColor instead. This feature was deprecated after v3.31.0-2.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2579:17 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2617:17 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:2701:37 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:2704:52 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2803:17 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2842:17 - deprecated_member_use
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeThumbColor instead. This feature was deprecated after v3.31.0-2.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2895:19 - deprecated_member_use
+   info - 'activeColor' is deprecated and shouldn't be used. Use activeThumbColor instead. This feature was deprecated after v3.31.0-2.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:2906:19 - deprecated_member_use
+warning - The value of the local variable 'labelFmt' isn't used - admin_app\lib\features\inventory\screens\product_list_screen.dart:3084:11 - unused_local_variable
+   info - Use 'const' for final variables initialized to a constant value - admin_app\lib\features\inventory\screens\product_list_screen.dart:3088:5 - prefer_const_declarations
+   info - Statements in an if should be enclosed in a block - admin_app\lib\features\inventory\screens\product_list_screen.dart:3228:28 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - admin_app\lib\features\inventory\screens\product_list_screen.dart:3229:26 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - admin_app\lib\features\inventory\screens\product_list_screen.dart:3252:28 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - admin_app\lib\features\inventory\screens\product_list_screen.dart:3253:26 - curly_braces_in_flow_control_structures
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:3411:19 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:3425:19 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - admin_app\lib\features\inventory\screens\product_list_screen.dart:3581:51 - deprecated_member_use
+   info - 'value' is deprecated and shouldn't be used. Use initialValue instead. This will set the initial value for the form field. This feature was deprecated after v3.33.0-1.0.pre - admin_app\lib\features\inventory\screens\product_list_screen.dart:3717:17 - deprecated_member_use
 

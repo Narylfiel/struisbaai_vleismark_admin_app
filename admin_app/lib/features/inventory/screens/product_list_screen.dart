@@ -1041,6 +1041,18 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   String _productType = 'raw';
   bool _scaleItem = false;
   bool _ishidaSync = false;
+  // Tab G — Scale/Label fields
+  final _scaleShelfLifeController = TextEditingController();
+  final _bestByController = TextEditingController();
+  final _labelFormatController = TextEditingController();
+  final _barFlagController = TextEditingController();
+  final _departmentNoController = TextEditingController();
+  final _desLi1Controller = TextEditingController();
+  final _desLi2Controller = TextEditingController();
+  final _desLi3Controller = TextEditingController();
+  final _desLi4Controller = TextEditingController();
+  bool _weighed = true;
+  bool _hasIngredient = false;
   bool _isActive = true;
   List<String> _supplierIds = [];
   List<Map<String, dynamic>> _allSuppliers = [];
@@ -1134,7 +1146,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 10, vsync: this);
     if (widget.product != null) {
       _populateForm(widget.product!);
       _loadProductSuppliers();
@@ -1248,6 +1260,20 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _productType = p['product_type'] ?? 'raw';
     _scaleItem = p['scale_item'] ?? false;
     _ishidaSync = p['ishida_sync'] ?? false;
+    _shelfLifeFreshController.text = p['shelf_life_fresh']?.toString() ?? '';
+    _shelfLifeFrozenController.text = p['shelf_life_frozen']?.toString() ?? '';
+    _scaleShelfLifeController.text = p['scale_shelf_life']?.toString() ?? '';
+    _bestByController.text = p['best_by']?.toString() ?? '';
+    _labelFormatController.text = p['label_format']?.toString() ?? '';
+    _barFlagController.text = p['bar_flag']?.toString() ?? '';
+    _departmentNoController.text = p['department_no']?.toString() ?? '1';
+    _desLi1Controller.text = p['des_li1']?.toString() ?? '';
+    _desLi2Controller.text = p['des_li2']?.toString() ?? '';
+    _desLi3Controller.text = p['des_li3']?.toString() ?? '';
+    _desLi4Controller.text = p['des_li4']?.toString() ?? '';
+    _weighed = p['weighed'] != false;
+    _hasIngredient = p['has_ingredient'] == true;
+
     _isActive = p['is_active'] ?? true;
     _sellPriceController.text = p['sell_price']?.toString() ?? '';
     _costPriceController.text = p['cost_price']?.toString() ?? '';
@@ -1361,6 +1387,19 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'product_type': _productType,
       'scale_item': _scaleItem,
       'ishida_sync': _ishidaSync,
+      'shelf_life_fresh': int.tryParse(_shelfLifeFreshController.text),
+      'shelf_life_frozen': int.tryParse(_shelfLifeFrozenController.text),
+      'scale_shelf_life': int.tryParse(_scaleShelfLifeController.text),
+      'best_by': int.tryParse(_bestByController.text),
+      'label_format': _labelFormatController.text.trim().isEmpty ? null : _labelFormatController.text.trim(),
+      'bar_flag': _barFlagController.text.trim().isEmpty ? null : _barFlagController.text.trim(),
+      'department_no': _departmentNoController.text.trim().isEmpty ? '1' : _departmentNoController.text.trim(),
+      'des_li1': _desLi1Controller.text.trim().isEmpty ? null : _desLi1Controller.text.trim(),
+      'des_li2': _desLi2Controller.text.trim().isEmpty ? null : _desLi2Controller.text.trim(),
+      'des_li3': _desLi3Controller.text.trim().isEmpty ? null : _desLi3Controller.text.trim(),
+      'des_li4': _desLi4Controller.text.trim().isEmpty ? null : _desLi4Controller.text.trim(),
+      'weighed': _weighed,
+      'has_ingredient': _hasIngredient,
       'is_active': _isActive,
       'sell_price': double.tryParse(_sellPriceController.text),
       'cost_price': _recipeId != null && _recipeCostPerKg != null
@@ -1509,6 +1548,15 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _scaleLabelController.dispose();
     _barcodeController.dispose();
     _lookupController.dispose();
+    _scaleShelfLifeController.dispose();
+    _bestByController.dispose();
+    _labelFormatController.dispose();
+    _barFlagController.dispose();
+    _departmentNoController.dispose();
+    _desLi1Controller.dispose();
+    _desLi2Controller.dispose();
+    _desLi3Controller.dispose();
+    _desLi4Controller.dispose();
     _sellPriceController.dispose();
     _costPriceController.dispose();
     _targetMarginController.dispose();
@@ -1583,6 +1631,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 Tab(text: 'D — Barcode/Scale'),
                 Tab(text: 'E — Modifiers'),
                 Tab(text: 'F — Production'),
+                Tab(text: 'G — Scale/Label'),
                 Tab(text: 'G — Channels'),
                 Tab(text: 'H — Media/Notes'),
                 Tab(text: 'I — Activity'),
@@ -1603,6 +1652,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     _buildTabD(),
                     _buildTabE(),
                     _buildTabF(),
+                    _buildTabG(),
                     _buildTabChannels(),
                     _buildTabH(),
                     _buildTabI(),
@@ -1863,27 +1913,48 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           const Text('Supplier Link',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
           const SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _allSuppliers.map((s) {
-              final id = s['id'] as String?;
-              final name = s['name'] as String? ?? '';
-              final selected = id != null && _supplierIds.contains(id);
-              return FilterChip(
-                label: Text(name),
-                selected: selected,
-                onSelected: (v) {
-                  setState(() {
-                    if (v && id != null) {
-                      _supplierIds.add(id);
-                    } else if (id != null) {
-                      _supplierIds.remove(id);
-                    }
-                  });
-                },
-              );
-            }).toList(),
+          // Selected suppliers as removable chips
+          if (_supplierIds.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: _supplierIds.map((id) {
+                final supplier = _allSuppliers.firstWhere(
+                  (s) => s['id'] == id,
+                  orElse: () => {'id': id, 'name': id},
+                );
+                return Chip(
+                  label: Text(supplier['name'] as String? ?? id,
+                      style: const TextStyle(fontSize: 12)),
+                  deleteIcon: const Icon(Icons.close, size: 14),
+                  onDeleted: () => setState(() => _supplierIds.remove(id)),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                  side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                );
+              }).toList(),
+            ),
+          const SizedBox(height: 8),
+          // Dropdown to add a supplier
+          DropdownButtonFormField<String>(
+            value: null,
+            decoration: const InputDecoration(
+              hintText: 'Add supplier...',
+              border: OutlineInputBorder(),
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            ),
+            items: _allSuppliers
+                .where((s) => !_supplierIds.contains(s['id'] as String?))
+                .map((s) => DropdownMenuItem<String>(
+                      value: s['id'] as String?,
+                      child: Text(s['name'] as String? ?? '—'),
+                    ))
+                .toList(),
+            onChanged: (v) {
+              if (v != null && !_supplierIds.contains(v)) {
+                setState(() => _supplierIds.add(v));
+              }
+            },
           ),
           // H6: Supplier product mapping (product_suppliers) — only when editing
           const SizedBox(height: 20),
@@ -2798,6 +2869,223 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
         ],
       ),
     );
+  }
+
+  Widget _buildTabG() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // ── Scale Behaviour ──────────────────────────────
+          _sectionHeader('SCALE BEHAVIOUR'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: SwitchListTile(
+                  title: const Text('Weighed Item'),
+                  subtitle: const Text('Scale weighs this item'),
+                  value: _weighed,
+                  onChanged: (v) => setState(() => _weighed = v),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: SwitchListTile(
+                  title: const Text('Has Ingredient List'),
+                  subtitle: const Text('Ingredient label required'),
+                  value: _hasIngredient,
+                  onChanged: (v) => setState(() => _hasIngredient = v),
+                  activeColor: AppColors.primary,
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Shelf Life ───────────────────────────────────
+          _sectionHeader('SHELF LIFE'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Shelf Life Fresh (days)',
+                  controller: _shelfLifeFreshController,
+                  hint: '5',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Shelf Life Frozen (days)',
+                  controller: _shelfLifeFrozenController,
+                  hint: '90',
+                  keyboardType: TextInputType.number,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Scale Shelf Life (days)',
+                  controller: _scaleShelfLifeController,
+                  hint: '15',
+                  keyboardType: TextInputType.number,
+                  note: 'Printed on scale label',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Best By (days)',
+                  controller: _bestByController,
+                  hint: '0',
+                  keyboardType: TextInputType.number,
+                  note: 'Scale best-by offset',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Label Format ─────────────────────────────────
+          _sectionHeader('LABEL FORMAT'),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Label Format',
+                  controller: _labelFormatController,
+                  hint: '005',
+                  note: 'e.g. 005, 010, 015, 020',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Bar Flag',
+                  controller: _barFlagController,
+                  hint: '21',
+                  note: 'Barcode flag / dept code',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Department No',
+                  controller: _departmentNoController,
+                  hint: '1',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // ── Description Lines ────────────────────────────
+          _sectionHeader('SCALE DESCRIPTION LINES'),
+          const SizedBox(height: 8),
+          const Text(
+            'Up to 4 lines printed on the scale label. Line 1 is the product name by default.',
+            style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Description Line 1',
+                  controller: _desLi1Controller,
+                  hint: 'e.g. T-Bone Steak',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Description Line 2',
+                  controller: _desLi2Controller,
+                  hint: 'e.g. Beef',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _field(
+                  label: 'Description Line 3',
+                  controller: _desLi3Controller,
+                  hint: '',
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _field(
+                  label: 'Description Line 4',
+                  controller: _desLi4Controller,
+                  hint: '',
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+
+          // ── PLU Export Preview ───────────────────────────
+          _sectionHeader('PLU EXPORT PREVIEW'),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.black87,
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text(
+              _buildPluPreview(),
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                color: Colors.greenAccent,
+                fontSize: 11,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionHeader(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        color: AppColors.textSecondary,
+        fontSize: 11,
+        fontWeight: FontWeight.bold,
+        letterSpacing: 1,
+      ),
+    );
+  }
+
+  String _buildPluPreview() {
+    final plu = _pluController.text.padLeft(8, '0');
+    final dept = _departmentNoController.text.isEmpty ? '1' : _departmentNoController.text;
+    final barFlag = _barFlagController.text.isEmpty ? '21' : _barFlagController.text;
+    final eanNo = _pluController.text.padLeft(5, '0');
+    final price = (double.tryParse(_sellPriceController.text) ?? 0.0).toStringAsFixed(2);
+    final labelFmt = _labelFormatController.text.isEmpty ? '005' : _labelFormatController.text;
+    final shelfLife = _scaleShelfLifeController.text.isEmpty ? '000' : _scaleShelfLifeController.text.padLeft(3, '0');
+    final bestBy = _bestByController.text.isEmpty ? '0000' : _bestByController.text.padLeft(4, '0');
+    final weighed = _weighed ? '0' : '1';
+    final cdv = '0';
+    final des1 = _desLi1Controller.text.isEmpty ? (_scaleLabelController.text.isEmpty ? _nameController.text : _scaleLabelController.text) : _desLi1Controller.text;
+    final des2 = _desLi2Controller.text;
+    final hasIng = _hasIngredient ? 'TRUE' : 'FALSE';
+    return '$plu,$dept,DEPT1,01,$barFlag,$eanNo,$price,,$shelfLife,$bestBy,$weighed,$cdv,7,$des1,,$des2,,,,,$hasIng,,';
   }
 
   Widget _buildTabChannels() {
