@@ -42,6 +42,8 @@ dependencies:
 
   # Barcode scanning (stock take — Admin only)
   mobile_scanner: ^5.0.0
+  # Barcode display (loyalty membership cards)
+  barcode_widget: ^2.0.4
 
   # Security
   crypto: ^3.0.3

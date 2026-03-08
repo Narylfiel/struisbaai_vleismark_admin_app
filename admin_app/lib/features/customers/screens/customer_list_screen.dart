@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
-import 'package:admin_app/core/db/cached_customer.dart';
-import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/features/customers/services/customer_repository.dart';
 import 'package:admin_app/features/customers/screens/announcement_screen.dart';
+import 'package:admin_app/features/customers/screens/customer_detail_screen.dart';
 import 'package:admin_app/features/customers/screens/recipe_library_screen.dart';
 
 class CustomerListScreen extends StatefulWidget {
@@ -92,42 +92,30 @@ class _CustomersTabState extends State<_CustomersTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     final isConnected = ConnectivityService().isConnected;
-    try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isCustomerCacheStale();
-        if (stale) {
-          final res = await _repo.getCustomers(searchQuery: _searchQuery);
-          final toSave = res.map((r) {
-            final m = Map<String, dynamic>.from(r);
-            m['name'] = m['full_name'] ?? m['customer_name'] ?? m['name'] ?? '';
-            return CachedCustomer.fromSupabase(m);
-          }).toList();
-          await IsarService.saveCustomers(toSave);
-          if (mounted) setState(() => _customers = res);
-        } else {
-          final cached = await IsarService.getAllCustomers();
-          _customers = cached.map((c) => c.toMap()).toList();
-          if (_searchQuery.isNotEmpty) {
-            final q = _searchQuery.toLowerCase();
-            _customers = _customers.where((m) => (m['name']?.toString().toLowerCase().contains(q) ?? false)).toList();
-          }
-          if (mounted) setState(() {});
-        }
-      } else {
+    if (!isConnected) {
+      setState(() {
         _isOffline = true;
-        final cached = await IsarService.getAllCustomers();
-        _customers = cached.map((c) => c.toMap()).toList();
-        if (_searchQuery.isNotEmpty) {
-          final q = _searchQuery.toLowerCase();
-          _customers = _customers.where((m) => (m['name']?.toString().toLowerCase().contains(q) ?? false)).toList();
-        }
-        if (mounted) setState(() {});
-      }
-    } catch (_) {
-      if (mounted) setState(() => _customers = []);
+        _isLoading = false;
+        _customers = [];
+      });
+      return;
     }
-    setState(() => _isLoading = false);
+    try {
+      _isOffline = false;
+      var query = Supabase.instance.client
+          .from('loyalty_customers')
+          .select();
+      if (_searchQuery.isNotEmpty) {
+        query = query.ilike('full_name', '%$_searchQuery%');
+      }
+      final res = await query.order('full_name').limit(200);
+      if (mounted) setState(() => _customers = List<Map<String, dynamic>>.from(res));
+    } catch (e) {
+      debugPrint('[CUSTOMERS] Load failed: $e');
+      if (mounted) setState(() => _customers = []);
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
   }
 
   Future<void> _toggleStatus(String id, bool currentState) async {
@@ -220,22 +208,32 @@ class _CustomersTabState extends State<_CustomersTab> {
                         final c = _customers[i];
                         final id = c['id']?.toString() ?? '';
                         final tier = c['loyalty_tier'] ?? 'Member';
-                        final isActive = c['is_active'] == true;
+                        final isActive = c['active'] == true;
                         
                         Color tColor = AppColors.textSecondary;
                         if (tier == 'VIP') tColor = AppColors.accent;
                         if (tier == 'Elite') tColor = AppColors.primary;
 
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Row(children: [
+                        return InkWell(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => CustomerDetailScreen(customer: c),
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(children: [
                             Expanded(
                               flex: 2,
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text(c['full_name'] ?? '—', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                  Text(c['cell_phone'] ?? '—', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                                  Text(
+                                    c['full_name'] ?? c['name'] ?? '—',
+                                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text(
+                                    c['phone'] ?? c['cell_phone'] ?? c['whatsapp'] ?? '—',
+                                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                 ],
                               )
                             ),
@@ -247,7 +245,7 @@ class _CustomersTabState extends State<_CustomersTab> {
                               ])
                             ),
                             const SizedBox(width: 16),
-                            SizedBox(width: 100, child: Text('${c['points_balance'] ?? '0'} pts')),
+                            SizedBox(width: 100, child: Text('${c['points_balance'] ?? 0} pts')),
                             const SizedBox(width: 16),
                             SizedBox(width: 100, child: Text('R ${(c['average_monthly_spend'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                             const SizedBox(width: 16),
@@ -268,6 +266,7 @@ class _CustomersTabState extends State<_CustomersTab> {
                               )
                             ),
                           ]),
+                          ),
                         );
                       },
                     ),

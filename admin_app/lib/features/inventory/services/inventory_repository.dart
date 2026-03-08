@@ -50,7 +50,7 @@ class InventoryRepository {
         .insert(row)
         .select()
         .single();
-    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
+    final movement = StockMovement.fromJson(response);
 
     // Get product name for audit log
     final item = await _client
@@ -106,7 +106,7 @@ class InventoryRepository {
       final pct = (metadata?['markdown_pct'] as num?)?.toDouble() ?? 100.0;
       final moveQty = quantity * (pct / 100).clamp(0.0, 1.0);
       await _client.from('inventory_items').update({
-        'stock_on_hand_fresh': (fresh - moveQty).clamp(0.0, double.infinity),
+        'stock_on_hand_fresh': fresh - moveQty,
         'stock_on_hand_frozen': frozen + moveQty,
       }).eq('id', itemId);
       return;
@@ -117,13 +117,12 @@ class InventoryRepository {
       if (hasCurrentStock) {
         final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
         await _client.from('inventory_items').update({
-          'current_stock': (cur - quantity).clamp(0.0, double.infinity),
+          'current_stock': cur - quantity,
         }).eq('id', itemId);
       } else if (hasFreshFrozen) {
         final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-        final deduct = quantity > fresh ? fresh : quantity;
         await _client.from('inventory_items').update({
-          'stock_on_hand_fresh': (fresh - deduct).clamp(0.0, double.infinity),
+          'stock_on_hand_fresh': fresh - quantity,
         }).eq('id', itemId);
       }
     } else if (movementType.increasesStock) {
@@ -201,7 +200,7 @@ class InventoryRepository {
     // updates automatically on INSERT. Manual update here would cause a
     // double-write race condition.
 
-    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
+    final movement = StockMovement.fromJson(response);
     
     // Audit log - stock adjustment
     await AuditService.log(

@@ -1,0 +1,5 @@
+﻿Analyzing inventory_repository.dart...                          
+
+warning - Unnecessary cast - admin_app\lib\features\inventory\services\inventory_repository.dart:53:45 - unnecessary_cast
+warning - Unnecessary cast - admin_app\lib\features\inventory\services\inventory_repository.dart:203:45 - unnecessary_cast
+
