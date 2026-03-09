@@ -1935,25 +1935,65 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             ),
           const SizedBox(height: 8),
           // Dropdown to add a supplier
-          DropdownButtonFormField<String>(
-            value: null,
-            decoration: const InputDecoration(
-              hintText: 'Add supplier...',
-              border: OutlineInputBorder(),
-              isDense: true,
-              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            ),
-            items: _allSuppliers
-                .where((s) => !_supplierIds.contains(s['id'] as String?))
-                .map((s) => DropdownMenuItem<String>(
-                      value: s['id'] as String?,
-                      child: Text(s['name'] as String? ?? '—'),
-                    ))
-                .toList(),
-            onChanged: (v) {
-              if (v != null && !_supplierIds.contains(v)) {
-                setState(() => _supplierIds.add(v));
+          Autocomplete<Map<String, dynamic>>(
+            displayStringForOption: (s) => s['name'] as String? ?? '',
+            optionsBuilder: (TextEditingValue textEditingValue) {
+              if (textEditingValue.text.isEmpty) {
+                return _allSuppliers
+                    .where((s) => !_supplierIds.contains(s['id'] as String?));
               }
+              final query = textEditingValue.text.toLowerCase();
+              return _allSuppliers.where((s) {
+                final name = (s['name'] as String? ?? '').toLowerCase();
+                return name.contains(query) &&
+                    !_supplierIds.contains(s['id'] as String?);
+              });
+            },
+            onSelected: (s) {
+              final id = s['id'] as String?;
+              if (id != null && !_supplierIds.contains(id)) {
+                setState(() => _supplierIds.add(id));
+              }
+            },
+            fieldViewBuilder: (context, controller, focusNode, onSubmit) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                decoration: const InputDecoration(
+                  hintText: 'Search supplier...',
+                  prefixIcon: Icon(Icons.search, size: 18),
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                  contentPadding: EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 10),
+                ),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) {
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 4,
+                  borderRadius: BorderRadius.circular(8),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                        maxHeight: 200, maxWidth: 400),
+                    child: ListView.builder(
+                      padding: EdgeInsets.zero,
+                      shrinkWrap: true,
+                      itemCount: options.length,
+                      itemBuilder: (context, index) {
+                        final s = options.elementAt(index);
+                        return ListTile(
+                          dense: true,
+                          title: Text(s['name'] as String? ?? ''),
+                          onTap: () => onSelected(s),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              );
             },
           ),
           // H6: Supplier product mapping (product_suppliers) — only when editing

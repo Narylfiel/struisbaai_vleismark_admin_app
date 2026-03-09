@@ -424,6 +424,20 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               keyboardType: TextInputType.number,
               readOnly: widget.viewOnly,
             ),
+            const SizedBox(height: 16),
+            const Text(
+              'Restrict to specific products (optional)',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            ProductSearchPicker(
+              label: 'Trigger products (leave empty = whole basket)',
+              selectedProducts: _triggerProducts,
+              onAdd: (p) => setState(() => _triggerProducts = [..._triggerProducts, p]),
+              onRemove: (id) => setState(() => _triggerProducts =
+                  _triggerProducts.where((x) => x['id']?.toString() != id).toList()),
+              readOnly: widget.viewOnly,
+            ),
           ],
         ),
       );
@@ -476,6 +490,20 @@ class _PromotionFormScreenState extends State<PromotionFormScreen> {
               onPressed: widget.viewOnly ? null : () => setState(() { _startTimeController.text = '14:00'; _endTimeController.text = '17:00'; _daysOfWeek = ['mon','tue','wed','thu','fri']; }),
               icon: const Icon(Icons.schedule),
               label: const Text('Happy hour (14:00–17:00 Mon–Fri)'),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Restrict to specific products (optional)',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            ProductSearchPicker(
+              label: 'Trigger products (leave empty = whole basket)',
+              selectedProducts: _triggerProducts,
+              onAdd: (p) => setState(() => _triggerProducts = [..._triggerProducts, p]),
+              onRemove: (id) => setState(() => _triggerProducts =
+                  _triggerProducts.where((x) => x['id']?.toString() != id).toList()),
+              readOnly: widget.viewOnly,
             ),
           ],
         ),
