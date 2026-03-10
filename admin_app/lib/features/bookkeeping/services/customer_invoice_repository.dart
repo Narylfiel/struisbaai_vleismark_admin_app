@@ -28,24 +28,29 @@ class CustomerInvoiceRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return CustomerInvoice.fromJson(row as Map<String, dynamic>);
+    return CustomerInvoice.fromJson(row);
   }
 
   Future<String> nextInvoiceNumber() async {
-    final prefix =
-        'CINV-${DateTime.now().toIso8601String().substring(0, 10).replaceAll('-', '')}-';
-    final list = await _client
-        .from('customer_invoices')
-        .select('invoice_number')
-        .like('invoice_number', '$prefix%')
-        .order('invoice_number', ascending: false)
-        .limit(1);
-    if (list.isEmpty) return '${prefix}001';
-    final last = list.first['invoice_number'] as String? ?? '';
-    final numPart = last.length > prefix.length
-        ? int.tryParse(last.substring(prefix.length)) ?? 0
-        : 0;
-    return '$prefix${(numPart + 1).toString().padLeft(3, '0')}';
+    try {
+      final result = await _client.rpc('next_customer_invoice_number');
+      return result as String;
+    } catch (e) {
+      // Fallback if RPC fails
+      const prefix = 'SVM-';
+      final list = await _client
+          .from('customer_invoices')
+          .select('invoice_number')
+          .like('invoice_number', '$prefix%')
+          .order('invoice_number', ascending: false)
+          .limit(1);
+      if (list.isEmpty) return '${prefix}0001';
+      final last = list.first['invoice_number'] as String? ?? '';
+      final numPart = last.length > prefix.length
+          ? int.tryParse(last.substring(prefix.length)) ?? 0
+          : 0;
+      return '$prefix${(numPart + 1).toString().padLeft(4, '0')}';
+    }
   }
 
   Future<CustomerInvoice> create(CustomerInvoice invoice) async {
@@ -59,7 +64,7 @@ class CustomerInvoiceRepository {
         .insert(data)
         .select()
         .single();
-    return CustomerInvoice.fromJson(row as Map<String, dynamic>);
+    return CustomerInvoice.fromJson(row);
   }
 
   Future<CustomerInvoice> update(CustomerInvoice invoice) async {
@@ -71,7 +76,7 @@ class CustomerInvoiceRepository {
         .eq('id', invoice.id)
         .select()
         .single();
-    return CustomerInvoice.fromJson(row as Map<String, dynamic>);
+    return CustomerInvoice.fromJson(row);
   }
 
   Future<void> delete(String id) async {

@@ -243,10 +243,52 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
         await _repo.create(created);
       }
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success),
-        );
-        Navigator.pop(context, true);
+        // Auto-send email after creating new invoice if account has email
+        if (widget.invoice == null && _selectedAccountId != null) {
+          final account = _accounts.firstWhere(
+            (a) => a['id'] == _selectedAccountId,
+            orElse: () => {},
+          );
+          final email = account['email']?.toString() ?? '';
+          if (email.isNotEmpty) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Saved — sending email...'), 
+              backgroundColor: AppColors.success),
+            );
+            // Reload invoice to get its id, then send
+            final list = await _client
+                .from('customer_invoices')
+                .select('*')
+                .eq('invoice_number', _invoiceNumberController.text.trim())
+                .limit(1);
+            if (list.isNotEmpty && mounted) {
+              final saved = CustomerInvoice.fromJson(
+                list.first as Map<String, dynamic>);
+              final invoiceMap = saved.toJson()
+                ..['account_name'] = account['name'];
+              final pdfBytes = await _pdfService.generateCustomerInvoice(invoiceMap);
+              await _emailService.sendInvoiceEmail(
+                invoiceId: saved.id,
+                invoiceNumber: saved.invoiceNumber,
+                recipientEmail: email,
+                recipientName: account['name']?.toString() ?? '',
+                pdfBytes: pdfBytes,
+              );
+            }
+            if (mounted) Navigator.pop(context, true);
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Saved — no email on account'), 
+              backgroundColor: AppColors.warning),
+            );
+            Navigator.pop(context, true);
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success),
+          );
+          Navigator.pop(context, true);
+        }
       }
     } catch (e) {
       if (mounted) {

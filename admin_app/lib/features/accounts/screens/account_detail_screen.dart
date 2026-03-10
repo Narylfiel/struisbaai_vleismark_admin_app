@@ -5,6 +5,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/bookkeeping/screens/invoice_form_screen.dart';
+import '../../bookkeeping/screens/customer_invoice_form_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -444,7 +445,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
     setState(() => _loading = true);
     try {
       final data = await _client
-          .from('invoices')
+          .from('customer_invoices')
           .select('*')
           .eq('account_id', widget.accountId)
           .order('invoice_date', ascending: false);
@@ -468,7 +469,9 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                   await Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => InvoiceFormScreen(initialAccountId: widget.accountId),
+                      builder: (_) => CustomerInvoiceFormScreen(
+                        initialAccountId: widget.accountId,
+                      ),
                     ),
                   );
                   _load();
@@ -512,7 +515,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                           SizedBox(width: 120, child: Text(inv['invoice_number']?.toString() ?? '—')),
                           SizedBox(width: 90, child: Text(inv['invoice_date']?.toString().substring(0, 10) ?? '—')),
                           SizedBox(width: 90, child: Text(inv['due_date']?.toString().substring(0, 10) ?? '—')),
-                          SizedBox(width: 80, child: Text('R ${(inv['total_amount'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
+                          SizedBox(width: 80, child: Text('R ${(inv['total'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
                           SizedBox(width: 90, child: Chip(label: Text(status), backgroundColor: chipColor.withOpacity(0.2), labelStyle: TextStyle(fontSize: 11, color: chipColor))),
                         ],
                       ),
