@@ -419,13 +419,10 @@ class _TransactionsTabState extends State<_TransactionsTab> {
 // ══════════════════════════════════════════════════════════════════
 // TAB 2 — INVOICES
 // ══════════════════════════════════════════════════════════════════
-
 class _InvoicesTab extends StatefulWidget {
   final String accountId;
   final VoidCallback onSaved;
-
   const _InvoicesTab({required this.accountId, required this.onSaved});
-
   @override
   State<_InvoicesTab> createState() => _InvoicesTabState();
 }
@@ -433,7 +430,10 @@ class _InvoicesTab extends StatefulWidget {
 class _InvoicesTabState extends State<_InvoicesTab> {
   final _client = SupabaseService.client;
   List<Map<String, dynamic>> _invoices = [];
+  final Set<String> _selectedIds = {};
   bool _loading = true;
+  bool _paying = false;
+  String _paymentMethod = 'Cash';
 
   @override
   void initState() {
@@ -449,20 +449,261 @@ class _InvoicesTabState extends State<_InvoicesTab> {
           .select('*')
           .eq('account_id', widget.accountId)
           .order('invoice_date', ascending: false);
-      if (mounted) setState(() => _invoices = List<Map<String, dynamic>>.from(data));
+      if (mounted) {
+        setState(() {
+          _invoices = List<Map<String, dynamic>>.from(data);
+          // Clear selections that no longer exist
+          _selectedIds.removeWhere(
+              (id) => !_invoices.any((inv) => inv['id'] == id));
+        });
+      }
     } catch (_) {}
     if (mounted) setState(() => _loading = false);
   }
 
+  double get _selectedTotal {
+    return _invoices
+        .where((inv) => _selectedIds.contains(inv['id']))
+        .fold(0, (sum, inv) => sum + ((inv['total'] as num?)?.toDouble() ?? 0));
+  }
+
+  bool _isPayable(Map<String, dynamic> inv) {
+    final status = inv['status']?.toString() ?? '';
+    return status != 'paid' && status != 'cancelled';
+  }
+
+  Future<void> _paySelected() async {
+    if (_selectedIds.isEmpty) return;
+    final staffId = AuthService().currentStaffId;
+    if (staffId == null || staffId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+            content: Text('Sign in with PIN to record payments'),
+            backgroundColor: AppColors.warning),
+      );
+      return;
+    }
+
+    // Confirm dialog
+    final selectedInvoices = _invoices
+        .where((inv) => _selectedIds.contains(inv['id']))
+        .toList();
+    final total = _selectedTotal;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDlg) => AlertDialog(
+          title: const Text('Confirm Payment'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Paying ${selectedInvoices.length} invoice(s):'),
+              const SizedBox(height: 8),
+              ...selectedInvoices.map((inv) => Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(inv['invoice_number']?.toString() ?? '—',
+                            style: const TextStyle(fontSize: 13)),
+                        Text(
+                            'R ${(inv['total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 13)),
+                      ],
+                    ),
+                  )),
+              const Divider(),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('Total:',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text('R ${total.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.bold, fontSize: 16)),
+                ],
+              ),
+              const SizedBox(height: 16),
+              const Text('Payment method:'),
+              const SizedBox(height: 8),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'Cash', label: Text('Cash')),
+                  ButtonSegment(value: 'Card', label: Text('Card')),
+                  ButtonSegment(value: 'EFT', label: Text('EFT')),
+                ],
+                selected: {_paymentMethod},
+                onSelectionChanged: (v) =>
+                    setDlg(() => _paymentMethod = v.first),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Confirm Payment')),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+    setState(() => _paying = true);
+
+    try {
+      final invoiceIds = _selectedIds.toList();
+      final invoiceNums = selectedInvoices
+          .map((i) => i['invoice_number']?.toString() ?? '')
+          .join(', ');
+
+      // 1. Mark each selected invoice as paid
+      await _client
+          .from('customer_invoices')
+          .update({
+            'status': 'paid',
+            'payment_date': DateTime.now().toIso8601String().substring(0, 10),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .inFilter('id', invoiceIds);
+
+      // 2. Get current account balance
+      final accData = await _client
+          .from('business_accounts')
+          .select('balance')
+          .eq('id', widget.accountId)
+          .single();
+      final currentBalance =
+          (accData['balance'] as num?)?.toDouble() ?? 0;
+      final newBalance = currentBalance - total;
+
+      // 3. Write payment transaction
+      final ref = 'PMT-${DateTime.now().millisecondsSinceEpoch}';
+      await _client.from('account_transactions').insert({
+        'account_id': widget.accountId,
+        'transaction_type': 'payment',
+        'reference': ref,
+        'description': 'Payment for: $invoiceNums',
+        'amount': -total,
+        'running_balance': newBalance,
+        'payment_method': _paymentMethod,
+        'recorded_by': staffId,
+        'transaction_date': DateTime.now().toIso8601String().substring(0, 10),
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      // 4. Update account balance
+      await _client.from('business_accounts').update({
+        'balance': newBalance,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', widget.accountId);
+
+      // 5. Ledger double entry
+      try {
+        await LedgerRepository().createDoubleEntry(
+          date: DateTime.now(),
+          debitAccountCode: '1100',
+          debitAccountName: 'Bank Account',
+          creditAccountCode: '1200',
+          creditAccountName: 'Accounts Receivable (Business Accounts)',
+          amount: total,
+          description: 'Payment for: $invoiceNums',
+          referenceId: widget.accountId,
+          source: 'payment_received',
+          recordedBy: staffId,
+        );
+      } catch (_) {}
+
+      _selectedIds.clear();
+      widget.onSaved();
+      await _load();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(
+              'Payment of R${total.toStringAsFixed(2)} recorded for ${selectedInvoices.length} invoice(s)'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Payment failed: ${ErrorHandler.friendlyMessage(e)}'),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _paying = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    if (_loading) {
+      return const Center(
+          child: CircularProgressIndicator(color: AppColors.primary));
+    }
+
+    final payableInvoices =
+        _invoices.where(_isPayable).toList();
+    final allPayableSelected = payableInvoices.isNotEmpty &&
+        payableInvoices.every((inv) => _selectedIds.contains(inv['id']));
+
     return Column(
       children: [
+        // Toolbar
         Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
+              if (payableInvoices.isNotEmpty) ...[
+                Checkbox(
+                  value: allPayableSelected,
+                  tristate: true,
+                  onChanged: (_) {
+                    setState(() {
+                      if (allPayableSelected) {
+                        _selectedIds.removeAll(
+                            payableInvoices.map((i) => i['id'] as String));
+                      } else {
+                        _selectedIds.addAll(
+                            payableInvoices.map((i) => i['id'] as String));
+                      }
+                    });
+                  },
+                ),
+                Text('Select all unpaid',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(width: 16),
+              ],
+              if (_selectedIds.isNotEmpty) ...[
+                Text(
+                  '${_selectedIds.length} selected — R ${_selectedTotal.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w700, fontSize: 13),
+                ),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: _paying ? null : _paySelected,
+                  icon: _paying
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child:
+                              CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.payment, size: 16),
+                  label: const Text('Pay Selected'),
+                  style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.success),
+                ),
+              ],
               const Spacer(),
               ElevatedButton.icon(
                 onPressed: () async {
@@ -470,8 +711,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                     context,
                     MaterialPageRoute(
                       builder: (_) => CustomerInvoiceFormScreen(
-                        initialAccountId: widget.accountId,
-                      ),
+                          initialAccountId: widget.accountId),
                     ),
                   );
                   _load();
@@ -482,42 +722,163 @@ class _InvoicesTabState extends State<_InvoicesTab> {
             ],
           ),
         ),
+
+        // Header row
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           color: AppColors.surfaceBg,
           child: const Row(
             children: [
-              SizedBox(width: 120, child: Text('Invoice #', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
-              SizedBox(width: 90, child: Text('Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
-              SizedBox(width: 90, child: Text('Due Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
-              SizedBox(width: 80, child: Text('Total', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
-              SizedBox(width: 90, child: Text('Status', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
+              SizedBox(width: 40),
+              SizedBox(
+                  width: 120,
+                  child: Text('Invoice #',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary))),
+              SizedBox(
+                  width: 90,
+                  child: Text('Date',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary))),
+              SizedBox(
+                  width: 90,
+                  child: Text('Due Date',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary))),
+              SizedBox(
+                  width: 90,
+                  child: Text('Total',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary))),
+              SizedBox(
+                  width: 90,
+                  child: Text('Status',
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textSecondary))),
             ],
           ),
         ),
+
+        // Invoice list
         Expanded(
           child: _invoices.isEmpty
               ? const Center(child: Text('No invoices'))
               : ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12),
                   itemCount: _invoices.length,
                   itemBuilder: (_, i) {
                     final inv = _invoices[i];
-                    final status = inv['status']?.toString() ?? 'draft';
+                    final id = inv['id'] as String;
+                    final status =
+                        inv['status']?.toString() ?? 'draft';
+                    final payable = _isPayable(inv);
+                    final selected = _selectedIds.contains(id);
+
                     Color chipColor = AppColors.textSecondary;
                     if (status == 'paid') chipColor = AppColors.success;
-                    else if (status == 'overdue' || status == 'sent') chipColor = AppColors.warning;
+                    else if (status == 'overdue') chipColor = AppColors.error;
+                    else if (status == 'sent' || status == 'approved') chipColor = AppColors.warning;
                     else if (status == 'cancelled') chipColor = AppColors.error;
-                    return Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Row(
-                        children: [
-                          SizedBox(width: 120, child: Text(inv['invoice_number']?.toString() ?? '—')),
-                          SizedBox(width: 90, child: Text(inv['invoice_date']?.toString().substring(0, 10) ?? '—')),
-                          SizedBox(width: 90, child: Text(inv['due_date']?.toString().substring(0, 10) ?? '—')),
-                          SizedBox(width: 80, child: Text('R ${(inv['total'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                          SizedBox(width: 90, child: Chip(label: Text(status), backgroundColor: chipColor.withOpacity(0.2), labelStyle: TextStyle(fontSize: 11, color: chipColor))),
-                        ],
+
+                    return InkWell(
+                      onTap: payable
+                          ? () => setState(() {
+                                if (selected) {
+                                  _selectedIds.remove(id);
+                                } else {
+                                  _selectedIds.add(id);
+                                }
+                              })
+                          : null,
+                      child: Container(
+                        color: selected
+                            ? AppColors.primary.withOpacity(0.08)
+                            : null,
+                        padding: const EdgeInsets.symmetric(
+                            vertical: 8),
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: 40,
+                              child: payable
+                                  ? Checkbox(
+                                      value: selected,
+                                      onChanged: (_) =>
+                                          setState(() {
+                                            if (selected) {
+                                              _selectedIds
+                                                  .remove(id);
+                                            } else {
+                                              _selectedIds.add(id);
+                                            }
+                                          }),
+                                    )
+                                  : const SizedBox(),
+                            ),
+                            SizedBox(
+                                width: 120,
+                                child: Text(
+                                    inv['invoice_number']
+                                            ?.toString() ??
+                                        '—',
+                                    style: const TextStyle(
+                                        fontWeight:
+                                            FontWeight.w600))),
+                            SizedBox(
+                                width: 90,
+                                child: Text(inv['invoice_date']
+                                            ?.toString()
+                                            .substring(0, 10) ??
+                                        '—',
+                                    style: const TextStyle(
+                                        fontSize: 12))),
+                            SizedBox(
+                                width: 90,
+                                child: Text(inv['due_date']
+                                            ?.toString()
+                                            .substring(0, 10) ??
+                                        '—',
+                                    style: const TextStyle(
+                                        fontSize: 12))),
+                            SizedBox(
+                                width: 90,
+                                child: Text(
+                                    'R ${(inv['total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                    style: TextStyle(
+                                        fontWeight: FontWeight.w600,
+                                        color: payable
+                                            ? AppColors.error
+                                            : AppColors
+                                                .success))),
+                            SizedBox(
+                              width: 90,
+                              child: Chip(
+                                label: Text(status),
+                                backgroundColor:
+                                    chipColor.withOpacity(0.15),
+                                labelStyle: TextStyle(
+                                    fontSize: 11,
+                                    color: chipColor),
+                                padding: EdgeInsets.zero,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize
+                                        .shrinkWrap,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     );
                   },
