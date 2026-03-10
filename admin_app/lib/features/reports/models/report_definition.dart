@@ -30,6 +30,7 @@ class ReportDefinitions {
     ReportDefinition(key: 'vat201', title: 'VAT201 Report', category: 'Financial', frequency: 'Monthly (auto)', icon: Icons.request_quote, ownerOnly: true),
     ReportDefinition(key: 'cash_flow', title: 'Cash Flow', category: 'Financial', frequency: 'Monthly (auto)', icon: Icons.account_balance_wallet, ownerOnly: true),
     ReportDefinition(key: 'staff_hours', title: 'Staff Hours Report', category: 'Staff & HR', frequency: 'Weekly / Monthly', icon: Icons.access_time),
+    ReportDefinition(key: 'timecard_report', title: 'Timecard Report', category: 'Staff & HR', frequency: 'On demand — date range', icon: Icons.schedule),
     ReportDefinition(key: 'payroll', title: 'Payroll Report', category: 'Staff & HR', frequency: 'Monthly', icon: Icons.payments, ownerOnly: true),
     ReportDefinition(key: 'inventory_valuation', title: 'Inventory Valuation', category: 'Inventory', frequency: 'On demand', icon: Icons.inventory),
     ReportDefinition(key: 'shrinkage', title: 'Shrinkage Report', category: 'Inventory', frequency: 'Weekly (auto)', icon: Icons.warning_amber),

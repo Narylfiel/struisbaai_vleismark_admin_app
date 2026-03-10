@@ -10,6 +10,7 @@ import 'package:admin_app/features/reports/models/report_data.dart';
 import 'package:admin_app/features/reports/models/report_definition.dart';
 import 'package:admin_app/features/reports/models/report_schedule.dart';
 import 'package:admin_app/features/reports/services/report_repository.dart';
+import 'package:admin_app/features/reports/screens/timecard_report_screen.dart';
 
 /// Blueprint §11: Report hub — real data, export CSV/PDF/Excel, scheduling structure.
 class ReportHubScreen extends StatefulWidget {
@@ -38,6 +39,11 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   }
 
   Future<void> _viewReport(ReportDefinition def) async {
+    if (def.key == 'timecard_report') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const TimecardReportScreen()));
+      return;
+    }
+
     // Show filter dialog first — data loads only when user presses Run
     final filters = await showDialog<_ReportFilters>(
       context: context,
@@ -85,6 +91,11 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   }
 
   Future<void> _exportReport(ReportDefinition def, String format) async {
+    if (def.key == 'timecard_report') {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const TimecardReportScreen()));
+      return;
+    }
+
     setState(() => _isExporting = true);
     try {
       final start = def.requiresDateRange ? _rangeStart : _singleDate;

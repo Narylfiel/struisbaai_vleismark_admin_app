@@ -26,13 +26,38 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
   List<Map<String, dynamic>> _staffList = [];
   String? _selectedStaffId;
   List<StaffCredit> _credits = [];
+  List<Map<String, dynamic>> _pendingAdvances = [];
   bool _loading = true;
+  bool _loadingAdvances = true;
   bool _isOffline = false;
 
   @override
   void initState() {
     super.initState();
     _loadStaff();
+    _loadAdvances();
+  }
+
+  Future<void> _loadAdvances() async {
+    setState(() => _loadingAdvances = true);
+    try {
+      if (!ConnectivityService().isConnected) {
+        if (mounted) setState(() => _pendingAdvances = []);
+        setState(() => _loadingAdvances = false);
+        return;
+      }
+      final data = await _client
+          .from('staff_requests')
+          .select('id, staff_id, amount_requested, advance_reason, created_at, staff_profiles!staff_id(full_name)')
+          .eq('request_type', 'salary_advance')
+          .eq('status', 'pending')
+          .order('created_at', ascending: true);
+      
+      if (mounted) setState(() => _pendingAdvances = List<Map<String, dynamic>>.from(data));
+    } catch (_) {
+      if (mounted) setState(() => _pendingAdvances = []);
+    }
+    if (mounted) setState(() => _loadingAdvances = false);
   }
 
   Future<void> _loadStaff() async {
@@ -87,8 +112,16 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     if (mounted) setState(() => _loading = false);
   }
 
-  double get _currentBalance {
-    return _credits.fold<double>(0, (sum, c) => sum + c.amount);
+  double get _meatPending {
+    return _credits.where((c) => c.creditType == StaffCreditType.meatPurchase && (c.status == StaffCreditStatus.pending || c.status == StaffCreditStatus.partial)).fold<double>(0, (sum, c) => sum + c.amount);
+  }
+
+  double get _advancePending {
+    return _credits.where((c) => c.creditType == StaffCreditType.salaryAdvance && (c.status == StaffCreditStatus.pending || c.status == StaffCreditStatus.partial)).fold<double>(0, (sum, c) => sum + c.amount);
+  }
+
+  double get _totalOutstanding {
+    return _meatPending + _advancePending;
   }
 
   /// Entries oldest-first with running balance per row
@@ -241,11 +274,232 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     }
   }
 
+  void _approveAdvance(Map<String, dynamic> request) async {
+    final staffName = request['staff_profiles']?['full_name'] as String? ?? 'Staff';
+    final requestedAmt = (request['amount_requested'] as num?)?.toDouble() ?? 0.0;
+    final amtController = TextEditingController(text: requestedAmt.toString());
+    
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Approve Advance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Staff: $staffName'),
+            const SizedBox(height: 4),
+            Text('Requested: R ${requestedAmt.toStringAsFixed(2)}'),
+            const SizedBox(height: 16),
+            FormWidgets.textFormField(
+              label: 'Amount to approve (R)',
+              controller: amtController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 6),
+            const Text('Staff will be notified of approved amount', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Approve')),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+
+    final approvedAmt = double.tryParse(amtController.text.replaceAll(',', '.')) ?? 0;
+    if (approvedAmt <= 0) return;
+
+    try {
+      final currentUserId = AuthService().currentStaffId;
+      if (currentUserId == null) return;
+
+      await _client.from('staff_requests').update({
+        'status': 'approved',
+        'amount_approved': approvedAmt,
+        'reviewed_by': currentUserId,
+        'reviewed_at': DateTime.now().toIso8601String(),
+      }).eq('id', request['id']);
+
+      await _repo.create(
+        staffId: request['staff_id'],
+        creditType: StaffCreditType.salaryAdvance,
+        amount: approvedAmt,
+        reason: request['advance_reason']?.toString() ?? 'Salary advance',
+        grantedDate: DateTime.now(),
+        grantedBy: currentUserId,
+        deductFrom: 'next_payroll',
+      );
+
+      _loadAdvances();
+      if (_selectedStaffId == request['staff_id']) _loadCredits();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Advance approved — R${approvedAmt.toStringAsFixed(2)} added to $staffName\'s credit'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+    }
+  }
+
+  void _declineAdvance(Map<String, dynamic> request) async {
+    final staffName = request['staff_profiles']?['full_name'] as String? ?? 'Staff';
+    final requestedAmt = (request['amount_requested'] as num?)?.toDouble() ?? 0.0;
+    final reasonController = TextEditingController();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Decline Advance'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Staff: $staffName | R ${requestedAmt.toStringAsFixed(2)}'),
+            const SizedBox(height: 16),
+            FormWidgets.textFormField(
+              label: 'Reason for declining (owner only)',
+              controller: reasonController,
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true), 
+            child: const Text('Decline'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+
+    final reason = reasonController.text.trim();
+    if (reason.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A reason is required to decline'), backgroundColor: AppColors.error));
+      return;
+    }
+
+    try {
+      final currentUserId = AuthService().currentStaffId;
+      if (currentUserId == null) return;
+
+      await _client.from('staff_requests').update({
+        'status': 'declined',
+        'decline_reason': reason,
+        'reviewed_by': currentUserId,
+        'reviewed_at': DateTime.now().toIso8601String(),
+      }).eq('id', request['id']);
+
+      _loadAdvances();
+
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Request declined'), backgroundColor: AppColors.success));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+    }
+  }
+
+  void _openUpdateStatus(StaffCredit credit) async {
+    if (AuthService().currentRole != 'owner') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Only owners can change status'), backgroundColor: AppColors.error));
+      return;
+    }
+
+    StaffCreditStatus status = credit.status;
+    final staffName = _staffList.firstWhere((s) => s['id'] == credit.staffId, orElse: () => {'full_name': 'Unknown'})['full_name'];
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Update Status'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Staff: $staffName', style: const TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Text('${credit.creditType.displayLabel} | ${credit.grantedDate.toString().substring(0, 10)} | R ${credit.amount.toStringAsFixed(2)}'),
+              const SizedBox(height: 16),
+              const Text('Status:', style: TextStyle(fontWeight: FontWeight.w600)),
+              RadioListTile<StaffCreditStatus>(
+                title: const Text('Pending'),
+                value: StaffCreditStatus.pending,
+                groupValue: status,
+                onChanged: (v) => setDialog(() => status = v!),
+                dense: true,
+              ),
+              RadioListTile<StaffCreditStatus>(
+                title: const Text('Deducted'),
+                value: StaffCreditStatus.deducted,
+                groupValue: status,
+                onChanged: (v) => setDialog(() => status = v!),
+                dense: true,
+              ),
+              RadioListTile<StaffCreditStatus>(
+                title: const Text('Partial'),
+                value: StaffCreditStatus.partial,
+                groupValue: status,
+                onChanged: (v) => setDialog(() => status = v!),
+                dense: true,
+              ),
+              RadioListTile<StaffCreditStatus>(
+                title: const Text('Cleared'),
+                value: StaffCreditStatus.cleared,
+                groupValue: status,
+                onChanged: (v) => setDialog(() => status = v!),
+                dense: true,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Save')),
+          ],
+        ),
+      ),
+    );
+
+    if (saved != true || status == credit.status) return;
+
+    try {
+      await _repo.updateStatus(
+        credit.id, 
+        status, 
+        paidDate: status == StaffCreditStatus.cleared || status == StaffCreditStatus.deducted ? DateTime.now() : null
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Status updated'), backgroundColor: AppColors.success));
+        _loadCredits();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+    }
+  }
+
+  Color _typeColor(StaffCreditType type) {
+    switch (type) {
+      case StaffCreditType.meatPurchase: return const Color(0xFFFFB300);
+      case StaffCreditType.salaryAdvance: return const Color(0xFF1E88E5);
+      case StaffCreditType.deduction: return AppColors.error;
+      case StaffCreditType.repayment: return AppColors.success;
+      case StaffCreditType.loan: return const Color(0xFFE65100);
+      case StaffCreditType.other: return AppColors.textSecondary;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final balance = _currentBalance;
-    final balanceColor = balance > 0 ? AppColors.success : (balance < 0 ? AppColors.error : AppColors.textSecondary);
     final entries = _entriesWithRunningBalance;
+    final isOwner = AuthService().currentRole == 'owner';
 
     final bodyContent = Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -255,6 +509,75 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                const Text('PENDING ADVANCE REQUESTS', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                const SizedBox(height: 12),
+                if (_loadingAdvances)
+                  const CircularProgressIndicator(color: AppColors.primary)
+                else if (_pendingAdvances.isEmpty)
+                  const Text('No pending advance requests', style: TextStyle(color: AppColors.textSecondary, fontStyle: FontStyle.italic))
+                else
+                  SizedBox(
+                    height: 160,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _pendingAdvances.length,
+                      itemBuilder: (_, i) {
+                        final req = _pendingAdvances[i];
+                        final reqAmt = (req['amount_requested'] as num?)?.toDouble() ?? 0.0;
+                        final staffName = req['staff_profiles']?['full_name'] as String? ?? 'Unknown';
+                        final reason = req['advance_reason'] as String? ?? 'No reason provided';
+                        final dateStr = req['created_at'] != null ? req['created_at'].toString().substring(0, 10) : '';
+
+                        return Container(
+                          width: 280,
+                          margin: const EdgeInsets.only(right: 12),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardBg,
+                            border: Border.all(color: AppColors.border),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Expanded(child: Text(staffName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13), overflow: TextOverflow.ellipsis)),
+                                  Text('R ${reqAmt.toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1E88E5))),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text('Submitted: $dateStr', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                              const SizedBox(height: 6),
+                              Expanded(child: Text('Reason: $reason', style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                              if (isOwner) ...[
+                                const Divider(height: 10, color: AppColors.border),
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    TextButton(
+                                      onPressed: () => _declineAdvance(req),
+                                      style: TextButton.styleFrom(foregroundColor: AppColors.error, minimumSize: const Size(60, 30), padding: const EdgeInsets.symmetric(horizontal: 8)),
+                                      child: const Text('DECLINE', style: TextStyle(fontSize: 11)),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton(
+                                      onPressed: () => _approveAdvance(req),
+                                      style: ElevatedButton.styleFrom(backgroundColor: AppColors.success, foregroundColor: Colors.white, minimumSize: const Size(70, 30), padding: const EdgeInsets.symmetric(horizontal: 8)),
+                                      child: const Text('APPROVE', style: TextStyle(fontSize: 11)),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                const SizedBox(height: 24),
+                
                 const Text('Staff', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
@@ -280,10 +603,34 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        const Text('Balance: ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                        Text('R ${balance.toStringAsFixed(2)}', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: balanceColor)),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Meat purchases (pending):', style: TextStyle(color: AppColors.textSecondary)),
+                            Text('R ${_meatPending.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFFB300), fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Advances (pending):', style: TextStyle(color: AppColors.textSecondary)),
+                            Text('R ${_advancePending.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFF1E88E5), fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Divider(height: 1, color: AppColors.border),
+                        ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Total outstanding:', style: TextStyle(fontWeight: FontWeight.bold)),
+                            Text('R ${_totalOutstanding.toStringAsFixed(2)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: _totalOutstanding > 0 ? AppColors.error : AppColors.success)),
+                          ],
+                        ),
                       ],
                     ),
                   ),
@@ -304,6 +651,8 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                 children: [
                   SizedBox(width: 100, child: Text('Date', style: _headerStyle)),
                   Expanded(flex: 2, child: Text('Reason', style: _headerStyle)),
+                  SizedBox(width: 110, child: Text('Type', style: _headerStyle)),
+                  SizedBox(width: 90, child: Text('Status', style: _headerStyle)),
                   SizedBox(width: 100, child: Text('Amount', style: _headerStyle)),
                   SizedBox(width: 110, child: Text('Running balance', style: _headerStyle)),
                 ],
@@ -329,15 +678,20 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                         final amtStr = amt >= 0 ? '+R ${amt.toStringAsFixed(2)}' : '-R ${(-amt).toStringAsFixed(2)}';
                         final runColor = e.runningBalance >= 0 ? AppColors.success : (e.runningBalance < 0 ? AppColors.error : AppColors.textSecondary);
                         final dateStr = e.credit.grantedDate.toString().substring(0, 10);
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(
-                            children: [
-                              SizedBox(width: 100, child: Text(dateStr)),
-                              Expanded(flex: 2, child: Text(e.credit.reason, overflow: TextOverflow.ellipsis)),
-                              SizedBox(width: 100, child: Text(amtStr, style: TextStyle(color: amtColor, fontWeight: FontWeight.w600))),
-                              SizedBox(width: 110, child: Text('R ${e.runningBalance.toStringAsFixed(2)}', style: TextStyle(color: runColor, fontWeight: FontWeight.w500))),
-                            ],
+                        return InkWell(
+                          onTap: () => _openUpdateStatus(e.credit),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                            child: Row(
+                              children: [
+                                SizedBox(width: 100, child: Text(dateStr)),
+                                Expanded(flex: 2, child: Text(e.credit.reason, overflow: TextOverflow.ellipsis)),
+                                SizedBox(width: 110, child: Text(e.credit.creditType.displayLabel, style: TextStyle(color: _typeColor(e.credit.creditType), fontSize: 12))),
+                                SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _StatusChip(status: e.credit.status))),
+                                SizedBox(width: 100, child: Text(amtStr, style: TextStyle(color: amtColor, fontWeight: FontWeight.w600))),
+                                SizedBox(width: 110, child: Text('R ${e.runningBalance.toStringAsFixed(2)}', style: TextStyle(color: runColor, fontWeight: FontWeight.w500))),
+                              ],
+                            ),
                           ),
                         );
                       },
@@ -378,4 +732,31 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
   }
 
   static const _headerStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.textSecondary);
+}
+
+class _StatusChip extends StatelessWidget {
+  final StaffCreditStatus status;
+  const _StatusChip({required this.status});
+
+  @override
+  Widget build(BuildContext context) {
+    Color bg;
+    Color text;
+    switch (status) {
+      case StaffCreditStatus.pending:
+        bg = const Color(0xFFFFB300); text = Colors.black; break;
+      case StaffCreditStatus.deducted:
+        bg = AppColors.success; text = Colors.white; break;
+      case StaffCreditStatus.partial:
+        bg = const Color(0xFFE65100); text = Colors.white; break;
+      case StaffCreditStatus.cleared:
+        bg = Colors.grey; text = Colors.white; break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(4)),
+      child: Text(status.displayLabel, style: TextStyle(color: text, fontSize: 11)),
+    );
+  }
 }

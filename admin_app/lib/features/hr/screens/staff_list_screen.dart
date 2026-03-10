@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
@@ -11,11 +10,10 @@ import 'package:admin_app/core/services/audit_service.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
-import 'package:admin_app/features/hr/models/staff_credit.dart';
 import 'package:admin_app/features/hr/services/awol_repository.dart';
-import 'package:admin_app/features/hr/services/staff_credit_repository.dart';
 import 'package:admin_app/features/hr/services/compliance_service.dart';
 import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
+import 'package:admin_app/features/hr/screens/payroll_screen.dart';
 import 'package:admin_app/shared/widgets/form_widgets.dart';
 
 class StaffListScreen extends StatefulWidget {
@@ -73,7 +71,7 @@ class _StaffListScreenState extends State<StaffListScreen>
                 _StaffProfilesTab(),
                 _TimecardsTab(),
                 _LeaveTab(),
-                _PayrollTab(),
+                PayrollScreen(isEmbedded: true),
                 _AwolTab(),
                 _StaffCreditTab(),
                 _ComplianceTab(),
@@ -243,7 +241,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                               child: Row(children: [
                                 CircleAvatar(
                                   radius: 16,
-                                  backgroundColor: _roleColor(s['role']).withOpacity(0.15),
+                                  backgroundColor: _roleColor(s['role']).withValues(alpha: 0.15),
                                   child: Text(
                                     (s['full_name'] as String? ?? '?')[0].toUpperCase(),
                                     style: TextStyle(
@@ -268,7 +266,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
-                                  color: _roleColor(s['role']).withOpacity(0.1),
+                                  color: _roleColor(s['role']).withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -318,8 +316,8 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                                 decoration: BoxDecoration(
                                   color: isActive
-                                      ? AppColors.success.withOpacity(0.1)
-                                      : AppColors.error.withOpacity(0.1),
+                                      ? AppColors.success.withValues(alpha: 0.1)
+                                      : AppColors.error.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(
@@ -511,16 +509,6 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     setState(() => _isLoading = false);
   }
 
-  // Format full date + time: "06 Feb 07:28"
-  String _fmtDT(String? dt) {
-    if (dt == null) return '—';
-    final d = DateTime.parse(dt).toLocal();
-    const months = ['Jan','Feb','Mar','Apr','May','Jun',
-                    'Jul','Aug','Sep','Oct','Nov','Dec'];
-    return '${d.day.toString().padLeft(2,'0')} ${months[d.month-1]} '
-        '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}';
-  }
-
   // Format time only: "10:15"
   String _fmtT(String? dt) {
     if (dt == null) return '—';
@@ -560,8 +548,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     setState(() {
       if (_viewMode == 'daily') {
         _selectedDate = _selectedDate.subtract(const Duration(days: 1));
-      } else if (_viewMode == 'weekly') _weekStart = _weekStart.subtract(const Duration(days: 7));
-      else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
+      } else if (_viewMode == 'weekly') {
+        _weekStart = _weekStart.subtract(const Duration(days: 7));
+      } else {
+        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month - 1, 1);
+      }
     });
     _load();
   }
@@ -570,8 +561,11 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     setState(() {
       if (_viewMode == 'daily') {
         _selectedDate = _selectedDate.add(const Duration(days: 1));
-      } else if (_viewMode == 'weekly') _weekStart = _weekStart.add(const Duration(days: 7));
-      else _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+      } else if (_viewMode == 'weekly') {
+        _weekStart = _weekStart.add(const Duration(days: 7));
+      } else {
+        _selectedDate = DateTime(_selectedDate.year, _selectedDate.month + 1, 1);
+      }
     });
     _load();
   }
@@ -743,9 +737,9 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                           60);
 
                       final rowColor = longBreak
-                          ? AppColors.error.withOpacity(0.04)
+                          ? AppColors.error.withValues(alpha: 0.04)
                           : (otHrs > 0 && !otApproved)
-                              ? AppColors.warning.withOpacity(0.04)
+                              ? AppColors.warning.withValues(alpha: 0.04)
                               : Colors.transparent;
 
                       return Container(
@@ -924,7 +918,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(4)),
       child: Text(label,
           style: TextStyle(
@@ -1033,6 +1027,76 @@ class _LeaveTabState extends State<_LeaveTab> {
     _load();
   }
 
+  void _handleApprove(Map<String, dynamic> r) async {
+    await _updateStatus(r['id'], 'Approved', null);
+    if (!ConnectivityService().isConnected) return;
+    try {
+      await _supabase.from('staff_requests').update({
+        'status': 'approved'
+      }).eq('staff_id', r['staff_id'])
+        .eq('leave_start_date', r['start_date'])
+        .eq('leave_end_date', r['end_date'])
+        .eq('request_type', 'leave')
+        .eq('status', 'pending');
+    } catch (_) {}
+  }
+
+  void _handleDecline(Map<String, dynamic> r) async {
+    final staffName = r['staff_profiles']?['full_name'] ?? 'Staff';
+    final dateStr = '${r['start_date']} → ${r['end_date']}';
+    final notesController = TextEditingController();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Decline Leave Request'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('$staffName ($dateStr)', style: const TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            FormWidgets.textFormField(
+              label: 'Reason (staff will see this)',
+              controller: notesController,
+              maxLines: 2,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Decline'),
+          ),
+        ],
+      ),
+    );
+
+    if (saved != true) return;
+
+    final reason = notesController.text.trim();
+    if (reason.isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A reason is required to decline'), backgroundColor: AppColors.error));
+      return;
+    }
+
+    await _updateStatus(r['id'], 'Rejected', reason);
+
+    if (!ConnectivityService().isConnected) return;
+    try {
+      await _supabase.from('staff_requests').update({
+        'status': 'declined',
+        'leave_decline_reason': reason
+      }).eq('staff_id', r['staff_id'])
+        .eq('leave_start_date', r['start_date'])
+        .eq('leave_end_date', r['end_date'])
+        .eq('request_type', 'leave')
+        .eq('status', 'pending');
+    } catch (_) {}
+  }
+
   @override
   Widget build(BuildContext context) {
     return Row(children: [
@@ -1088,7 +1152,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
                                 color: isPending
-                                    ? AppColors.warning.withOpacity(0.4)
+                                    ? AppColors.warning.withValues(alpha: 0.4)
                                     : AppColors.border,
                               ),
                             ),
@@ -1108,7 +1172,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                                   padding: const EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: AppColors.info.withOpacity(0.1),
+                                    color: AppColors.info.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: Text(r['leave_type'] ?? '—',
@@ -1140,8 +1204,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                                 const SizedBox(height: 12),
                                 Row(children: [
                                   ElevatedButton(
-                                    onPressed: () =>
-                                        _updateStatus(r['id'], 'Approved', null),
+                                    onPressed: () => _handleApprove(r),
                                     style: ElevatedButton.styleFrom(
                                         backgroundColor: AppColors.success,
                                         padding: const EdgeInsets.symmetric(
@@ -1150,8 +1213,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                                   ),
                                   const SizedBox(width: 8),
                                   OutlinedButton(
-                                    onPressed: () =>
-                                        _updateStatus(r['id'], 'Rejected', null),
+                                    onPressed: () => _handleDecline(r),
                                     child: const Text('Decline'),
                                   ),
                                 ]),
@@ -1243,316 +1305,7 @@ class _LeaveTabState extends State<_LeaveTab> {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════
-// TAB 4: PAYROLL
-// ══════════════════════════════════════════════════════════════════
 
-class _PayrollTab extends StatefulWidget {
-  const _PayrollTab();
-  @override
-  State<_PayrollTab> createState() => _PayrollTabState();
-}
-
-class _PayrollTabState extends State<_PayrollTab> {
-  final _supabase = SupabaseService.client;
-  final List<Map<String, dynamic>> _periods = [];
-  Map<String, dynamic>? _selectedPeriod;
-  List<Map<String, dynamic>> _entries = [];
-  bool _isLoading = true;
-  bool _isOffline = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadPeriods();
-  }
-
-  Future<void> _loadPeriods() async {
-    setState(() => _isLoading = true);
-    try {
-      await _loadCurrentPayroll();
-    } catch (e) {
-      debugPrint('Payroll: $e');
-    }
-    if (mounted) setState(() => _isLoading = false);
-  }
-
-  Future<void> _loadCurrentPayroll() async {
-    final now = DateTime.now();
-    final monthStart = DateTime(now.year, now.month, 1);
-    final monthEnd = DateTime(now.year, now.month + 1, 0);
-    try {
-      if (!ConnectivityService().isConnected) {
-        _isOffline = true;
-        final cached = await IsarService.getAllPayrollEntries();
-        final summary = cached
-            .where((c) =>
-                c.payPeriodStart != null &&
-                !c.payPeriodStart!.isBefore(monthStart) &&
-                !c.payPeriodStart!.isAfter(monthEnd))
-            .map((c) => {
-                  'id': c.entryId,
-                  'staff_id': c.staffId,
-                  'full_name': c.staffName,
-                  'role': null,
-                  'employment_type': 'hourly',
-                  'hourly_rate': 0,
-                  'monthly_salary': 0,
-                  'pay_frequency': null,
-                  'total_hours': 0,
-                  'regular_hours': 0,
-                  'overtime_hours': 0,
-                  'sunday_hours': 0,
-                  'gross_pay': c.grossPay,
-                  'uif': c.deductions,
-                  'net_pay': c.netPay,
-                })
-            .toList();
-        setState(() => _entries = summary);
-        return;
-      }
-      _isOffline = false;
-      final staff = await _supabase
-          .from('staff_profiles')
-          .select('id, full_name, role, employment_type, hourly_rate, monthly_salary, pay_frequency')
-          .eq('is_active', true)
-          .order('full_name');
-
-      final timecards = await _supabase
-          .from('timecards')
-          .select('staff_id, total_hours, regular_hours, overtime_hours, sunday_hours')
-          .gte('clock_in', monthStart.toIso8601String())
-          .not('clock_out', 'is', null);
-
-      final summary = <Map<String, dynamic>>[];
-      for (final s in List<Map<String, dynamic>>.from(staff)) {
-        final empTimecards = List<Map<String, dynamic>>.from(timecards)
-            .where((t) => t['staff_id'] == s['id'])
-            .toList();
-        final totalHours = empTimecards.fold<double>(
-            0, (sum, t) => sum + ((t['total_hours'] as num?)?.toDouble() ?? 0));
-        final regHours = empTimecards.fold<double>(
-            0, (sum, t) => sum + ((t['regular_hours'] as num?)?.toDouble() ?? 0));
-        final otHours = empTimecards.fold<double>(
-            0, (sum, t) => sum + ((t['overtime_hours'] as num?)?.toDouble() ?? 0));
-        final sunHours = empTimecards.fold<double>(
-            0, (sum, t) => sum + ((t['sunday_hours'] as num?)?.toDouble() ?? 0));
-
-        final hourlyRate = (s['hourly_rate'] as num?)?.toDouble() ?? 0;
-        final monthlySalary = (s['monthly_salary'] as num?)?.toDouble() ?? 0;
-        final empType = s['employment_type'] as String? ?? 'hourly';
-
-        double grossPay;
-        if (empType == 'hourly') {
-          grossPay = (regHours * hourlyRate) +
-              (otHours * hourlyRate * 1.5) +
-              (sunHours * hourlyRate * 2.0);
-        } else {
-          grossPay = monthlySalary;
-        }
-
-        final uif = grossPay * 0.01;
-        final netPay = grossPay - uif;
-
-        summary.add({
-          ...s,
-          'total_hours': totalHours,
-          'regular_hours': regHours,
-          'overtime_hours': otHours,
-          'sunday_hours': sunHours,
-          'gross_pay': grossPay,
-          'uif': uif,
-          'net_pay': netPay,
-        });
-      }
-      setState(() => _entries = summary);
-    } catch (e) {
-      debugPrint('Payroll calc: $e');
-    }
-  }
-
-  double get _totalGross =>
-      _entries.fold(0, (sum, e) => sum + ((e['gross_pay'] as num?)?.toDouble() ?? 0));
-  double get _totalNet =>
-      _entries.fold(0, (sum, e) => sum + ((e['net_pay'] as num?)?.toDouble() ?? 0));
-  double get _totalUIF =>
-      _entries.fold(0, (sum, e) => sum + ((e['uif'] as num?)?.toDouble() ?? 0));
-
-  @override
-  Widget build(BuildContext context) {
-    final now = DateTime.now();
-    final months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-    return Column(children: [
-      Container(
-        padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-        color: AppColors.cardBg,
-        child: Row(children: [
-          Text(
-            'Payroll Summary — ${months[now.month - 1]} ${now.year}',
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary),
-          ),
-          const SizedBox(width: 24),
-          _payChip('Gross', 'R ${_totalGross.toStringAsFixed(2)}', AppColors.textPrimary),
-          const SizedBox(width: 16),
-          _payChip('UIF (1%)', 'R ${_totalUIF.toStringAsFixed(2)}', AppColors.error),
-          const SizedBox(width: 16),
-          _payChip('Net Pay', 'R ${_totalNet.toStringAsFixed(2)}', AppColors.success),
-          const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-            decoration: BoxDecoration(
-              color: AppColors.warning.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(6),
-            ),
-            child: const Text('Owner Only',
-                style: TextStyle(fontSize: 11, color: AppColors.warning,
-                    fontWeight: FontWeight.bold)),
-          ),
-        ]),
-      ),
-      const Divider(height: 1, color: AppColors.border),
-      // Table header
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        color: AppColors.surfaceBg,
-        child: const Row(children: [
-          Expanded(flex: 2, child: Text('STAFF MEMBER', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 80, child: Text('TYPE', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 70, child: Text('HRS', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 60, child: Text('OT HRS', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 100, child: Text('GROSS PAY', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 80, child: Text('UIF (1%)', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 100, child: Text('NET PAY', style: _pHdr)),
-          SizedBox(width: 12),
-          SizedBox(width: 80, child: Text('FREQUENCY', style: _pHdr)),
-        ]),
-      ),
-      const Divider(height: 1, color: AppColors.border),
-      Expanded(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-            : _entries.isEmpty
-                ? Center(
-                    child: Text(
-                      _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No staff found',
-                      style: const TextStyle(color: AppColors.textSecondary),
-                      textAlign: TextAlign.center,
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: _entries.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: AppColors.border),
-                    itemBuilder: (_, i) {
-                      final e = _entries[i];
-                      final gross = (e['gross_pay'] as num?)?.toDouble() ?? 0;
-                      final uif = (e['uif'] as num?)?.toDouble() ?? 0;
-                      final net = (e['net_pay'] as num?)?.toDouble() ?? 0;
-                      final hours = (e['total_hours'] as num?)?.toDouble() ?? 0;
-                      final ot = (e['overtime_hours'] as num?)?.toDouble() ?? 0;
-                      final empType = e['employment_type'] as String? ?? 'hourly';
-
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(children: [
-                          Expanded(
-                            flex: 2,
-                            child: Text(e['full_name'] ?? '—',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary)),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 80,
-                            child: Text(
-                              empType == 'hourly' ? 'Hourly' : 'Salary',
-                              style: const TextStyle(
-                                  fontSize: 12, color: AppColors.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 70,
-                            child: Text(
-                              empType == 'hourly' ? '${hours.toStringAsFixed(1)}h' : '—',
-                              style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 60,
-                            child: Text(
-                              ot > 0 ? '${ot.toStringAsFixed(1)}h' : '—',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  color: ot > 0 ? AppColors.warning : AppColors.textSecondary,
-                                  fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 100,
-                            child: Text('R ${gross.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: AppColors.textPrimary)),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 80,
-                            child: Text('R ${uif.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 13, color: AppColors.error)),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 100,
-                            child: Text('R ${net.toStringAsFixed(2)}',
-                                style: const TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: AppColors.success)),
-                          ),
-                          const SizedBox(width: 12),
-                          SizedBox(
-                            width: 80,
-                            child: Text(
-                              (e['pay_frequency'] as String? ?? '—').toUpperCase(),
-                              style: const TextStyle(
-                                  fontSize: 11, color: AppColors.textSecondary),
-                            ),
-                          ),
-                        ]),
-                      );
-                    },
-                  ),
-      ),
-    ]);
-  }
-
-  Widget _payChip(String label, String value, Color color) {
-    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
-      Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color)),
-    ]);
-  }
-
-  static const _pHdr = TextStyle(
-      fontSize: 10, fontWeight: FontWeight.bold,
-      color: AppColors.textSecondary, letterSpacing: 0.5);
-}
 
 // ══════════════════════════════════════════════════════════════════
 // TAB 5: AWOL / Absconding (Blueprint §7.3a)
@@ -1711,7 +1464,7 @@ class _AwolTabState extends State<_AwolTab> {
       await _repo.create(
         staffId: staffId!,
         awolDate: awolDate,
-        expectedStartTime: expectedStart != null ? DateTime(2000, 1, 1, expectedStart.hour, expectedStart.minute) : null,
+        expectedStartTime: DateTime(2000, 1, 1, expectedStart.hour, expectedStart.minute),
         notifiedOwnerManager: notified,
         notifiedWho: notifiedWhoController.text.trim().isEmpty ? null : notifiedWhoController.text.trim(),
         notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
@@ -1724,9 +1477,11 @@ class _AwolTabState extends State<_AwolTab> {
         _load();
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
       );
+      }
     }
   }
 
@@ -1753,7 +1508,7 @@ class _AwolTabState extends State<_AwolTab> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           color: AppColors.surfaceBg,
-          child: Row(children: [
+          child: const Row(children: [
             Expanded(flex: 2, child: Text('STAFF', style: _awolH)),
             SizedBox(width: 100, child: Text('DATE', style: _awolH)),
             SizedBox(width: 100, child: Text('RESOLUTION', style: _awolH)),
@@ -1801,7 +1556,6 @@ class _AwolTabState extends State<_AwolTab> {
 }
 
 const _awolH = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5);
-const _creditH = TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5);
 
 // ══════════════════════════════════════════════════════════════════
 // TAB 6: Staff Credit (Blueprint §7.5)
@@ -1990,6 +1744,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
   final _idNumberController = TextEditingController();
   String _role = 'cashier';
   bool _isActive = true;
+  bool _canClockIn = true;
 
   // Employment
   final _hourlyRateController = TextEditingController();
@@ -2021,6 +1776,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     _idNumberController.text = s['id_number'] ?? '';
     _role = s['role'] ?? 'cashier';
     _isActive = s['is_active'] ?? true;
+    _canClockIn = s['can_clock_in'] ?? true;
     _hourlyRateController.text = s['hourly_rate']?.toString() ?? '';
     _monthlySalaryController.text = s['monthly_salary']?.toString() ?? '';
     _maxDiscountController.text = s['max_discount_pct']?.toString() ?? '0';
@@ -2098,6 +1854,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
       'id_number': _idNumberController.text.trim(),
       'role': _role,
       'is_active': _isActive,
+      'can_clock_in': _canClockIn,
       'employment_type': _empType,
       'hourly_rate': double.tryParse(_hourlyRateController.text),
       'monthly_salary': double.tryParse(_monthlySalaryController.text),
@@ -2272,6 +2029,14 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 Text(_isActive ? 'Active' : 'Inactive',
                     style: TextStyle(
                         color: _isActive ? AppColors.success : AppColors.textSecondary)),
+                const SizedBox(width: 16),
+                Switch(
+                  value: _canClockIn,
+                  onChanged: (v) => setState(() => _canClockIn = v),
+                  activeThumbColor: AppColors.primary,
+                ),
+                const Text('Can use Clock-In App',
+                    style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
               ]),
               const Spacer(),
               OutlinedButton(
@@ -2397,7 +2162,6 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 decoration: const InputDecoration(isDense: true),
                 items: const [
                   DropdownMenuItem(value: 'hourly', child: Text('Hourly')),
-                  DropdownMenuItem(value: 'weekly_salary', child: Text('Weekly Salary')),
                   DropdownMenuItem(value: 'monthly_salary', child: Text('Monthly Salary')),
                 ],
                 onChanged: (v) => setState(() => _empType = v!),
@@ -2451,9 +2215,9 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: AppColors.info.withOpacity(0.05),
+            color: AppColors.info.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.info.withOpacity(0.2)),
+            border: Border.all(color: AppColors.info.withValues(alpha: 0.2)),
           ),
           child: const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('SA BCEA Compliance',
@@ -2474,9 +2238,9 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: AppColors.warning.withOpacity(0.05),
+            color: AppColors.warning.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+            border: Border.all(color: AppColors.warning.withValues(alpha: 0.3)),
           ),
           child: const Row(children: [
             Icon(Icons.lock_outline, size: 14, color: AppColors.warning),
