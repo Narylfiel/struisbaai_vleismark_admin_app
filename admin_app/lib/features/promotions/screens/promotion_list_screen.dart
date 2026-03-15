@@ -124,11 +124,21 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
   }
 
   String _audienceLabel(String a) {
-    if (a == 'all') return 'All Customers';
-    if (a.startsWith('loyalty_')) return 'Loyalty: ${a.replaceFirst('loyalty_', '').toUpperCase()}';
-    if (a == 'staff_only') return 'Staff only';
-    if (a == 'new_customers') return 'New customers';
-    return a;
+    switch (a) {
+      case 'all':           return 'All Customers';
+      case 'bronze':        return 'Bronze+';
+      case 'silver':        return 'Silver+';
+      case 'gold':          return 'Gold+';
+      case 'elite':         return 'Elite+';
+      case 'vip':           return 'VIP Only';
+      case 'staff_only':    return 'Staff Only';
+      case 'new_customers': return 'New Customers';
+      default:
+        if (a.startsWith('loyalty_')) {
+          return a.replaceFirst('loyalty_', '').toUpperCase();
+        }
+        return a;
+    }
   }
 
   @override

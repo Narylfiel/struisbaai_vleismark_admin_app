@@ -406,7 +406,10 @@ class _PayrollScreenState extends State<PayrollScreen> {
       await _loadExistingPeriod();
 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payroll approved'), backgroundColor: AppColors.success));
-    } catch (e) {
+    } catch (e, stack) {
+      debugPrint('=== APPROVE PAYROLL ERROR ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack: $stack');
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     } finally {
       if (mounted) setState(() => _isApproving = false);
@@ -503,7 +506,11 @@ class _PayrollScreenState extends State<PayrollScreen> {
     } else {
       for (var e in _calculatedEntries) {
         totalGross += (e['gross_pay'] as num?)?.toDouble() ?? 0;
-        totalDeductions += (e['deductions'] as num?)?.toDouble() ?? 0;
+        final uif = (e['uif_employee'] as num?)?.toDouble() ?? 0;
+        final meat = (e['meat_purchase_deduction'] as num?)?.toDouble() ?? 0;
+        final adv = (e['advance_deduction'] as num?)?.toDouble() ?? 0;
+        final other = (e['other_deductions'] as num?)?.toDouble() ?? 0;
+        totalDeductions += uif + meat + adv + other;
         totalNet += (e['net_pay'] as num?)?.toDouble() ?? 0;
       }
     }

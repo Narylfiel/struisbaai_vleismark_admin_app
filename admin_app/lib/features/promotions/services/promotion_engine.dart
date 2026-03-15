@@ -102,8 +102,26 @@ class PromotionEngine {
 
   bool _matchesAudience(Promotion p, String? loyaltyTier) {
     if (p.audience.contains('all')) return true;
-    if (loyaltyTier != null && p.audience.contains(loyaltyTier)) return true;
-    return p.audience.contains('staff_only') || p.audience.contains('new_customers'); // caller can refine
+    
+    // Direct tier match
+    if (loyaltyTier != null && 
+        p.audience.contains(loyaltyTier)) return true;
+    
+    // Tier hierarchy — higher tiers see lower tier deals
+    // e.g. a VIP customer can see Elite+ deals
+    const tierOrder = ['bronze', 'silver', 'gold', 'elite', 'vip'];
+    final customerTierIndex = tierOrder.indexOf(loyaltyTier ?? 'bronze');
+    
+    for (final audienceTier in p.audience) {
+      final audienceTierIndex = tierOrder.indexOf(audienceTier);
+      if (audienceTierIndex >= 0 && 
+          customerTierIndex >= audienceTierIndex) {
+        return true;
+      }
+    }
+    
+    return p.audience.contains('staff_only') || 
+           p.audience.contains('new_customers');
   }
 
   bool _triggerBogo(Promotion p, List<BasketItem> items) {
