@@ -6,6 +6,7 @@ import 'package:admin_app/features/customers/services/customer_repository.dart';
 import 'package:admin_app/features/customers/screens/announcement_screen.dart';
 import 'package:admin_app/features/customers/screens/customer_detail_screen.dart';
 import 'package:admin_app/features/customers/screens/recipe_library_screen.dart';
+import 'package:admin_app/features/customers/screens/campaign_manager_screen.dart';
 
 class CustomerListScreen extends StatefulWidget {
   const CustomerListScreen({super.key});
@@ -21,7 +22,7 @@ class _CustomerListScreenState extends State<CustomerListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
   }
 
   @override
@@ -47,6 +48,7 @@ class _CustomerListScreenState extends State<CustomerListScreen>
                 Tab(icon: Icon(Icons.people, size: 18), text: 'Customers Directory'),
                 Tab(icon: Icon(Icons.campaign, size: 18), text: 'Announcements'),
                 Tab(icon: Icon(Icons.menu_book, size: 18), text: 'Recipe Library'),
+                Tab(icon: Icon(Icons.restaurant_menu, size: 18), text: 'Campaigns'),
               ],
             ),
           ),
@@ -58,6 +60,7 @@ class _CustomerListScreenState extends State<CustomerListScreen>
                 _CustomersTab(),
                 const AnnouncementScreen(embedded: true),
                 const RecipeLibraryScreen(embedded: true),
+                const CampaignManagerScreen(embedded: true),
               ],
             ),
           ),
