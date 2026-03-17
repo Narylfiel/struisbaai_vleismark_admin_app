@@ -242,6 +242,18 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   TextButton.icon(
+                                    onPressed: () => showDialog(
+                                      context: context,
+                                      builder: (_) => _IngredientsDialog(
+                                        campaignId:   c['id'] as String,
+                                        campaignName: c['name'] as String? ?? '',
+                                      ),
+                                    ),
+                                    icon: const Icon(
+                                        Icons.restaurant_menu, size: 14),
+                                    label: const Text('Ingredients'),
+                                  ),
+                                  TextButton.icon(
                                     onPressed: () => _showEditDialog(c),
                                     icon: const Icon(Icons.edit, size: 14),
                                     label: const Text('Edit'),
@@ -341,7 +353,7 @@ class _CampaignDialogState extends State<_CampaignDialog> {
         'discount_value':       double.tryParse(_discountCtrl.text) ?? 20.0,
         'collection_days_min':  int.tryParse(_collMinCtrl.text) ?? 3,
         'collection_days_max':  int.tryParse(_collMaxCtrl.text) ?? 5,
-        'status':               'draft',
+        if (widget.existing == null) 'status': 'draft',
       });
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -946,6 +958,431 @@ class _Field extends StatelessWidget {
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       ),
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// INGREDIENT MANAGER DIALOG
+// ══════════════════════════════════════════════════════════════════
+
+class _IngredientsDialog extends StatefulWidget {
+  final String campaignId;
+  final String campaignName;
+  const _IngredientsDialog({
+    required this.campaignId,
+    required this.campaignName,
+  });
+
+  @override
+  State<_IngredientsDialog> createState() => _IngredientsDialogState();
+}
+
+class _IngredientsDialogState extends State<_IngredientsDialog>
+    with SingleTickerProviderStateMixin {
+  final _db = Supabase.instance.client;
+  late TabController _tabController;
+
+  List<Map<String, dynamic>> _meatBases    = [];
+  List<Map<String, dynamic>> _profiles     = [];
+  List<Map<String, dynamic>> _addons       = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() => _loading = true);
+    try {
+      final res = await _db
+          .from('custom_reward_ingredients')
+          .select()
+          .eq('campaign_id', widget.campaignId)
+          .order('sort_order');
+
+      final all = List<Map<String, dynamic>>.from(res);
+      if (mounted) setState(() {
+        _meatBases = all.where((i) =>
+            i['ingredient_type'] == 'meat_base').toList();
+        _profiles  = all.where((i) =>
+            i['ingredient_type'] == 'spice_profile').toList();
+        _addons    = all.where((i) =>
+            i['ingredient_type'] == 'spice_addon').toList();
+        _loading   = false;
+      });
+    } catch (e) {
+      debugPrint('[INGREDIENTS] Load failed: $e');
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _addIngredient(String type) async {
+    final nameCtrl  = TextEditingController();
+    final priceCtrl = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text('Add ${_typeLabel(type)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                isDense: true,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: priceCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Price per kg (R)',
+                isDense: true,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && nameCtrl.text.trim().isNotEmpty) {
+      final existingCount = type == 'meat_base'
+          ? _meatBases.length
+          : type == 'spice_profile'
+              ? _profiles.length
+              : _addons.length;
+      await _db.from('custom_reward_ingredients').insert({
+        'campaign_id':     widget.campaignId,
+        'ingredient_type': type,
+        'name':            nameCtrl.text.trim(),
+        'price_per_kg':    double.tryParse(priceCtrl.text) ?? 0.0,
+        'sort_order':      existingCount + 1,
+        'active':          true,
+      });
+      _load();
+    }
+  }
+
+  Future<void> _editIngredient(Map<String, dynamic> ingredient) async {
+    final nameCtrl  = TextEditingController(
+        text: ingredient['name'] as String? ?? '');
+    final priceCtrl = TextEditingController(
+        text: '${(ingredient['price_per_kg'] as num?)?.toStringAsFixed(2) ?? '0.00'}');
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Edit Ingredient'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameCtrl,
+              decoration: InputDecoration(
+                labelText: 'Name',
+                isDense: true,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: priceCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Price per kg (R)',
+                isDense: true,
+                border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8)),
+                contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _db
+          .from('custom_reward_ingredients')
+          .update({
+            'name':        nameCtrl.text.trim(),
+            'price_per_kg': double.tryParse(priceCtrl.text) ?? 0.0,
+          })
+          .eq('id', ingredient['id']);
+      _load();
+    }
+  }
+
+  Future<void> _toggleActive(Map<String, dynamic> ingredient) async {
+    final current = ingredient['active'] as bool? ?? true;
+    await _db
+        .from('custom_reward_ingredients')
+        .update({'active': !current})
+        .eq('id', ingredient['id']);
+    _load();
+  }
+
+  String _typeLabel(String type) => switch (type) {
+    'meat_base'     => 'Meat Base',
+    'spice_profile' => 'Spice Profile',
+    'spice_addon'   => 'Spice Add-on',
+    _               => type,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      child: SizedBox(
+        width: 560,
+        height: 560,
+        child: Column(
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+              decoration: BoxDecoration(
+                color: AppColors.cardBg,
+                borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(14)),
+                border: Border(
+                    bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Ingredients',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Text(
+                          widget.campaignName,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, size: 18),
+                  ),
+                ],
+              ),
+            ),
+            // Tabs
+            TabBar(
+              controller: _tabController,
+              labelColor: AppColors.primary,
+              unselectedLabelColor: AppColors.textSecondary,
+              indicatorColor: AppColors.primary,
+              tabs: const [
+                Tab(text: 'Meat Bases'),
+                Tab(text: 'Spice Profiles'),
+                Tab(text: 'Spice Add-ons'),
+              ],
+            ),
+            const Divider(height: 1, color: AppColors.border),
+            // Content
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : TabBarView(
+                      controller: _tabController,
+                      children: [
+                        _IngredientList(
+                          items:      _meatBases,
+                          type:       'meat_base',
+                          onAdd:      () => _addIngredient('meat_base'),
+                          onEdit:     _editIngredient,
+                          onToggle:   _toggleActive,
+                        ),
+                        _IngredientList(
+                          items:      _profiles,
+                          type:       'spice_profile',
+                          onAdd:      () => _addIngredient('spice_profile'),
+                          onEdit:     _editIngredient,
+                          onToggle:   _toggleActive,
+                        ),
+                        _IngredientList(
+                          items:      _addons,
+                          type:       'spice_addon',
+                          onAdd:      () => _addIngredient('spice_addon'),
+                          onEdit:     _editIngredient,
+                          onToggle:   _toggleActive,
+                        ),
+                      ],
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _IngredientList extends StatelessWidget {
+  final List<Map<String, dynamic>> items;
+  final String type;
+  final VoidCallback onAdd;
+  final Function(Map<String, dynamic>) onEdit;
+  final Function(Map<String, dynamic>) onToggle;
+
+  const _IngredientList({
+    required this.items,
+    required this.type,
+    required this.onAdd,
+    required this.onEdit,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${items.length} items',
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
+              ),
+              TextButton.icon(
+                onPressed: onAdd,
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text('Add'),
+              ),
+            ],
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: items.isEmpty
+              ? const Center(
+                  child: Text(
+                    'No items yet. Tap Add to create one.',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                )
+              : ListView.separated(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 8),
+                  itemCount: items.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: AppColors.border),
+                  itemBuilder: (_, i) {
+                    final item    = items[i];
+                    final isActive = item['active'] as bool? ?? true;
+                    final price   = (item['price_per_kg'] as num?)
+                            ?.toStringAsFixed(2) ??
+                        '0.00';
+
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item['name'] as String? ?? '—',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: isActive
+                                        ? AppColors.textPrimary
+                                        : AppColors.textSecondary,
+                                    decoration: isActive
+                                        ? null
+                                        : TextDecoration.lineThrough,
+                                  ),
+                                ),
+                                Text(
+                                  'R$price / kg',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => onEdit(item),
+                            child: const Text('Edit'),
+                          ),
+                          TextButton(
+                            onPressed: () => onToggle(item),
+                            style: TextButton.styleFrom(
+                              foregroundColor: isActive
+                                  ? AppColors.error
+                                  : AppColors.success,
+                            ),
+                            child: Text(isActive ? 'Disable' : 'Enable'),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 }
