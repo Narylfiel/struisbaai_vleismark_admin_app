@@ -62,7 +62,7 @@ class PromotionRepository {
     if (activeOnly) {
       query = query.eq('status', 'active');
     }
-    final response = await query.order('created_at', ascending: false);
+    final response = await query.order('created_at', ascending: false).limit(300);
     final list = (response as List).map((e) => Promotion.fromJson(e as Map<String, dynamic>)).toList();
     for (final p in list) {
       p.products = await getProductsForPromotion(p.id);

@@ -81,6 +81,10 @@ class SupplierInvoice extends BaseModel {
   final double? taxRate;
   final double taxAmount;
   final double total;
+  /// Cumulative payments posted against this invoice (`supplier_payments`).
+  final double amountPaid;
+  /// Remaining payable; should match total - amountPaid when consistent.
+  final double balanceDue;
   final SupplierInvoiceStatus status;
   final DateTime? paymentDate;
   final String? notes;
@@ -88,6 +92,7 @@ class SupplierInvoice extends BaseModel {
   final String? supplierName;
   final DateTime? receivedAt;
   final String? receivedBy;
+  final bool isOpeningBalance;
 
   const SupplierInvoice({
     required super.id,
@@ -100,6 +105,8 @@ class SupplierInvoice extends BaseModel {
     this.taxRate,
     this.taxAmount = 0,
     this.total = 0,
+    this.amountPaid = 0,
+    this.balanceDue = 0,
     this.status = SupplierInvoiceStatus.draft,
     this.paymentDate,
     this.notes,
@@ -107,6 +114,7 @@ class SupplierInvoice extends BaseModel {
     this.supplierName,
     this.receivedAt,
     this.receivedBy,
+    this.isOpeningBalance = false,
     super.createdAt,
     super.updatedAt,
   });
@@ -124,12 +132,15 @@ class SupplierInvoice extends BaseModel {
       'tax_rate': taxRate,
       'tax_amount': taxAmount,
       'total': total,
+      'amount_paid': amountPaid,
+      'balance_due': balanceDue,
       'status': status.dbValue,
       'payment_date': paymentDate?.toIso8601String().substring(0, 10),
       'notes': notes,
       'created_by': createdBy,
       'received_at': receivedAt?.toIso8601String(),
       'received_by': receivedBy,
+      'is_opening_balance': isOpeningBalance,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -162,6 +173,8 @@ class SupplierInvoice extends BaseModel {
       taxRate: (json['tax_rate'] as num?)?.toDouble(),
       taxAmount: (json['tax_amount'] as num?)?.toDouble() ?? 0,
       total: (json['total'] as num?)?.toDouble() ?? 0,
+      amountPaid: (json['amount_paid'] as num?)?.toDouble() ?? 0,
+      balanceDue: _balanceDueFromJson(json),
       status: SupplierInvoiceStatusExt.fromDb(json['status'] as String?),
       paymentDate: json['payment_date'] != null
           ? DateTime.tryParse(json['payment_date'] as String)
@@ -175,6 +188,7 @@ class SupplierInvoice extends BaseModel {
           ? DateTime.tryParse(json['received_at'] as String)
           : null,
       receivedBy: json['received_by']?.toString(),
+      isOpeningBalance: json['is_opening_balance'] as bool? ?? false,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,
@@ -184,6 +198,16 @@ class SupplierInvoice extends BaseModel {
     );
   }
 
+  static double _balanceDueFromJson(Map<String, dynamic> json) {
+    if (json['balance_due'] != null) {
+      return (json['balance_due'] as num).toDouble();
+    }
+    final t = (json['total'] as num?)?.toDouble() ?? 0;
+    final p = (json['amount_paid'] as num?)?.toDouble() ?? 0;
+    final d = t - p;
+    return d < 0 ? 0 : d;
+  }
+
   bool get canApprove =>
       status == SupplierInvoiceStatus.draft ||
       status == SupplierInvoiceStatus.pendingReview;
@@ -191,7 +215,11 @@ class SupplierInvoice extends BaseModel {
   /// True when invoice can be marked as received (goods received). Only approved, not yet received.
   bool get canReceive => status == SupplierInvoiceStatus.approved;
 
-  SupplierInvoice copyWith({String? supplierName}) {
+  SupplierInvoice copyWith({
+    String? supplierName,
+    double? amountPaid,
+    double? balanceDue,
+  }) {
     return SupplierInvoice(
       id: id,
       invoiceNumber: invoiceNumber,
@@ -203,6 +231,8 @@ class SupplierInvoice extends BaseModel {
       taxRate: taxRate,
       taxAmount: taxAmount,
       total: total,
+      amountPaid: amountPaid ?? this.amountPaid,
+      balanceDue: balanceDue ?? this.balanceDue,
       status: status,
       paymentDate: paymentDate,
       notes: notes,
@@ -210,6 +240,7 @@ class SupplierInvoice extends BaseModel {
       supplierName: supplierName ?? this.supplierName,
       receivedAt: receivedAt ?? this.receivedAt,
       receivedBy: receivedBy ?? this.receivedBy,
+      isOpeningBalance: isOpeningBalance,
       createdAt: createdAt,
       updatedAt: updatedAt,
     );

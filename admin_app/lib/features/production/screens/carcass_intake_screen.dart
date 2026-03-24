@@ -104,18 +104,6 @@ class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
   Future<void> _loadTemplates() async {
     setState(() => _isLoading = true);
     try {
-      if (!ConnectivityService().isConnected) {
-        _isOffline = true;
-        final cached = await IsarService.getAllYieldTemplates();
-        _templates = cached.map((c) {
-          final m = c.toMap();
-          m['template_name'] = c.name;
-          m['carcass_type'] = c.species;
-          return m;
-        }).toList();
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
       _isOffline = false;
       final data = await _supabase
           .from('yield_templates')
@@ -125,6 +113,16 @@ class _YieldTemplatesTabState extends State<_YieldTemplatesTab> {
       setState(() => _templates = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Templates error: $e');
+      _isOffline = true;
+      try {
+        final cached = await IsarService.getAllYieldTemplates();
+        _templates = cached.map((c) {
+          final m = c.toMap();
+          m['template_name'] = c.name;
+          m['carcass_type'] = c.species;
+          return m;
+        }).toList();
+      } catch (_) {}
     }
     setState(() => _isLoading = false);
   }
@@ -360,8 +358,17 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
   Future<void> _loadIntakes() async {
     setState(() => _isLoading = true);
     try {
-      if (!ConnectivityService().isConnected) {
-        _isOffline = true;
+      _isOffline = false;
+      final data = await _supabase
+          .from('carcass_intakes')
+          .select('*, suppliers(name)')
+          .order('created_at', ascending: false)
+          .limit(50);
+      setState(() => _intakes = List<Map<String, dynamic>>.from(data));
+    } catch (e) {
+      debugPrint('Intakes error: $e');
+      _isOffline = true;
+      try {
         final cached = await IsarService.getAllCarcassIntakes();
         _intakes = cached.map((c) {
           final d = c.toMap();
@@ -374,18 +381,7 @@ class _CarcassIntakeTabState extends State<_CarcassIntakeTab> {
           d['delivery_date'] = c.intakeDate?.toIso8601String();
           return d;
         }).toList();
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-      _isOffline = false;
-      final data = await _supabase
-          .from('carcass_intakes')
-          .select('*, suppliers(name)')
-          .order('created_at', ascending: false)
-          .limit(50);
-      setState(() => _intakes = List<Map<String, dynamic>>.from(data));
-    } catch (e) {
-      debugPrint('Intakes error: $e');
+      } catch (_) {}
     }
     setState(() => _isLoading = false);
   }

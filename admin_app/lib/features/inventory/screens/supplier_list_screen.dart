@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
@@ -39,24 +40,22 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
       _loading = true;
       _error = null;
     });
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        final stale = await IsarService.isSuppliersCacheStale();
-        if (stale) {
-          var q = _client
-              .from('suppliers')
-              .select('id, name, contact_name, phone, email, account_number, is_active');
-          if (!_showInactive) q = q.eq('is_active', true);
-          final rows = await q.order('name');
-          final list = List<Map<String, dynamic>>.from(rows as List);
-          final cached = list.map((r) => CachedSupplier.fromSupabase(r)).toList();
-          await IsarService.saveSuppliers(cached);
-          _suppliers = list.map((r) => Supplier.fromJson(r)).toList();
-        } else {
-          await _loadFromCache();
-        }
-      } else {
+      // DATABASE-FIRST: Fetch from Supabase FIRST (preserving exact original query)
+      try {
+        var q = _client
+            .from('suppliers')
+            .select('id, name, contact_name, phone, email, account_number, is_active');
+        if (!_showInactive) q = q.eq('is_active', true);
+        final rows = await q.order('name').limit(300);
+        final list = List<Map<String, dynamic>>.from(rows as List);
+        _suppliers = list.map((r) => Supplier.fromJson(r)).toList();
+        
+        // Update cache in background (non-blocking)
+        final cached = list.map((r) => CachedSupplier.fromSupabase(r)).toList();
+        unawaited(IsarService.saveSuppliers(cached));
+      } catch (e) {
+        // Fallback to cache if database fails
         await _loadFromCache();
         if (_suppliers.isEmpty && mounted) {
           setState(() => _error = 'No cached data available. Connect to the internet to load data.');
@@ -360,25 +359,23 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                OutlinedButton.icon(
+                IconButton(
                   onPressed: _exporting ? null : _importCsv,
                   icon: const Icon(Icons.upload_file),
-                  label: const Text('Import CSV'),
-                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary),
+                  tooltip: 'Import CSV',
                 ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
+                const SizedBox(width: 6),
+                IconButton(
                   onPressed: _exporting ? null : _exportCsv,
                   icon: _exporting ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.download),
-                  label: const Text('Export CSV'),
-                  style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary),
+                  tooltip: 'Export CSV',
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: 6),
                 if (AuthService().currentRole == 'owner') ...[
                   Switch(value: _showInactive, onChanged: (v) { setState(() => _showInactive = v); _load(); }, activeThumbColor: AppColors.primary),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   const Text('Show inactive', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 6),
                 ],
                 ElevatedButton.icon(
                   onPressed: () => _navigateToForm(),
@@ -404,7 +401,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                 label: const Text('Import CSV'),
                 style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary, side: const BorderSide(color: AppColors.primary)),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 4),
               OutlinedButton.icon(
                 onPressed: _exporting ? null : _exportCsv,
                 icon: _exporting
@@ -413,7 +410,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                 label: const Text('Export CSV'),
                 style: OutlinedButton.styleFrom(foregroundColor: AppColors.primary, side: const BorderSide(color: AppColors.primary)),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
               if (AuthService().currentRole == 'owner')
                 Row(
                   mainAxisSize: MainAxisSize.min,
@@ -426,11 +423,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                       },
                       activeThumbColor: AppColors.primary,
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 4),
                     const Text('Show inactive', style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
                   ],
                 ),
-              if (AuthService().currentRole == 'owner') const SizedBox(width: 16),
+              if (AuthService().currentRole == 'owner') const SizedBox(width: 8),
               const Expanded(child: SizedBox()),
               ElevatedButton.icon(
                 onPressed: () => _navigateToForm(),

@@ -44,11 +44,6 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
   
   Future<void> _reloadJob() async {
     try {
-      if (!ConnectivityService().isConnected) {
-        final cached = await IsarService.getHunterJobById(widget.job['id']?.toString() ?? '');
-        if (cached != null && mounted) setState(() => _currentJob = cached.toListMap());
-        return;
-      }
       final fresh = await _client
           .from('hunter_jobs')
           .select('*')
@@ -59,7 +54,10 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
       }
     } catch (e) {
       debugPrint('Error reloading job: $e');
-      // Keep using widget.job as fallback
+      try {
+        final cached = await IsarService.getHunterJobById(widget.job['id']?.toString() ?? '');
+        if (cached != null && mounted) setState(() => _currentJob = cached.toListMap());
+      } catch (_) {}
     }
   }
 

@@ -17,6 +17,22 @@ class AnalyticsRepository {
   AnalyticsRepository({SupabaseClient? client})
       : _client = client ?? SupabaseService.client;
 
+  String _nameFromEmbed(Map<String, dynamic> r) {
+    final inv = r['inventory_items'];
+    if (inv is Map && inv['name'] != null) {
+      return inv['name'].toString();
+    }
+    return r['product_name']?.toString() ?? '—';
+  }
+
+  double _reorderSortKey(Map<String, dynamic> r) {
+    final ds = r['days_of_stock'];
+    if (ds is num) return ds.toDouble();
+    final dr = r['days_remaining']?.toString();
+    if (dr == null || dr == '—') return double.infinity;
+    return double.tryParse(dr) ?? double.infinity;
+  }
+
   // ═════════════════════════════════════════════════════════
   // 1. SHRINKAGE ALERTS (model-based; no raw maps)
   // ═════════════════════════════════════════════════════════
@@ -30,7 +46,8 @@ class AnalyticsRepository {
       return (response as List)
           .map((e) => ShrinkageAlert.fromJson(Map<String, dynamic>.from(e as Map)))
           .toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -44,7 +61,9 @@ class AnalyticsRepository {
     // Optional RPC if defined in the DB. Falls silently if not present.
     try {
       await _client.rpc('calculate_nightly_mass_balance');
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+    }
   }
 
   // ═════════════════════════════════════════════════════════
@@ -54,13 +73,18 @@ class AnalyticsRepository {
     try {
       final response = await _client
           .from('supplier_price_changes')
-          .select()
+          .select('*, inventory_items(name)')
           .eq('status', 'Pending')
           .order('created_at', ascending: false)
           .limit(20);
       final list = List<Map<String, dynamic>>.from(response);
+      for (final r in list) {
+        r['product_name'] = _nameFromEmbed(r);
+      }
       if (list.isNotEmpty) return list;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+    }
     return _getPricingFromInventory();
   }
 
@@ -102,7 +126,8 @@ class AnalyticsRepository {
           double.parse(a['current_margin_pct'])
               .compareTo(double.parse(b['current_margin_pct'])));
       return suggestions.take(20).toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -114,7 +139,9 @@ class AnalyticsRepository {
           .from('supplier_price_changes')
           .update({'status': status})
           .eq('id', id);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+    }
     if (status == 'Applied' && newSellPrice != null) {
       try {
         await _client.from('inventory_items').update({
@@ -122,7 +149,9 @@ class AnalyticsRepository {
           'price_last_changed': DateTime.now().toIso8601String(),
           'updated_at': DateTime.now().toIso8601String(),
         }).eq('id', id);
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('Analytics error: $e');
+      }
     }
   }
 
@@ -135,20 +164,23 @@ class AnalyticsRepository {
       // DB columns: days_of_stock, urgency (not days_remaining, status)
       final response = await _client
           .from('reorder_recommendations')
-          .select()
+          .select('*, inventory_items(name)')
           .order('days_of_stock', ascending: true)
           .limit(50);
       final list = List<Map<String, dynamic>>.from(response);
       for (final r in list) {
-        final inv = (r['inventory_items'] as Map?);
-        if (inv != null) r['product_name'] = inv['name'];
+        r['product_name'] = _nameFromEmbed(r);
         final days = r['days_remaining'] ?? r['days_of_stock'];
         r['days_remaining'] = days;
         final status = r['status'] ?? r['urgency'];
         r['recommendation_text'] ??= _reorderRecommendationText(days, status);
       }
+      list.sort(
+          (a, b) => _reorderSortKey(a).compareTo(_reorderSortKey(b)));
       if (list.isNotEmpty) return list;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+    }
     return _getReorderFromInventoryAndVelocity();
   }
 
@@ -190,6 +222,8 @@ class AnalyticsRepository {
             'status': stock <= 0 ? 'URGENT' : 'WARNING',
           });
         }
+        recs.sort(
+            (a, b) => _reorderSortKey(a).compareTo(_reorderSortKey(b)));
         return recs.take(50).toList();
       }
       final items = await _client
@@ -246,20 +280,11 @@ class AnalyticsRepository {
           'context_message': contextMsg,
         });
       }
-      recs.sort((a, b) {
-        final aDays = a['days_remaining'] as String?;
-        final bDays = b['days_remaining'] as String?;
-        if (aDays == '—') {
-          return 1;
-        }
-        if (bDays == '—') {
-          return -1;
-        }
-        return (double.tryParse(aDays ?? '') ?? 999)
-            .compareTo(double.tryParse(bDays ?? '') ?? 999);
-      });
+      recs.sort(
+          (a, b) => _reorderSortKey(a).compareTo(_reorderSortKey(b)));
       return recs.take(50).toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -273,14 +298,17 @@ class AnalyticsRepository {
   /// event_spike_multiplier is stored as a percentage (e.g. 30 = 30% above normal).
   Future<double> _getSpikeThresholdPct() async {
     try {
-      final row = await _client
+      final settings = await _client
           .from('business_settings')
           .select('event_spike_multiplier')
           .limit(1)
           .single();
-      return (row['event_spike_multiplier'] as num?)?.toDouble() ?? 30.0;
-    } catch (_) {
-      return 30.0;
+      final multiplier =
+          (settings['event_spike_multiplier'] as num?)?.toDouble() ?? 1.5;
+      return multiplier;
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+      return 1.5;
     }
   }
 
@@ -289,7 +317,8 @@ class AnalyticsRepository {
   Future<List<Map<String, dynamic>>> getRecentEvents() async {
     try {
       return _getSalesSpikesFromTransactions();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -304,7 +333,7 @@ class AnalyticsRepository {
 
       final txns = await _client
           .from('transactions')
-          .select('created_at, total_amount, item_count')
+          .select('created_at, total_amount')
           .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String());
 
@@ -382,6 +411,7 @@ class AnalyticsRepository {
             'week_start': weekStart,
             'week_end': sunday.toIso8601String().substring(0, 10),
             'revenue': revenue,
+            'total_amount': revenue,
             'transaction_count': txCount.toInt(),
             'baseline_revenue': avgRevenue,
             'revenue_variance_pct': revenueVariancePct.toStringAsFixed(1),
@@ -392,10 +422,14 @@ class AnalyticsRepository {
         }
       }
 
-      spikes.sort((a, b) =>
-          (b['week_start'] as String).compareTo(a['week_start'] as String));
+      spikes.sort((a, b) {
+        final ba = (b['total_amount'] as num?)?.toDouble() ?? 0;
+        final aa = (a['total_amount'] as num?)?.toDouble() ?? 0;
+        return ba.compareTo(aa);
+      });
       return spikes;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -418,7 +452,8 @@ class AnalyticsRepository {
           .order('start_date', ascending: false)
           .limit(50);
       return List<Map<String, dynamic>>.from(response);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       try {
         final response = await _client
             .from('event_tags')
@@ -426,7 +461,8 @@ class AnalyticsRepository {
             .order('event_date', ascending: false)
             .limit(50);
         return List<Map<String, dynamic>>.from(response);
-      } catch (_) {
+      } catch (e2) {
+        debugPrint('Analytics error: $e2');
         return [];
       }
     }
@@ -471,7 +507,8 @@ class AnalyticsRepository {
       reminders.sort((a, b) =>
           (a['days_until'] as int).compareTo(b['days_until'] as int));
       return reminders;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -526,7 +563,9 @@ class AnalyticsRepository {
         'dismissed': true,
         'auto_detected': true,
       });
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+    }
   }
 
   int _isoWeekNumber(DateTime date) {
@@ -549,7 +588,8 @@ class AnalyticsRepository {
           .order('start_date', ascending: true);
 
       return List<Map<String, dynamic>>.from(tags);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }
@@ -590,7 +630,8 @@ class AnalyticsRepository {
           'instances': instances,
         }
       ];
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Analytics error: $e');
       return [];
     }
   }

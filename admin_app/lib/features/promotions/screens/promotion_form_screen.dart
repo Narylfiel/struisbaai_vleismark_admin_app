@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
 import '../models/promotion.dart';
@@ -27,6 +26,7 @@ class _PromotionFormScreenState
   // ── Step 1: Basic ──────────────────────────────────
   final _nameCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _termsCtrl = TextEditingController();
   String _promoType = 'weekly_special';
   // promoType values:
   // weekly_special | buy_x_get_y | spend_reward |
@@ -44,7 +44,7 @@ class _PromotionFormScreenState
   final _buyQtyCtrl = TextEditingController(text: '2');
   final _getQtyCtrl = TextEditingController(text: '1');
   final _getWeightCtrl = TextEditingController();
-  String _getMode = 'qty'; // 'qty' or 'weight'
+  final String _getMode = 'qty'; // 'qty' or 'weight'
 
   // spend_reward
   final _minSpendCtrl = TextEditingController(text: '500');
@@ -66,14 +66,12 @@ class _PromotionFormScreenState
   List<String> _audience = ['all'];
   DateTime? _startDate;
   DateTime? _endDate;
-  bool _earlyAccessEnabled = false;
   int _earlyAccessHours = 24;
 
   // ── Margin warning state ───────────────────────────
   double? _calculatedMarginPct;
   bool _marginWarning = false;
   List<Map<String, dynamic>> _slowMovers = [];
-  bool _loadingSlowMovers = false;
 
   static const _audienceOptions = [
     'all', 'bronze', 'silver', 'gold', 'elite', 'vip',
@@ -99,6 +97,7 @@ class _PromotionFormScreenState
   void dispose() {
     _nameCtrl.dispose();
     _descCtrl.dispose();
+    _termsCtrl.dispose();
     _discountValueCtrl.dispose();
     _buyQtyCtrl.dispose();
     _getQtyCtrl.dispose();
@@ -111,30 +110,24 @@ class _PromotionFormScreenState
   }
 
   Future<void> _loadSlowMovers() async {
-    setState(() => _loadingSlowMovers = true);
     try {
       final client = SupabaseService.client;
       // Slow movers: active products where current_stock
-      // is above reorder level but haven't moved
-      // (use stock > 0 AND slow_mover flag if available,
-      // else top 10 highest stock items)
+      // is less than 30% of target_stock
       final res = await client
           .from('inventory_items')
-          .select('id, name, current_stock, sell_price, '
-              'cost_price, target_margin_pct, plu_code')
+          .select('id, name, current_stock, target_stock')
           .eq('is_active', true)
-          .gt('current_stock', 0)
-          .order('current_stock', ascending: false)
-          .limit(10);
+          .lt('current_stock', 30)
+          .order('name');
       if (mounted) {
         setState(() {
           _slowMovers =
               List<Map<String, dynamic>>.from(res as List);
-          _loadingSlowMovers = false;
         });
       }
     } catch (_) {
-      if (mounted) setState(() => _loadingSlowMovers = false);
+      // Silently fail - slow movers list will just be empty
     }
   }
 
@@ -142,6 +135,7 @@ class _PromotionFormScreenState
     final p = widget.promotion!;
     _nameCtrl.text = p.name;
     _descCtrl.text = p.description ?? '';
+    _termsCtrl.text = p.termsAndConditions ?? '';
     _audience = List.from(p.audience);
     _startDate = p.startDate;
     _endDate = p.endDate;
@@ -377,6 +371,9 @@ class _PromotionFormScreenState
       description: _descCtrl.text.isEmpty
           ? null
           : _descCtrl.text.trim(),
+      termsAndConditions: _termsCtrl.text.isEmpty
+          ? null
+          : _termsCtrl.text.trim(),
       status: widget.promotion?.status ??
           PromotionStatus.draft,
       promotionType: type,
@@ -650,6 +647,16 @@ class _PromotionFormScreenState
               labelText:
                   'Description (shown to customers)'),
           maxLines: 2,
+          readOnly: widget.viewOnly,
+        ),
+        const SizedBox(height: 12),
+        TextFormField(
+          controller: _termsCtrl,
+          decoration: const InputDecoration(
+              labelText: 'Terms & Conditions',
+              hintText: 'e.g. Cannot be combined with other offers. While stocks last.'),
+          maxLines: 3,
+          maxLength: 500,
           readOnly: widget.viewOnly,
         ),
       ],

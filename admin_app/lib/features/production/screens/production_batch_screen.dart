@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
@@ -44,36 +45,33 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
       _loading = true;
       _error = null;
     });
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isProductionBatchCacheStale();
-        if (stale) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-          final recipes = await _recipeRepo.getRecipes(activeOnly: true);
-          final inv = await _client.from('inventory_items').select('id, name, current_stock').eq('is_active', true).order('name');
-          final invList = List<Map<String, dynamic>>.from(inv as List);
-          if (mounted) setState(() {
-            _recipes = recipes;
-            _inventoryItems = invList;
+      await _fetchFromSupabaseAndSave();
+      _isOffline = false;
+    } catch (e) {
+      _isOffline = true;
+      try {
+        await _loadFromCache();
+        if (_isOffline && mounted) {
+          setState(() {
+            _recipes = [];
+            _inventoryItems = [];
           });
         }
-      } else {
-        _isOffline = true;
-        await _loadFromCache();
-        if (mounted) setState(() {
-          _recipes = [];
-          _inventoryItems = [];
-        });
+        if (_batches.isEmpty && mounted) {
+          setState(() {
+            _error = _isOffline
+                ? 'No cached data available. Connect to the internet to load data.'
+                : ErrorHandler.friendlyMessage(e);
+          });
+        }
+      } catch (_) {
+        if (mounted) {
+          setState(() {
+            _error = ErrorHandler.friendlyMessage(e);
+          });
+        }
       }
-    } catch (e) {
-      if (mounted) setState(() {
-        _error = ErrorHandler.friendlyMessage(e);
-      });
     }
     if (mounted) setState(() => _loading = false);
   }
@@ -104,21 +102,11 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
     }).toList();
     final thirtyDaysAgo = DateTime.now().subtract(const Duration(days: 30));
     final trimmed = toSave.where((c) => (c.createdAt ?? DateTime(0)).isAfter(thirtyDaysAgo)).take(100).toList();
-    await IsarService.saveProductionBatches(trimmed);
+    unawaited(IsarService.saveProductionBatches(trimmed));
     _batches = batches;
     _recipes = recipes;
     _inventoryItems = invList;
     _recipeNameById = {};
-  }
-
-  void _refreshInBackground() {
-    Future(() async {
-      try {
-        if (!await IsarService.isProductionBatchCacheStale()) return;
-        await _fetchFromSupabaseAndSave();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    });
   }
 
   /// Batches to display: filter by _statusFilter in Dart (works offline from cache).
@@ -496,7 +484,7 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
                 selected: {_statusFilter},
                 onSelectionChanged: (s) => setState(() => _statusFilter = s.first),
               ),
-              const SizedBox(width: 16),
+              const SizedBox(width: 8),
               const Expanded(child: SizedBox()),
               ElevatedButton.icon(
                 onPressed: _isOffline ? null : _startNewBatch,

@@ -40,6 +40,7 @@ class _SidebarNavState extends State<SidebarNav> {
       _NavItem(icon: Icons.analytics, label: 'Analytics'),
       _NavItem(icon: Icons.summarize, label: 'Reports'),
       _NavItem(icon: Icons.person_search, label: 'Customers'),
+      _NavItem(icon: Icons.shopping_bag, label: 'Online Orders'),
       _NavItem(icon: Icons.visibility, label: 'Audit'),
       if (isOwner) _NavItem(icon: Icons.settings, label: 'Settings'),
     ];

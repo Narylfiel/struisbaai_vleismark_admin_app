@@ -18,7 +18,7 @@ class ModifierRepository {
     if (activeOnly) {
       q = q.eq('active', true);
     }
-    final list = await q.order('sort_order', ascending: true).order('name');
+    final list = await q.order('sort_order', ascending: true).order('name').limit(300);
     return (list as List)
         .map((e) => ModifierGroup.fromJson(e as Map<String, dynamic>))
         .toList();

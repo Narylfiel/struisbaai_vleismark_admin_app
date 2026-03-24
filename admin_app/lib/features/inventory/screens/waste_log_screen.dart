@@ -70,10 +70,29 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (!isConnected) {
-        _isOffline = true;
+      _isOffline = false;
+      final response = await _client
+          .from('stock_movements')
+          .select('''
+            id, item_id, movement_type, quantity, unit_type,
+            balance_after, reason, staff_id, photo_url, notes, metadata,
+            reference_type, reference_id, created_at,
+            inventory_items(plu_code, name, cost_price),
+            profiles(full_name)
+          ''')
+          .inFilter('movement_type', ['waste', 'sponsorship'])
+          .gte('created_at', _dateFrom.toIso8601String())
+          .lte('created_at', _dateTo.toIso8601String())
+          .order('created_at', ascending: false);
+
+      _movements = List<Map<String, dynamic>>.from(response);
+      _applyFilters();
+      await _calculateStats();
+    } catch (e) {
+      debugPrint('Waste log load error: $e');
+      _isOffline = true;
+      try {
         final cached = await IsarService.getAllStockMovements();
         final endOfDay = DateTime(_dateTo.year, _dateTo.month, _dateTo.day, 23, 59, 59);
         _movements = cached
@@ -95,29 +114,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
         }).toList();
         _applyFilters();
         await _calculateStats();
-        if (mounted) setState(() => _isLoading = false);
-        return;
-      }
-      _isOffline = false;
-      final response = await _client
-          .from('stock_movements')
-          .select('''
-            id, item_id, movement_type, quantity, unit_type,
-            balance_after, reason, staff_id, photo_url, notes, metadata,
-            reference_type, reference_id, created_at,
-            inventory_items(plu_code, name, cost_price),
-            profiles(full_name)
-          ''')
-          .inFilter('movement_type', ['waste', 'sponsorship'])
-          .gte('created_at', _dateFrom.toIso8601String())
-          .lte('created_at', _dateTo.toIso8601String())
-          .order('created_at', ascending: false);
-
-      _movements = List<Map<String, dynamic>>.from(response);
-      _applyFilters();
-      await _calculateStats();
-    } catch (e) {
-      debugPrint('Waste log load error: $e');
+      } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),

@@ -7,7 +7,10 @@ import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
+import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
+import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
 import '../services/dashboard_repository.dart';
+import '../services/dashboard_service.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -19,6 +22,9 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   final _supabase = SupabaseService.client;
   final _dashboardRepo = DashboardRepository();
+  /// Single instance so pricing alert cache (5 min TTL) in [DashboardService] is effective.
+  late final DashboardService _dashboardPricingService =
+      DashboardService(_supabase);
   final _ps = PermissionService();
 
   bool _isLoading = true;
@@ -41,11 +47,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
   double _avgBasket = 0;
   double _grossMargin = 0;
 
+  // Online Orders stats
+  int _pendingOnlineOrders = 0;
+  int _readyOnlineOrders = 0;
+
   // Alerts
   List<Map<String, dynamic>> _shrinkageAlerts = [];
   List<Map<String, dynamic>> _reorderAlerts = [];
   List<Map<String, dynamic>> _overdueAccounts = [];
   List<Map<String, dynamic>> _pendingLeave = [];
+  /// Pricing intelligence alerts (same pipeline as report — [DashboardService]).
+  List<Map<String, dynamic>> _pricingAlerts = [];
+  bool _loadingPricingAlerts = true;
 
   // Clock-in status
   List<Map<String, dynamic>> _clockedIn = [];
@@ -55,6 +68,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _sevenDaySales = [];
   Map<String, int> _weeklyTransactionCounts = {};
   RealtimeChannel? _transactionsChannel;
+  RealtimeChannel? _onlineOrdersChannel;
 
   // Top products
   List<Map<String,dynamic>> _topProducts = [];
@@ -67,6 +81,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadDashboard();
     if (ConnectivityService().isConnected) {
       _subscribeTransactions();
+      _subscribeOnlineOrders();
       if (_canSeeTopProducts) {
         if (!_canSeeTopRevenue) _topProductsMode = 'quantity';
         _loadTopProducts();
@@ -77,6 +92,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void dispose() {
     _transactionsChannel?.unsubscribe();
+    _onlineOrdersChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -87,6 +103,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
       table: 'transactions',
       callback: (_) {
         if (mounted) _loadDashboard();
+      },
+    ).subscribe();
+  }
+
+  void _subscribeOnlineOrders() {
+    _onlineOrdersChannel = _supabase.channel('dashboard-online-orders').onPostgresChanges(
+      event: PostgresChangeEvent.all,
+      schema: 'public',
+      table: 'online_orders',
+      callback: (_) {
+        if (mounted) _loadOnlineOrdersStats();
       },
     ).subscribe();
   }
@@ -108,11 +135,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _cachedInventoryCount = items.length;
             _cachedTransactionCountToday = tx.length;
             _isLoading = false;
+            _loadingPricingAlerts = false;
+            _pricingAlerts = [];
           });
         }
       } catch (e) {
         debugPrint('Dashboard offline load: $e');
-        if (mounted) setState(() { _isOffline = true; _isLoading = false; });
+        if (mounted) {
+          setState(() {
+            _isOffline = true;
+            _isLoading = false;
+            _loadingPricingAlerts = false;
+            _pricingAlerts = [];
+          });
+        }
       }
       return;
     }
@@ -122,7 +158,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadSalesStats(),
         _load7DaySales(),
         _loadAlerts(),
+        _loadPricingAlerts(),
         _loadClockInStatus(),
+        _loadOnlineOrdersStats(),
       ]);
     } catch (e) {
       debugPrint('Dashboard error: $e');
@@ -155,6 +193,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       // transactions table may not exist yet (POS not built)
       debugPrint('Dashboard transaction stats: $e');
+    }
+  }
+
+  Future<void> _loadOnlineOrdersStats() async {
+    final today = DateTime.now();
+    final todayStr = '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
+    try {
+      final pendingRes = await _supabase
+          .from('online_orders')
+          .select('id')
+          .inFilter('status', ['pending_cod', 'pending_payment', 'confirmed', 'packing'])
+          .gte('collection_date', todayStr);
+
+      final readyRes = await _supabase
+          .from('online_orders')
+          .select('id')
+          .eq('status', 'ready')
+          .gte('collection_date', todayStr);
+
+      if (!mounted) return;
+      setState(() {
+        _pendingOnlineOrders = (pendingRes as List).length;
+        _readyOnlineOrders = (readyRes as List).length;
+      });
+    } catch (e) {
+      debugPrint('Dashboard online orders stats: $e');
+      if (mounted) {
+        setState(() {
+          _pendingOnlineOrders = 0;
+          _readyOnlineOrders = 0;
+        });
+      }
     }
   }
 
@@ -218,6 +288,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     } catch (e) {
       debugPrint('Leave requests: $e');
       _pendingLeave = [];
+    }
+  }
+
+  /// Reuses [ReportRepository.getPricingIntelligenceRowsForAlerts] + [AlertService] (read-only).
+  Future<void> _loadPricingAlerts() async {
+    if (!_canSeeAlerts) {
+      if (mounted) {
+        setState(() {
+          _pricingAlerts = [];
+          _loadingPricingAlerts = false;
+        });
+      }
+      return;
+    }
+    if (mounted) setState(() => _loadingPricingAlerts = true);
+    try {
+      final alerts = await _dashboardPricingService.getAlerts();
+      if (!mounted) return;
+      setState(() {
+        _pricingAlerts = alerts;
+        _loadingPricingAlerts = false;
+      });
+    } catch (e) {
+      debugPrint('Pricing alerts: $e');
+      if (mounted) {
+        setState(() {
+          _pricingAlerts = [];
+          _loadingPricingAlerts = false;
+        });
+      }
     }
   }
 
@@ -558,6 +658,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: AppColors.accent,
             ),
           ),
+        const SizedBox(width: 12),
+        // Online Orders tile
+        Expanded(
+          child: _StatCard(
+            title: 'ONLINE ORDERS',
+            value: '${_pendingOnlineOrders + _readyOnlineOrders}',
+            sub: (_pendingOnlineOrders + _readyOnlineOrders) == 0
+                ? 'No active orders'
+                : '$_pendingOnlineOrders Pending · $_readyOnlineOrders Ready',
+            subColor: _pendingOnlineOrders > 0
+                ? AppColors.warning
+                : _readyOnlineOrders > 0
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+            icon: Icons.shopping_bag,
+            color: _pendingOnlineOrders > 0
+                ? AppColors.warning
+                : _readyOnlineOrders > 0
+                    ? AppColors.success
+                    : AppColors.info,
+          ),
+        ),
         if (_canSeeFinancials)
           const SizedBox(width: 12),
         if (_canSeeFinancials)
@@ -575,8 +697,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  void _handleAlertTap(Map<String, dynamic> alert) {
+    final raw = alert['inventory_item_id'];
+    String? itemId;
+    if (raw != null) {
+      final s = raw.toString();
+      if (s.isNotEmpty && s != 'unknown') itemId = s;
+    }
+    if (itemId != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute<void>(
+          builder: (_) => ProductListScreen(openInventoryItemId: itemId),
+        ),
+      );
+      return;
+    }
+    Navigator.push(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const ReportHubScreen(
+          initialReportKey: 'pricing_intelligence',
+        ),
+      ),
+    );
+  }
+
   Widget _buildAlerts() {
-    final hasAlerts = _shrinkageAlerts.isNotEmpty ||
+    final sortedPricing = List<Map<String, dynamic>>.from(_pricingAlerts);
+    const severityOrder = <String, int>{'high': 0, 'medium': 1};
+    sortedPricing.sort((a, b) {
+      final sa = a['severity']?.toString();
+      final sb = b['severity']?.toString();
+      return (severityOrder[sa] ?? 99).compareTo(severityOrder[sb] ?? 99);
+    });
+
+    final hasAlerts = _loadingPricingAlerts ||
+        sortedPricing.isNotEmpty ||
+        _shrinkageAlerts.isNotEmpty ||
         _reorderAlerts.isNotEmpty ||
         _overdueAccounts.isNotEmpty ||
         _pendingLeave.isNotEmpty;
@@ -586,7 +744,63 @@ class _DashboardScreenState extends State<DashboardScreen> {
       icon: Icons.notifications_active,
       child: hasAlerts
           ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_loadingPricingAlerts)
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Loading pricing alerts…',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ),
+                if (!_loadingPricingAlerts && sortedPricing.isNotEmpty)
+                  ...sortedPricing.take(5).map((alert) {
+                    final severity = alert['severity']?.toString();
+                    final color = severity == 'high'
+                        ? AppColors.error
+                        : AppColors.warning;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(6),
+                            onTap: () => _handleAlertTap(alert),
+                            hoverColor:
+                                AppColors.primary.withValues(alpha: 0.06),
+                            splashColor:
+                                AppColors.primary.withValues(alpha: 0.12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                vertical: 6,
+                                horizontal: 4,
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Icon(Icons.warning_amber_rounded,
+                                      color: color, size: 18),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      alert['message']?.toString() ?? '',
+                                      style: const TextStyle(fontSize: 12),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
                 ..._shrinkageAlerts.map((a) {
                       final name = a['item_name']?.toString().trim();
                       final gapPct = a['gap_percentage'] ?? a['shrinkage_percentage'];
@@ -946,7 +1160,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _loadSalesStats();
     if (_canSeeChartAmounts) _load7DaySales();
     if (_canSeeChartCounts && !_canSeeChartAmounts) _loadWeeklyTransactionCounts();
-    if (_canSeeAlerts) _loadAlerts();
+    if (_canSeeAlerts) {
+      _loadAlerts();
+      _loadPricingAlerts();
+    }
     _loadClockInStatus();
     if (_canSeeTopProducts) _loadTopProducts();
   }

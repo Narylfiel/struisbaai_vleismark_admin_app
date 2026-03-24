@@ -8,7 +8,6 @@ import '../models/modifier_group.dart';
 import '../models/modifier_item.dart';
 import '../services/modifier_repository.dart';
 import 'package:admin_app/core/db/isar_service.dart';
-import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 /// Blueprint §4.3: Modifier items for one group. List items, Add/Edit (name, price adjustment, track inventory, linked item).
@@ -34,8 +33,15 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
       _error = null;
     });
     try {
-      if (!ConnectivityService().isConnected) {
-        _isOffline = true;
+      _isOffline = false;
+      final list = await _repo.getItemsByGroup(widget.group.id);
+      if (mounted) setState(() {
+        _items = list;
+        _loading = false;
+      });
+    } catch (e) {
+      _isOffline = true;
+      try {
         final cached = await IsarService.getAllModifierItems(widget.group.id);
         _items = cached
             .where((c) => c.modifierGroupId == widget.group.id)
@@ -50,16 +56,7 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
                   linkedInventoryItemId: null,
                 ))
             .toList();
-        if (mounted) setState(() => _loading = false);
-        return;
-      }
-      _isOffline = false;
-      final list = await _repo.getItemsByGroup(widget.group.id);
-      if (mounted) setState(() {
-        _items = list;
-        _loading = false;
-      });
-    } catch (e) {
+      } catch (_) {}
       if (mounted) setState(() {
         _error = ErrorHandler.friendlyMessage(e);
         _loading = false;

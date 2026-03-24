@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/db/cached_transaction.dart';
 import 'package:admin_app/core/db/isar_service.dart';
-import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/features/transactions/services/transaction_repository.dart';
 import 'package:admin_app/features/transactions/screens/transaction_detail_screen.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +19,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _staffList = [];
   bool _loading = true;
+  bool _isOffline = false;
   DateTime _dateFrom = DateTime.now().subtract(const Duration(days: 6));
   DateTime _dateTo = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59);
   String? _paymentFilter;
@@ -50,72 +50,40 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final isOnline = ConnectivityService().isConnected;
-      if (!isOnline) {
-        final cached = await IsarService.getTransactions(
-          _dateFrom,
-          _dateTo,
-          _paymentFilter?.isEmpty == true ? null : _paymentFilter,
-          _staffFilter?.isEmpty == true ? null : _staffFilter,
-        );
-        if (mounted) setState(() {
-          _transactions = cached.map((t) => t.toListMap()).toList();
-          _loading = false;
-        });
-        return;
-      }
-      final stale = await IsarService.isTransactionCacheStale();
-      final cached = await IsarService.getTransactions(null, null, null, null);
-      if (stale || cached.isEmpty) {
-        final bulkStart = DateTime.now().subtract(const Duration(days: 90));
-        final bulkEnd = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day, 23, 59, 59);
-        final list = await _repo.getTransactions(
-          start: bulkStart,
-          end: bulkEnd,
-          paymentMethod: null,
-          staffId: null,
-        );
-        final toSave = list.map((row) {
-          final profiles = row['profiles'];
-          String? staffName;
-          if (profiles is Map) staffName = profiles['full_name']?.toString();
-          return CachedTransaction.fromSupabase(row, staffName: staffName);
-        }).toList();
-        await IsarService.saveTransactions(toSave);
-        if (mounted) setState(() {
+      _isOffline = false;
+      final list = await _repo.getTransactions(
+        start: _dateFrom,
+        end: _dateTo,
+        paymentMethod: _paymentFilter?.isEmpty == true ? null : _paymentFilter,
+        staffId: _staffFilter?.isEmpty == true ? null : _staffFilter,
+      );
+      final toSave = list.map((row) {
+        final profiles = row['profiles'];
+        String? staffName;
+        if (profiles is Map) staffName = profiles['full_name']?.toString();
+        return CachedTransaction.fromSupabase(row, staffName: staffName);
+      }).toList();
+      await IsarService.saveTransactions(toSave);
+      if (mounted) {
+        setState(() {
           _transactions = list;
-          _loading = false;
         });
-        return;
       }
-      final fromCache = await IsarService.getTransactions(
+    } catch (e) {
+      _isOffline = true;
+      final cached = await IsarService.getTransactions(
         _dateFrom,
         _dateTo,
         _paymentFilter?.isEmpty == true ? null : _paymentFilter,
         _staffFilter?.isEmpty == true ? null : _staffFilter,
       );
-      if (mounted) setState(() {
-        _transactions = fromCache.map((t) => t.toListMap()).toList();
-        _loading = false;
-      });
-      _repo.getTransactions(start: _dateFrom, end: _dateTo, paymentMethod: _paymentFilter, staffId: _staffFilter).then((list) async {
-        if (list.isEmpty) return;
-        final toSave = list.map((row) {
-          final profiles = row['profiles'];
-          String? staffName;
-          if (profiles is Map) staffName = profiles['full_name']?.toString();
-          return CachedTransaction.fromSupabase(row, staffName: staffName);
-        }).toList();
-        await IsarService.saveTransactions(toSave);
-        if (mounted) setState(() {
-          _transactions = list;
+      if (mounted) {
+        setState(() {
+          _transactions = cached.map((t) => t.toListMap()).toList();
         });
-      });
-    } catch (e) {
-      if (mounted) setState(() {
-        _transactions = [];
-        _loading = false;
-      });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -178,9 +146,10 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             color: AppColors.cardBg,
-            child: Row(
-              children: [
-                InkWell(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 900;
+                final dateFilter = InkWell(
                   onTap: _pickDateRange,
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -200,9 +169,8 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                       ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
+                );
+                final paymentFilter = DropdownButton<String>(
                   value: _paymentFilter ?? '',
                   hint: const Text('Payment'),
                   items: paymentOptions.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
@@ -210,9 +178,8 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     setState(() => _paymentFilter = v);
                     _load();
                   },
-                ),
-                const SizedBox(width: 12),
-                DropdownButton<String>(
+                );
+                final staffFilter = DropdownButton<String>(
                   value: _staffFilter ?? '',
                   hint: const Text('Cashier'),
                   isExpanded: false,
@@ -227,8 +194,29 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     setState(() => _staffFilter = v);
                     _load();
                   },
-                ),
-              ],
+                );
+                if (isWide) {
+                  return Row(
+                    children: [
+                      dateFilter,
+                      const SizedBox(width: 6),
+                      paymentFilter,
+                      const SizedBox(width: 6),
+                      staffFilter,
+                    ],
+                  );
+                }
+                return Wrap(
+                  spacing: 6,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    dateFilter,
+                    paymentFilter,
+                    staffFilter,
+                  ],
+                );
+              },
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
@@ -239,7 +227,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                 : _transactions.isEmpty
                     ? Center(
                         child: Text(
-                          ConnectivityService().isConnected
+                          !_isOffline
                               ? 'No transactions for this period'
                               : 'No cached data available. Connect to the internet to load data.',
                           style: const TextStyle(color: AppColors.textSecondary),

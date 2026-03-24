@@ -2,11 +2,14 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import '../models/report_data.dart';
 import '../models/report_definition.dart';
+import 'alert_service.dart';
 import '../../bookkeeping/services/ledger_repository.dart';
 import '../../hr/services/awol_repository.dart';
 import '../../hr/services/staff_credit_repository.dart';
 import '../../hr/services/compliance_service.dart';
 import '../../hr/models/awol_record.dart';
+
+double _reportMoney(double x) => (x * 100).roundToDouble() / 100;
 
 /// Repository for generating reports defined in AdminAppBluePrintTruth §11.
 /// Real data for view and export (CSV, PDF, Excel).
@@ -175,7 +178,10 @@ class ReportRepository {
         final data = rows.map((r) => {
           'staff_name': _extractStaffName(r),
           'gross_pay': r['gross_pay'],
-          'total_deductions': r['total_deductions'],
+          'total_deductions': (r['uif_employee'] as num? ?? 0) +
+              (r['advance_deduction'] as num? ?? 0) +
+              (r['meat_purchase_deduction'] as num? ?? 0) +
+              (r['other_deductions'] as num? ?? 0),
           'net_pay': r['net_pay'],
           'period_end': r['period_end'] ?? r['created_at']?.toString().substring(0, 10),
         }).toList();
@@ -194,28 +200,44 @@ class ReportRepository {
       }
       case 'inventory_valuation': {
         final rows = await getInventoryValuation();
-        final data = rows.map((r) => {
-          'name': r['name'],
-          'current_stock': r['current_stock'],
-          'cost_price': r['cost_price'],
-          'selling_price': r['selling_price'],
-          'value': (r['current_stock'] as num? ?? 0) * (r['cost_price'] as num? ?? 0),
+        final data = rows.map((r) {
+          final fresh = (r['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+          final frozen = (r['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
+          final totalStock = fresh + frozen;
+          final costPrice = (r['cost_price'] as num?)?.toDouble() ?? 0;
+          return {
+            'name': r['name'],
+            'stock_fresh': fresh,
+            'stock_frozen': frozen,
+            'total_stock': totalStock,
+            'cost_price': costPrice,
+            'sell_price': (r['sell_price'] as num?)?.toDouble() ?? 0,
+            'value': totalStock * costPrice,
+          };
         }).toList();
         return ReportData(
           data: data,
-          columns: ['name', 'current_stock', 'cost_price', 'selling_price', 'value'],
-          columnHeaders: {'name': 'Product', 'current_stock': 'Stock', 'cost_price': 'Cost', 'selling_price': 'Sell Price', 'value': 'Value'},
-          summary: {'Total Value': data.fold<double>(0, (s, r) => s + ((r['value'] as num?)?.toDouble() ?? 0))},
+          columns: ['name', 'stock_fresh', 'stock_frozen', 'total_stock', 'cost_price', 'sell_price', 'value'],
+          columnHeaders: {
+            'name': 'Product',
+            'stock_fresh': 'Fresh (kg)',
+            'stock_frozen': 'Frozen (kg)',
+            'total_stock': 'Total Stock',
+            'cost_price': 'Cost (R)',
+            'sell_price': 'Sell Price (R)',
+            'value': 'Stock Value (R)'
+          },
+          summary: {'Total Stock Value': data.fold<double>(0, (s, r) => s + ((r['value'] as num?)?.toDouble() ?? 0))},
           title: title,
           subtitle: 'As at $endStr',
-          monetaryColumns: const {'cost_price', 'selling_price', 'value'},
+          monetaryColumns: const {'cost_price', 'sell_price', 'value'},
         );
       }
       case 'shrinkage': {
         final rows = await getShrinkageReport(start, end);
         final data = rows.map((r) => {
           'created_at': r['created_at']?.toString().substring(0, 10),
-          'product_name': r['product_name'] ?? r['product_id'],
+          'product_name': r['item_name'] ?? r['product_id'],
           'theoretical_stock': r['theoretical_stock'],
           'actual_stock': r['actual_stock'],
           'gap_amount': r['gap_amount'] ?? r['variance'],
@@ -343,6 +365,138 @@ class ReportRepository {
           subtitle: subtitle,
           monetaryColumns: const {'revenue'},
         );
+      case 'pricing_intelligence': {
+        final rows = await getPricingIntelligenceRowsForAlerts(start, end);
+        rows.sort(
+          (a, b) => ((b['profit'] as num?)?.toDouble() ?? 0.0)
+              .compareTo((a['profit'] as num?)?.toDouble() ?? 0.0),
+        );
+        final totalRev = _reportMoney(
+          rows.fold<double>(
+            0,
+            (s, r) => s + ((r['revenue'] as num?)?.toDouble() ?? 0),
+          ),
+        );
+        final totalCostSum = _reportMoney(
+          rows.fold<double>(
+            0,
+            (s, r) => s + ((r['cost'] as num?)?.toDouble() ?? 0),
+          ),
+        );
+        final totalProf = _reportMoney(totalRev - totalCostSum);
+        final overallMarginPct =
+            totalRev > 0 ? _reportMoney((totalProf / totalRev) * 100) : 0.0;
+        final alerts = AlertService.generateAlerts(rows);
+        return ReportData(
+          data: rows,
+          alerts: alerts,
+          columns: rows.isNotEmpty
+              ? rows.first.keys.toList()
+              : [
+                  'inventory_item_id',
+                  'product_name',
+                  'quantity',
+                  'revenue',
+                  'cost',
+                  'profit',
+                  'margin',
+                  'actual_margin',
+                  'list_margin',
+                  'margin_flag',
+                  'profit_flag',
+                  'recommendation',
+                  'price_vs_cost',
+                  'price_position',
+                  'markup_pct',
+                  'markup_flag',
+                ],
+          columnHeaders: {
+            'inventory_item_id': 'Item ID',
+            'product_name': 'Product',
+            'quantity': 'Qty Sold',
+            'revenue': 'Revenue (R)',
+            'cost': 'Cost (WAC) (R)',
+            'profit': 'Profit (R)',
+            'margin': 'Margin %',
+            'actual_margin': 'Actual margin %',
+            'list_margin': 'List / theoretical margin %',
+            'margin_flag': 'Margin band',
+            'profit_flag': 'Profit / loss',
+            'recommendation': 'Recommendation',
+            'price_vs_cost': 'List price vs WAC (R)',
+            'price_position': 'Price vs cost',
+            'markup_pct': 'Markup % (on cost)',
+            'markup_flag': 'Markup level',
+          },
+          summary: {
+            'Total Revenue': totalRev,
+            'Total Cost (WAC)': totalCostSum,
+            'Total Profit': totalProf,
+            'Overall margin %': overallMarginPct,
+          },
+          title: title,
+          subtitle: subtitle,
+          monetaryColumns: const {'revenue', 'cost', 'profit', 'price_vs_cost'},
+          totalRevenue: totalRev,
+          totalCost: totalCostSum,
+          totalProfit: totalProf,
+          marginPercentage: overallMarginPct,
+        );
+      }
+      case 'profit_analysis': {
+        final rows = await _getProfitAnalysisByProduct(start, end);
+        final totalRev = _reportMoney(
+          rows.fold<double>(
+            0,
+            (s, r) => s + ((r['revenue'] as num?)?.toDouble() ?? 0),
+          ),
+        );
+        final totalCostSum = _reportMoney(
+          rows.fold<double>(
+            0,
+            (s, r) => s + ((r['cost'] as num?)?.toDouble() ?? 0),
+          ),
+        );
+        final totalProf = _reportMoney(totalRev - totalCostSum);
+        final overallMarginPct =
+            totalRev > 0 ? _reportMoney((totalProf / totalRev) * 100) : 0.0;
+        return ReportData(
+          data: rows,
+          columns: rows.isNotEmpty
+              ? rows.first.keys.toList()
+              : [
+                  'inventory_item_id',
+                  'product_name',
+                  'quantity',
+                  'revenue',
+                  'cost',
+                  'profit',
+                  'margin',
+                ],
+          columnHeaders: {
+            'inventory_item_id': 'Item ID',
+            'product_name': 'Product',
+            'quantity': 'Qty Sold',
+            'revenue': 'Revenue (R)',
+            'cost': 'Cost (WAC) (R)',
+            'profit': 'Profit (R)',
+            'margin': 'Margin %',
+          },
+          summary: {
+            'Total Revenue': totalRev,
+            'Total Cost (WAC)': totalCostSum,
+            'Total Profit': totalProf,
+            'Overall margin %': overallMarginPct,
+          },
+          title: title,
+          subtitle: subtitle,
+          monetaryColumns: const {'revenue', 'cost', 'profit'},
+          totalRevenue: totalRev,
+          totalCost: totalCostSum,
+          totalProfit: totalProf,
+          marginPercentage: overallMarginPct,
+        );
+      }
       case 'customer_loyalty':
         final rows = await _getCustomerLoyalty();
         return ReportData(
@@ -355,13 +509,35 @@ class ReportRepository {
         );
       case 'hunter_jobs':
         final rows = await _getHunterJobs(start, end);
+        final data = rows.map((r) => {
+          'job_date': r['job_date'],
+          'hunter_name': r['hunter_name'] ?? '—',
+          'species': r['species'] ?? r['animal_count']?.toString() ?? '—',
+          'weight_in': r['weight_in'],
+          'status': r['status'] ?? '—',
+          'charge_total': r['charge_total'] ?? r['total_amount'] ?? 0,
+          'paid': r['paid'] == true ? 'Yes' : 'No',
+        }).toList();
         return ReportData(
-          data: rows,
-          columns: rows.isNotEmpty ? rows.first.keys.toList() : ['job_number', 'customer_name', 'status', 'total'],
-          columnHeaders: {'job_number': 'Job #', 'customer_name': 'Customer', 'status': 'Status', 'total': 'Total'},
+          data: data,
+          columns: ['job_date', 'hunter_name', 'species', 'weight_in', 'status', 'charge_total', 'paid'],
+          columnHeaders: {
+            'job_date': 'Date',
+            'hunter_name': 'Hunter',
+            'species': 'Species',
+            'weight_in': 'Weight (kg)',
+            'status': 'Status',
+            'charge_total': 'Charge (R)',
+            'paid': 'Paid',
+          },
+          summary: {
+            'Total Jobs': data.length,
+            'Total Revenue': data.fold<double>(0, (s, r) => s + ((r['charge_total'] as num?)?.toDouble() ?? 0)),
+            'Unpaid': data.where((r) => r['paid'] == 'No').length,
+          },
           title: title,
           subtitle: subtitle,
-          monetaryColumns: const {'total'},
+          monetaryColumns: const {'charge_total'},
         );
       case 'stock_movement': {
         return await _getStockMovementReport(start, end, title, subtitle);
@@ -404,22 +580,22 @@ class ReportRepository {
       final endStr = end.toIso8601String().substring(0, 10);
       final periods = await _client
           .from('payroll_periods')
-          .select()
-          .gte('period_end', startStr)
-          .lte('period_end', endStr)
-          .order('period_end', ascending: false);
+          .select('id, start_date, end_date, status, total_gross, total_deductions, total_net')
+          .gte('end_date', startStr)
+          .lte('end_date', endStr)
+          .order('end_date', ascending: false);
       if ((periods as List).isEmpty) return [];
       final list = <Map<String, dynamic>>[];
       for (final p in periods as List) {
         var q = _client
             .from('payroll_entries')
-            .select('*, staff_profiles(full_name)')
-            .eq('payroll_period_id', p['id']);
-        if (staffId != null) q = q.eq('staff_profile_id', staffId);
+            .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name)')
+            .eq('period_id', p['id']);
+        if (staffId != null) q = q.eq('staff_id', staffId);
         final entries = await q.order('staff_id');
         for (final e in entries as List) {
           final row = Map<String, dynamic>.from(e as Map<String, dynamic>);
-          row['period_end'] = p['period_end'];
+          row['period_end'] = p['end_date'];
           list.add(row);
         }
       }
@@ -463,8 +639,13 @@ class ReportRepository {
     try {
       final rows = await _client
           .from('transaction_items')
-          .select('quantity, unit_price, inventory_items(name)')
-          .limit(500);
+          .select('quantity, unit_price, inventory_item_id, '
+              'inventory_items!transaction_items_inventory_item_id_fkey(name), '
+              'transactions!transaction_items_transaction_id_fkey(created_at)')
+          .gte('transactions.created_at', start.toIso8601String())
+          .lte('transactions.created_at', end.toIso8601String())
+          .not('transactions.created_at', 'is', null)
+          .limit(1000);
       final byProduct = <String, Map<String, dynamic>>{};
       for (final r in rows as List) {
         final name = (r['inventory_items'] is Map ? r['inventory_items']['name'] : null) ?? 'Unknown';
@@ -479,12 +660,312 @@ class ReportRepository {
     }
   }
 
+  /// Read-only profit / margin by [inventory_item_id]: revenue from [transaction_items],
+  /// cost from [inventory_items.average_cost] (WAC proxy at report time). No writes.
+  Future<List<Map<String, dynamic>>> _getProfitAnalysisByProduct(
+    DateTime start,
+    DateTime end,
+  ) async {
+    double safeNum(dynamic v, [double fallback = 0]) {
+      if (v == null) return fallback;
+      if (v is num) {
+        final d = v.toDouble();
+        return d.isFinite ? d : fallback;
+      }
+      return fallback;
+    }
+
+    try {
+      final rows = await _client
+          .from('transaction_items')
+          .select(
+            'quantity, unit_price, line_total, inventory_item_id, '
+            'inventory_items!transaction_items_inventory_item_id_fkey(name, average_cost), '
+            'transactions!transaction_items_transaction_id_fkey(created_at)',
+          )
+          .gte('transactions.created_at', start.toIso8601String())
+          .lte('transactions.created_at', end.toIso8601String())
+          .not('transactions.created_at', 'is', null)
+          .limit(5000);
+
+      final grouped = <String, Map<String, dynamic>>{};
+      for (final raw in rows as List) {
+        final r = Map<String, dynamic>.from(raw as Map);
+        final itemId = r['inventory_item_id']?.toString() ?? 'unknown';
+        final inventoryItem = r['inventory_items'];
+        final productName = inventoryItem is Map
+            ? (inventoryItem['name']?.toString() ?? 'Unknown')
+            : 'Unknown';
+
+        final quantity = safeNum(r['quantity']);
+        if (quantity <= 0) continue;
+
+        final unitPrice = safeNum(r['unit_price']);
+        final lineTotal = r['line_total'];
+        final revenue = lineTotal != null
+            ? _reportMoney(safeNum(lineTotal))
+            : _reportMoney(quantity * unitPrice);
+
+        // Current WAC as cost proxy; historical cost_at_sale would be a future enhancement.
+        final avgCostRaw =
+            inventoryItem is Map ? inventoryItem['average_cost'] : null;
+        final costPerUnit =
+            avgCostRaw != null ? safeNum(avgCostRaw) : 0.0;
+        final cost = _reportMoney(costPerUnit * quantity);
+        final profit = _reportMoney(revenue - cost);
+
+        grouped.putIfAbsent(
+          itemId,
+          () => <String, dynamic>{
+            'inventory_item_id': itemId,
+            'product_name': productName,
+            'quantity': 0.0,
+            'revenue': 0.0,
+            'cost': 0.0,
+            'profit': 0.0,
+          },
+        );
+        final group = grouped[itemId]!;
+        group['quantity'] = safeNum(group['quantity']) + quantity;
+        group['revenue'] = _reportMoney(safeNum(group['revenue']) + revenue);
+        group['cost'] = _reportMoney(safeNum(group['cost']) + cost);
+        group['profit'] = _reportMoney(safeNum(group['profit']) + profit);
+      }
+
+      final list = grouped.values.map((group) {
+        final revenueTotal = safeNum(group['revenue']);
+        final profitTotal = safeNum(group['profit']);
+        final marginVal = revenueTotal > 0 &&
+                revenueTotal.isFinite &&
+                profitTotal.isFinite
+            ? _reportMoney((profitTotal / revenueTotal) * 100)
+            : 0.0;
+        return {
+          'inventory_item_id': group['inventory_item_id'],
+          'product_name': group['product_name'],
+          'quantity': safeNum(group['quantity']),
+          'revenue': revenueTotal,
+          'cost': safeNum(group['cost']),
+          'profit': profitTotal,
+          'margin': marginVal,
+        };
+      }).toList();
+
+      list.sort(
+        (a, b) => safeNum(b['revenue']).compareTo(safeNum(a['revenue'])),
+      );
+      return list;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Read-only: catalog [sell_price] for pricing intelligence (list vs WAC). No writes.
+  Future<Map<String, double?>> _fetchSellPricesByItemId(
+    Set<String> itemIds,
+  ) async {
+    if (itemIds.isEmpty) return {};
+    final out = <String, double?>{};
+    final ids = itemIds.toList();
+    const chunk = 100;
+    for (var i = 0; i < ids.length; i += chunk) {
+      final slice = ids.sublist(
+        i,
+        i + chunk > ids.length ? ids.length : i + chunk,
+      );
+      try {
+        final response = await _client
+            .from('inventory_items')
+            .select('id, sell_price')
+            .inFilter('id', slice);
+        for (final raw in response as List) {
+          final m = Map<String, dynamic>.from(raw as Map);
+          final id = m['id']?.toString();
+          if (id == null) continue;
+          out[id] = (m['sell_price'] as num?)?.toDouble();
+        }
+      } catch (_) {
+        // leave missing ids absent
+      }
+    }
+    return out;
+  }
+
+  /// Read-only: same enriched rows as [pricing_intelligence] (before profit sort).
+  /// Used by dashboard alerts — delegates to [_getProfitAnalysisByProduct] →
+  /// [_fetchSellPricesByItemId] → [_buildPricingIntelligenceRows]; no duplicated logic.
+  Future<List<Map<String, dynamic>>> getPricingIntelligenceRowsForAlerts(
+    DateTime start,
+    DateTime end,
+  ) async {
+    final base = await _getProfitAnalysisByProduct(start, end);
+    final ids = base
+        .map((r) => r['inventory_item_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty && id != 'unknown')
+        .toSet();
+    final sellPrices = await _fetchSellPricesByItemId(ids);
+    return _buildPricingIntelligenceRows(base, sellPrices);
+  }
+
+  /// Extends [base] rows from [_getProfitAnalysisByProduct] with flags and text
+  /// recommendations. Read-only; no duplicate transaction queries.
+  ///
+  /// Revenue and realized [margin] in [base] come only from [transaction_items]:
+  /// [line_total], or [quantity] × [unit_price] when [line_total] is absent.
+  /// Catalog [inventory_items.sell_price] appears only via [sellPriceById] for
+  /// [list_margin] and list-vs-WAC helpers — never mixed with transaction pricing.
+  List<Map<String, dynamic>> _buildPricingIntelligenceRows(
+    List<Map<String, dynamic>> base,
+    Map<String, double?> sellPriceById,
+  ) {
+    // IMPORTANT:
+    // unit_price = actual sale price (transaction_items; aggregated into [base])
+    // sell_price = configured product price (inventory_items; [sellPriceById] only)
+    // DO NOT mix these sources.
+
+    const lowMarginThreshold = 20.0;
+    const highMarginThreshold = 40.0;
+    const criticalMarginThreshold = 10.0;
+
+    double safeNum(dynamic v, [double fallback = 0]) {
+      if (v == null) return fallback;
+      if (v is num) {
+        final d = v.toDouble();
+        return d.isFinite ? d : fallback;
+      }
+      return fallback;
+    }
+
+    final itemCount = base.length;
+    final sortedByRevenue = List<Map<String, dynamic>>.from(base);
+    sortedByRevenue.sort(
+      (a, b) => safeNum(b['revenue']).compareTo(safeNum(a['revenue'])),
+    );
+
+    final topPerformerIds = <String>{};
+    if (itemCount >= 8 && sortedByRevenue.isNotEmpty) {
+      final thresholdIndex =
+          (itemCount * 0.25).floor().clamp(0, sortedByRevenue.length - 1);
+      final thresholdRevenue =
+          safeNum(sortedByRevenue[thresholdIndex]['revenue']);
+      for (final row in base) {
+        if (safeNum(row['revenue']) >= thresholdRevenue) {
+          final tid = row['inventory_item_id']?.toString() ?? '';
+          if (tid.isNotEmpty) topPerformerIds.add(tid);
+        }
+      }
+    } else {
+      for (var i = 0; i < sortedByRevenue.length && i < 2; i++) {
+        final tid = sortedByRevenue[i]['inventory_item_id']?.toString() ?? '';
+        if (tid.isNotEmpty) topPerformerIds.add(tid);
+      }
+    }
+
+    return base.map((row) {
+      final id = row['inventory_item_id']?.toString() ?? '';
+      final profit = safeNum(row['profit']);
+      final margin = safeNum(row['margin']);
+      final quantity = safeNum(row['quantity']);
+      final cost = safeNum(row['cost']);
+      // NOTE:
+      // When quantity <= 0, safeQuantity is set to 1 to prevent division by zero.
+      // In this case, avgCostPerUnit may not reflect true per-unit cost.
+      final safeQuantity = quantity > 0 ? quantity : 1.0;
+      final avgCostRaw = cost / safeQuantity;
+      final avgCostPerUnit = avgCostRaw.isFinite ? avgCostRaw : 0.0;
+
+      final String marginFlag;
+      if (margin < lowMarginThreshold) {
+        marginFlag = 'low';
+      } else if (margin >= highMarginThreshold) {
+        marginFlag = 'high';
+      } else {
+        marginFlag = 'healthy';
+      }
+
+      final profitFlag = profit < 0 ? 'loss' : 'profit';
+
+      final strongPerformer =
+          topPerformerIds.contains(id) && margin >= highMarginThreshold;
+
+      final String recommendation;
+      if (profit < 0) {
+        recommendation =
+            'Loss-making — increase price or reduce cost urgently';
+      } else if (margin < criticalMarginThreshold) {
+        recommendation = 'Increase price or reduce cost';
+      } else if (margin < lowMarginThreshold) {
+        recommendation = 'Monitor pricing';
+      } else if (strongPerformer) {
+        recommendation = 'Strong performer — maintain pricing';
+      } else {
+        recommendation = 'Healthy margin';
+      }
+
+      // margin = actual realized margin (from sales)
+      // list_margin = theoretical margin based on sell_price
+      // markup_pct = markup based on cost (sell_price vs WAC per unit)
+      // Catalog list price (inventory_items.sell_price) — not transaction_items.unit_price.
+      final sellPrice = sellPriceById[id];
+      // NOTE:
+      // sell_price must be > 0 to be considered valid.
+      // Invalid or null values are ignored to prevent incorrect margin calculations.
+      final validSellPrice =
+          (sellPrice != null && sellPrice > 0) ? sellPrice : null;
+
+      double? listMarginPct;
+      if (validSellPrice != null) {
+        final lm = ((validSellPrice - avgCostPerUnit) / validSellPrice) * 100;
+        listMarginPct = lm.isFinite ? lm : null;
+      }
+
+      double? markupPct;
+      if (validSellPrice != null && avgCostPerUnit > 0) {
+        final mu =
+            ((validSellPrice - avgCostPerUnit) / avgCostPerUnit) * 100;
+        markupPct = mu.isFinite ? mu : null;
+      }
+
+      final markupFlag = (markupPct != null && markupPct > 100)
+          ? 'very_high'
+          : 'normal';
+
+      double? priceVsCostRaw;
+      String? pricePosition;
+      if (validSellPrice != null && quantity > 0) {
+        final pvc = validSellPrice - avgCostPerUnit;
+        if (pvc.isFinite) priceVsCostRaw = pvc;
+        if (validSellPrice < avgCostPerUnit) {
+          pricePosition = 'underpriced';
+        } else if (listMarginPct != null && listMarginPct.isFinite) {
+          pricePosition = listMarginPct >= 50 ? 'premium' : 'healthy';
+        }
+      }
+
+      return <String, dynamic>{
+        ...row,
+        'actual_margin': _reportMoney(margin),
+        'list_margin':
+            listMarginPct != null ? _reportMoney(listMarginPct) : null,
+        'markup_pct': markupPct != null ? _reportMoney(markupPct) : null,
+        'markup_flag': markupFlag,
+        'margin_flag': marginFlag,
+        'profit_flag': profitFlag,
+        'recommendation': recommendation,
+        'price_vs_cost':
+            priceVsCostRaw != null ? _reportMoney(priceVsCostRaw) : null,
+        'price_position': pricePosition,
+      };
+    }).toList();
+  }
+
   Future<List<Map<String, dynamic>>> _getCustomerLoyalty() async {
     try {
       final rows = await _client.from('loyalty_customers').select().order('total_spend', ascending: false).limit(100);
       return (rows as List).map((r) => {
         'name': r['full_name'],
-        'tier': r['tier'] ?? '—',
+        'tier': r['loyalty_tier'] ?? '—',
         'spend': r['total_spend'],
       }).toList();
     } catch (_) {
@@ -496,17 +977,12 @@ class ReportRepository {
     try {
       final rows = await _client
           .from('hunter_jobs')
-          .select()
+          .select('id, job_date, hunter_name, contact_phone, species, weight_in, status, charge_total, paid, animal_count')
           .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String())
           .order('created_at', ascending: false)
           .limit(200);
-      return (rows as List).map((r) => {
-        'job_number': r['job_number'],
-        'customer_name': r['customer_name'],
-        'status': r['status'],
-        'total': r['total_amount'],
-      }).toList();
+      return List<Map<String, dynamic>>.from(rows);
     } catch (_) {
       return [];
     }
@@ -536,8 +1012,7 @@ class ReportRepository {
     try {
       final response = await _client
           .from('inventory_items')
-          .select('id, name, current_stock, cost_price, selling_price, category_id')
-          .gt('current_stock', 0)
+          .select('id, name, stock_on_hand_fresh, stock_on_hand_frozen, cost_price, sell_price')
           .order('name');
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
@@ -625,7 +1100,7 @@ class ReportRepository {
       final movements = await _client
           .from('stock_movements')
           .select(
-            'item_id, quantity, unit_cost, reference_id, created_at, '
+            'item_id, quantity, reference_id, created_at, '
             'inventory_items(name, current_stock), '
             'supplier_invoices:reference_id(invoice_number, total_amount, tax_amount, suppliers(name))',
           )
@@ -668,7 +1143,7 @@ class ReportRepository {
           },
           title: title,
           subtitle: subtitle,
-          monetaryColumns: const {'Total AP', 'VAT claimed'},
+          monetaryColumns: const {},
         );
       }
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
@@ -100,44 +101,25 @@ class _JobsTabState extends State<_JobsTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      final isOnline = ConnectivityService().isConnected;
-      if (!isOnline) {
-        final statusFilter = widget.isCompleted ? 'completed' : '!completed';
-        final cached = await IsarService.getHunterJobs(statusFilter);
-        if (mounted) setState(() => _jobs = cached.map((j) => j.toListMap()).toList());
-        setState(() => _isLoading = false);
-        return;
+      // DB-FIRST: always query Supabase first; keep exact filter/order intent.
+      var query = _supabase.from('hunter_jobs').select('*');
+      if (widget.isCompleted) {
+        query = query.eq('status', 'completed');
+      } else {
+        query = query.neq('status', 'completed');
       }
-      final stale = await IsarService.isHunterJobCacheStale();
-      final cachedList = await IsarService.getHunterJobs(null);
-      if (stale || cachedList.isEmpty) {
-        var query = _supabase.from('hunter_jobs').select('*');
-        if (widget.isCompleted) {
-          query = query.eq('status', 'completed');
-        } else {
-          query = query.neq('status', 'completed');
-        }
-        final data = await query.order('created_at', ascending: false);
-        final list = List<Map<String, dynamic>>.from(data);
-        final toSave = list.map((row) => CachedHunterJob.fromSupabase(row)).toList();
-        await IsarService.saveHunterJobs(toSave);
-        if (mounted) setState(() => _jobs = list);
-        setState(() => _isLoading = false);
-        return;
-      }
-      final statusFilter = widget.isCompleted ? 'completed' : '!completed';
-      final fromCache = await IsarService.getHunterJobs(statusFilter);
-      if (mounted) setState(() => _jobs = fromCache.map((j) => j.toListMap()).toList());
-      setState(() => _isLoading = false);
-      _supabase.from('hunter_jobs').select('*').order('created_at', ascending: false).limit(200).then((data) async {
-        if (data == null || (data as List).isEmpty) return;
-        final list = List<Map<String, dynamic>>.from(data);
-        final toSave = list.map((row) => CachedHunterJob.fromSupabase(row)).toList();
-        await IsarService.saveHunterJobs(toSave);
-        if (mounted) _load();
-      });
+      final data = await query.order('created_at', ascending: false).limit(300);
+      final list = List<Map<String, dynamic>>.from(data);
+      if (mounted) setState(() => _jobs = list);
+
+      // Non-blocking cache update.
+      final toSave = list.map((row) => CachedHunterJob.fromSupabase(row)).toList();
+      unawaited(IsarService.saveHunterJobs(toSave));
     } catch (e) {
       debugPrint('Jobs load: $e');
+      final statusFilter = widget.isCompleted ? 'completed' : '!completed';
+      final cached = await IsarService.getHunterJobs(statusFilter);
+      if (mounted) setState(() => _jobs = cached.map((j) => j.toListMap()).toList());
     }
     setState(() => _isLoading = false);
   }

@@ -24,6 +24,7 @@ import 'package:admin_app/features/audit/screens/audit_log_screen.dart';
 import 'package:admin_app/features/settings/screens/business_settings_screen.dart';
 import 'package:admin_app/features/transactions/screens/transaction_list_screen.dart';
 import 'package:admin_app/features/transactions/screens/till_session_list_screen.dart';
+import 'package:admin_app/features/online_orders/screens/online_orders_screen.dart';
 
 class MainShell extends StatefulWidget {
   final String staffId;
@@ -154,6 +155,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           icon: Icons.person_search,
           label: 'Customers',
           screen: const CustomerListScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
+          icon: Icons.shopping_bag,
+          label: 'Online Orders',
+          screen: const OnlineOrdersScreen(),
           locked: !ps.can(Permissions.manageCustomers),
         ),
         _NavItem(

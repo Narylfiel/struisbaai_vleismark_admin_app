@@ -77,30 +77,29 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
 
     final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isStockMovementCacheStale();
-        if (stale) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-        }
-      } else {
-        _isOffline = true;
-        await _loadFromCache();
-      }
-      _applyFilters();
-      _calculateStats();
+      _isOffline = !isConnected;
+      // DB-FIRST: always fetch from Supabase first.
+      await _fetchFromSupabaseAndSave();
     } catch (e) {
       debugPrint('Stock movements load error: $e');
-      if (mounted) {
+      // Offline fallback: if Supabase fails/times out, serve cached data.
+      try {
+        _isOffline = true;
+        await _loadFromCache();
+      } catch (_) {}
+      if (mounted && isConnected) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
         );
       }
     } finally {
       if (mounted) setState(() => _isLoading = false);
+    }
+
+    // Always keep UI post-processing consistent with original behavior.
+    if (mounted) {
+      _applyFilters();
+      _calculateStats();
     }
   }
 

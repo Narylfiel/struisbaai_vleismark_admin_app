@@ -5,7 +5,6 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/db/cached_category.dart';
 import 'package:admin_app/core/db/cached_inventory_item.dart';
 import 'package:admin_app/core/db/isar_service.dart';
-import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:share_plus/share_plus.dart';
@@ -49,26 +48,17 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   Future<void> _load() async {
     setState(() => _isLoading = true);
-    final isConnected = ConnectivityService().isConnected;
-
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isInventoryItemsCacheStale();
-        final staleCat = await IsarService.isCategoriesCacheStale();
-        if (stale || staleCat) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-        }
-      } else {
-        _isOffline = true;
-        await _loadFromCache();
-      }
+      _isOffline = false;
+      await _fetchFromSupabaseAndSave();
       _applyFilters();
     } catch (e) {
       debugPrint('Stock levels load: $e');
+      _isOffline = true;
+      try {
+        await _loadFromCache();
+      } catch (_) {}
+      _applyFilters();
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -83,9 +73,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
     ];
     final items = await IsarService.getAllInventoryItems(_showInactive);
     _items = items.map((e) => e.toMap()).toList();
-    if (!ConnectivityService().isConnected) {
-      _lastMovementByItemId = {};
-    }
+    _lastMovementByItemId = {};
   }
 
   /// Fetch from Supabase, save to Isar, populate last movement (online only).
@@ -114,7 +102,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
           'reorder_level, unit_type, stock_control_type, category_id, is_active',
         );
     if (!_showInactive) q = q.eq('is_active', true);
-    final res = await q.order('name');
+    final res = await q.order('name').limit(300);
     _items = List<Map<String, dynamic>>.from(res);
     final itemList = _items.map((i) => CachedInventoryItem.fromSupabase(i)).toList();
     await IsarService.saveInventoryItems(itemList);
@@ -135,18 +123,6 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
         }
       }
     }
-  }
-
-  /// Silent background refresh when online and cache was fresh.
-  void _refreshInBackground() {
-    Future(() async {
-      try {
-        final stale = await IsarService.isInventoryItemsCacheStale();
-        if (!stale) return;
-        await _fetchFromSupabaseAndSave();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    });
   }
 
   void _applyFilters() {
@@ -306,60 +282,132 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  const Text('Stock Levels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(width: 24),
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
-                      ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
-                      ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
-                    ],
-                    selected: {_filter},
-                    onSelectionChanged: (s) => setState(() => _filter = s.first),
-                  ),
-                  const SizedBox(width: 16),
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final isWide = constraints.maxWidth > 900;
+                  if (isWide) {
+                    return Row(
+                      children: [
+                        const Text('Stock Levels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        const SizedBox(width: 12),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
+                            ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
+                            ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
+                          ],
+                          selected: {_filter},
+                          onSelectionChanged: (s) => setState(() => _filter = s.first),
+                        ),
+                        const SizedBox(width: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text('Show inactive products', style: TextStyle(fontSize: 13)),
+                            const SizedBox(width: 8),
+                            Switch(
+                              value: _showInactive,
+                              onChanged: (v) => setState(() { _showInactive = v; _load(); }),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 140,
+                          child: DropdownButton<String?>(
+                            value: _selectedCategoryId,
+                            underline: const SizedBox(),
+                            hint: const Text('Category'),
+                            isExpanded: true,
+                            items: _categories
+                                .map((c) => DropdownMenuItem<String?>(
+                                      value: c['id']?.toString(),
+                                      child: Text(c['name'] as String, overflow: TextOverflow.ellipsis),
+                                    ))
+                                .toList(),
+                            onChanged: (v) => setState(() => _selectedCategoryId = v),
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.download),
+                          onPressed: _isLoading ? null : _exportCsv,
+                          tooltip: 'Export to CSV',
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: _isLoading ? null : _load,
+                          tooltip: 'Refresh',
+                        ),
+                      ],
+                    );
+                  }
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text('Show inactive products', style: TextStyle(fontSize: 13)),
-                      const SizedBox(width: 8),
-                      Switch(
-                        value: _showInactive,
-                        onChanged: (v) => setState(() { _showInactive = v; _load(); }),
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text('Stock Levels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.download),
+                            onPressed: _isLoading ? null : _exportCsv,
+                            tooltip: 'Export to CSV',
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.refresh),
+                            onPressed: _isLoading ? null : _load,
+                            tooltip: 'Refresh',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
+                              ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
+                              ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
+                            ],
+                            selected: {_filter},
+                            onSelectionChanged: (s) => setState(() => _filter = s.first),
+                          ),
+                          const SizedBox(width: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('Show inactive products', style: TextStyle(fontSize: 13)),
+                              const SizedBox(width: 8),
+                              Switch(
+                                value: _showInactive,
+                                onChanged: (v) => setState(() { _showInactive = v; _load(); }),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            width: 140,
+                            child: DropdownButton<String?>(
+                              value: _selectedCategoryId,
+                              underline: const SizedBox(),
+                              hint: const Text('Category'),
+                              isExpanded: true,
+                              items: _categories
+                                  .map((c) => DropdownMenuItem<String?>(
+                                        value: c['id']?.toString(),
+                                        child: Text(c['name'] as String, overflow: TextOverflow.ellipsis),
+                                      ))
+                                  .toList(),
+                              onChanged: (v) => setState(() => _selectedCategoryId = v),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
-                  ),
-                  const SizedBox(width: 16),
-                  SizedBox(
-                    width: 140,
-                    child: DropdownButton<String?>(
-                      value: _selectedCategoryId,
-                      underline: const SizedBox(),
-                      hint: const Text('Category'),
-                      isExpanded: true,
-                      items: _categories
-                          .map((c) => DropdownMenuItem<String?>(
-                                value: c['id']?.toString(),
-                                child: Text(c['name'] as String, overflow: TextOverflow.ellipsis),
-                              ))
-                          .toList(),
-                      onChanged: (v) => setState(() => _selectedCategoryId = v),
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.download),
-                    onPressed: _isLoading ? null : _exportCsv,
-                    tooltip: 'Export to CSV',
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: _isLoading ? null : _load,
-                    tooltip: 'Refresh',
-                  ),
-                ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               Row(
@@ -380,7 +428,7 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 8),
                   PopupMenuButton<String>(
                     tooltip: 'Sort',
                     child: Row(

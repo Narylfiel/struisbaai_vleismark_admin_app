@@ -142,7 +142,7 @@ class ExportService extends BaseService {
           footer: (context) => pw.Container(
             alignment: pw.Alignment.center,
             child: pw.Text(
-              '${resolvedBusinessName.isNotEmpty ? '$resolvedBusinessName • ' : ''}Generated: $genDate',
+              _sanitizeForPdf('${resolvedBusinessName.isNotEmpty ? '$resolvedBusinessName • ' : ''}Generated: $genDate'),
               style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey600),
             ),
           ),
@@ -421,24 +421,24 @@ class ExportService extends BaseService {
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.start,
       children: [
-        pw.Text(title, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+        pw.Text(_sanitizeForPdf(title), style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
         if (subtitle != null) ...[
           pw.SizedBox(height: 8),
-          pw.Text(subtitle, style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
+          pw.Text(_sanitizeForPdf(subtitle), style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
         ],
-        pw.Text('Generated: ${DateTime.now().toString().split('T')[0]}',
+        pw.Text(_sanitizeForPdf('Generated: ${DateTime.now().toString().split('T')[0]}'),
             style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
       ],
     );
   }
 
   pw.Widget _buildPdfTable(List<Map<String, dynamic>> data, List<String> columns, Map<String, String>? headers) {
-    final headerTexts = columns.map((col) => headers?[col] ?? col).toList();
+    final headerTexts = columns.map((col) => _sanitizeForPdf(headers?[col] ?? col)).toList();
     final tableData = data.isEmpty
         ? [
-            ['No data available for the selected period.', ...List.generate(columns.length > 1 ? columns.length - 1 : 0, (_) => '')],
+            [_sanitizeForPdf('No data available for the selected period.'), ...List.generate(columns.length > 1 ? columns.length - 1 : 0, (_) => '')],
           ]
-        : data.map((row) => columns.map((col) => _formatValueForPdf(row[col])).toList()).toList();
+        : data.map((row) => columns.map((col) => _sanitizeForPdf(_formatValueForPdf(row[col]))).toList()).toList();
 
     return pw.Table.fromTextArray(
       headers: headerTexts,
@@ -463,9 +463,9 @@ class ExportService extends BaseService {
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text('Summary', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          pw.Text(_sanitizeForPdf('Summary'), style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
-          ...summary.entries.map((entry) => pw.Text('${entry.key}: ${entry.value}',
+          ...summary.entries.map((entry) => pw.Text(_sanitizeForPdf('${entry.key}: ${entry.value}'),
               style: const pw.TextStyle(fontSize: 10))),
         ],
       ),
@@ -477,6 +477,22 @@ class ExportService extends BaseService {
     if (value is num) return value.toStringAsFixed(2);
     if (value is DateTime) return value.toString().split('T')[0];
     return value.toString();
+  }
+
+  String _sanitizeForPdf(String? input) {
+    if (input == null) return '';
+    return input
+        .replaceAll('\u2014', '-')
+        .replaceAll('\u2013', '-')
+        .replaceAll('\u2018', "'")
+        .replaceAll('\u2019', "'")
+        .replaceAll('\u201C', '"')
+        .replaceAll('\u201D', '"')
+        .replaceAll('\u00A0', ' ')
+        .replaceAll('\u2022', '*')
+        .replaceAll('\u20AC', 'EUR')
+        .replaceAll('\u00B0', ' degrees')
+        .replaceAll(RegExp(r'[^\x00-\x7F]'), '?');
   }
 
   Future<File> _getExportFile(String fileName, String extension) async {

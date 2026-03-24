@@ -40,15 +40,19 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
     });
     try {
       final list = await _repo.getAll();
-      if (mounted) setState(() {
-        _all = list;
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _all = list;
+          _loading = false;
+        });
+      }
     } catch (e) {
-      if (mounted) setState(() {
-        _error = ErrorHandler.friendlyMessage(e);
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _error = ErrorHandler.friendlyMessage(e);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -200,87 +204,128 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
   }
 
   Widget _buildList(List<Promotion> list) {
-    if (list.isEmpty) {
-      return const Center(child: Text('No promotions in this tab', style: TextStyle(color: AppColors.textSecondary)));
-    }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: list.length,
-        itemBuilder: (context, i) {
-          final p = list[i];
-          return Card(
-            margin: const EdgeInsets.only(bottom: 12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(p.name, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
-                      ),
-                      Chip(
-                        label: Text(_typeLabel(p.promotionType), style: const TextStyle(fontSize: 11)),
-                        backgroundColor: _typeColor(p.promotionType).withValues(alpha: 0.2),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                      const SizedBox(width: 8),
-                      Chip(
-                        label: Text(p.displayStatus, style: const TextStyle(fontSize: 11)),
-                        backgroundColor: _statusColor(p).withValues(alpha: 0.2),
-                        padding: EdgeInsets.zero,
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      ),
-                    ],
-                  ),
-                  if (p.audience.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: p.audience.take(3).map((a) => Chip(
-                        label: Text(_audienceLabel(a), style: const TextStyle(fontSize: 10)),
-                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                        padding: EdgeInsets.zero,
-                      )).toList(),
-                    ),
-                  ],
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      if (p.channels.contains('pos')) const Icon(Icons.point_of_sale, size: 16, color: AppColors.textSecondary),
-                      if (p.channels.contains('loyalty_app')) Padding(padding: const EdgeInsets.only(left: 4), child: const Icon(Icons.phone_android, size: 16, color: AppColors.textSecondary)),
-                      if (p.channels.contains('online')) Padding(padding: const EdgeInsets.only(left: 4), child: const Icon(Icons.shopping_cart, size: 16, color: AppColors.textSecondary)),
-                      const SizedBox(width: 12),
-                      if (p.startDate != null || p.endDate != null)
-                        Text(
-                          '${p.startDate != null ? _fmtDate(p.startDate!) : '…'} – ${p.endDate != null ? _fmtDate(p.endDate!) : '…'}',
-                          style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                        ),
-                      if (p.startTime != null && p.endTime != null)
-                        Padding(
-                          padding: const EdgeInsets.only(left: 8),
-                          child: Text('${p.startTime} – ${p.endTime}', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                        ),
-                    ],
-                  ),
-                  if (p.usageLimit != null) ...[
-                    const SizedBox(height: 4),
-                    Text('Used ${p.usageCount} / ${p.usageLimit} times', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                  ],
-                  const SizedBox(height: 8),
-                  Text(_rewardSummary(p), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
-                  const SizedBox(height: 12),
-                  _buildActions(p),
-                ],
+  if (list.isEmpty) {
+    return const Center(
+      child: Text('No promotions',
+        style: TextStyle(color: AppColors.textSecondary)));
+  }
+  return RefreshIndicator(
+    onRefresh: _load,
+    child: LayoutBuilder(
+      builder: (context, constraints) {
+        // 2 columns below 900px wide, 3 columns above
+        final crossAxisCount = constraints.maxWidth > 900 ? 3 : 2;
+        return GridView.builder(
+          padding: const EdgeInsets.all(16),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+            childAspectRatio: 1.4, // Reduced from 1.6 to fit action buttons
+          ),
+          itemCount: list.length,
+          itemBuilder: (context, i) => _buildCard(list[i]),
+        );
+      },
+    ),
+  );
+}
+
+  Widget _buildCard(Promotion p) {
+    return Card(
+      elevation: 0,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(8)),
+        side: BorderSide(color: AppColors.border),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ROW 1: Name + status chip + type chip (right aligned)
+            Row(children: [
+              Expanded(child: Text(p.name,
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                maxLines: 1, overflow: TextOverflow.ellipsis)),
+              const SizedBox(width: 6),
+              // type chip
+              Chip(
+                label: Text(_typeLabel(p.promotionType), style: const TextStyle(fontSize: 10)),
+                backgroundColor: _typeColor(p.promotionType).withValues(alpha: 0.2),
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-            ),
-          );
-        },
+              const SizedBox(width: 4),
+              // status chip
+              Chip(
+                label: Text(p.displayStatus, style: const TextStyle(fontSize: 10)),
+                backgroundColor: _statusColor(p).withValues(alpha: 0.2),
+                padding: EdgeInsets.zero,
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ]),
+            
+            const SizedBox(height: 6),
+            
+            // ROW 2: Reward summary (prominent)
+            Text(_rewardSummary(p),
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500,
+                color: AppColors.primary)),
+            
+            const SizedBox(height: 6),
+            
+            // ROW 3: Audience chips (compact, max 2 shown + overflow count)
+            if (p.audience.isNotEmpty)
+              Row(children: [
+                ...p.audience.take(2).map((a) => Padding(
+                  padding: const EdgeInsets.only(right: 4),
+                  child: Chip(
+                    label: Text(_audienceLabel(a),
+                      style: const TextStyle(fontSize: 10)),
+                    padding: EdgeInsets.zero,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ))),
+                if (p.audience.length > 2)
+                  Text('+${p.audience.length - 2}',
+                    style: const TextStyle(fontSize: 10,
+                      color: AppColors.textSecondary)),
+              ]),
+            
+            const Spacer(),
+            
+            // ROW 4: Dates + channel icons + usage on same line
+            Row(children: [
+              // channel icons
+              if (p.channels.contains('pos'))
+                const Icon(Icons.point_of_sale, size: 13,
+                  color: AppColors.textSecondary),
+              if (p.channels.contains('loyalty_app'))
+                const Padding(padding: EdgeInsets.only(left: 3),
+                  child: Icon(Icons.phone_android, size: 13,
+                    color: AppColors.textSecondary)),
+              const SizedBox(width: 6),
+              // date range
+              if (p.startDate != null || p.endDate != null)
+                Expanded(child: Text(
+                  '${p.startDate != null ? _fmtDate(p.startDate!) : "…"}'
+                  ' – ${p.endDate != null ? _fmtDate(p.endDate!) : "…"}',
+                  style: const TextStyle(fontSize: 11,
+                    color: AppColors.textSecondary),
+                  overflow: TextOverflow.ellipsis)),
+              // usage count (only if limit set)
+              if (p.usageLimit != null)
+                Text('${p.usageCount}/${p.usageLimit}',
+                  style: const TextStyle(fontSize: 11,
+                    color: AppColors.textSecondary)),
+            ]),
+            
+            const SizedBox(height: 8),
+            
+            // ROW 5: Action buttons (compact, text buttons)
+            _buildActions(p),
+          ],
+        ),
       ),
     );
   }

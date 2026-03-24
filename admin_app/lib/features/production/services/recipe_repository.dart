@@ -15,7 +15,7 @@ class RecipeRepository {
     if (activeOnly) {
       q = q.eq('is_active', true);
     }
-    final list = await q.order('name');
+    final list = await q.order('name').limit(300);
     return (list as List)
         .map((e) => Recipe.fromJson(e as Map<String, dynamic>))
         .toList();

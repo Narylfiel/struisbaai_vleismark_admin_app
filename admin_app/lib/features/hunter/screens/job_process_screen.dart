@@ -3,7 +3,6 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/db/isar_service.dart';
-import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
@@ -70,7 +69,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
       }
       _weightInTotalCtrl.addListener(() => setState(() {}));
       final serviceId = widget.job['service_id']?.toString();
-      if (ConnectivityService().isConnected) {
+      try {
         if (serviceId != null) {
           final s = await _client.from('hunter_services').select('*').eq('id', serviceId).maybeSingle();
           if (s != null) _service = Map<String, dynamic>.from(s as Map);
@@ -85,7 +84,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
           final pt = i['product_type']?.toString();
           return pt == null || pt == 'raw' || pt == 'portioned';
         }).toList();
-      } else {
+      } catch (_) {
         if (serviceId != null) {
           final configs = await IsarService.getAllHunterServiceConfigs(true);
           final match = configs.where((c) => c.configId == serviceId).toList();

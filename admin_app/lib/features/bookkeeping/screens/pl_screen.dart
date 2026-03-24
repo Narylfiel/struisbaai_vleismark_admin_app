@@ -276,9 +276,10 @@ class _PLScreenState extends State<PLScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Wrap(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isWide = constraints.maxWidth > 900;
+              final chips = Wrap(
                 spacing: 8,
                 children: [
                   _periodChip('This Month', 'this_month'),
@@ -287,9 +288,9 @@ class _PLScreenState extends State<PLScreen> {
                   _periodChip('This Year', 'this_year'),
                   _periodChip('Custom', 'custom'),
                 ],
-              ),
-              const Spacer(),
-              Row(
+              );
+              final controls = Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Row(
                     mainAxisSize: MainAxisSize.min,
@@ -304,21 +305,38 @@ class _PLScreenState extends State<PLScreen> {
                       ),
                     ],
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: _exportPdf,
                     icon: const Icon(Icons.picture_as_pdf, size: 18),
                     label: const Text('Export PDF'),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 4),
                   OutlinedButton.icon(
                     onPressed: _exportExcel,
                     icon: const Icon(Icons.table_chart, size: 18),
                     label: const Text('Export Excel'),
                   ),
                 ],
-              ),
-            ],
+              );
+              if (isWide) {
+                return Row(
+                  children: [
+                    chips,
+                    const Spacer(),
+                    controls,
+                  ],
+                );
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  chips,
+                  const SizedBox(height: 8),
+                  controls,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 24),
           Card(

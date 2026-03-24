@@ -23,7 +23,7 @@ class DryerBatchRepository {
       q = q.eq('status', status);
     }
     // Order by id only (batch_number/started_at may not exist in some DBs); sort in Dart below
-    final list = await q.order('id', ascending: false);
+    final list = await q.order('id', ascending: false).limit(300);
     final batches = (list as List)
         .map((e) => DryerBatch.fromJson(e as Map<String, dynamic>))
         .toList();

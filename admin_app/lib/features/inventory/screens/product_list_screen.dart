@@ -1,5 +1,9 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:csv/csv.dart';
+import 'package:uuid/uuid.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/db/cached_category.dart';
 import 'package:admin_app/core/db/cached_inventory_item.dart';
@@ -9,11 +13,15 @@ import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
 class ProductListScreen extends StatefulWidget {
-  const ProductListScreen({super.key});
+  const ProductListScreen({super.key, this.openInventoryItemId});
+
+  /// When set (e.g. from dashboard pricing alert), opens the product form once after load.
+  final String? openInventoryItemId;
 
   @override
   State<ProductListScreen> createState() => ProductListScreenState();
@@ -24,6 +32,7 @@ class ProductListScreenState extends State<ProductListScreen> {
   /// Call from parent (e.g. Inventory + button) to open Add Product form.
   void openAddProduct() => _openProduct(null);
   final _supabase = SupabaseService.client;
+  final _export = ExportService();
 
   List<Map<String, dynamic>> _products = [];
   List<Map<String, dynamic>> _filtered = [];
@@ -36,6 +45,78 @@ class ProductListScreenState extends State<ProductListScreen> {
   String? _searchExactProductId; // when user selects autocomplete suggestion
   String _searchQuery = ''; // text search (managed by Autocomplete field)
   String _sortOption = 'plu_asc'; // plu_asc, plu_desc, name_az, name_za, price_low, price_high, stock_low, stock_high, category
+  bool _isExportingCsv = false;
+  bool _isImportingCsv = false;
+  bool _didConsumeOpenInventoryItemId = false;
+
+  static const List<String> _productCsvColumns = [
+    'plu_code',
+    'name',
+    'pos_display_name',
+    'scale_label_name',
+    'barcode',
+    'barcode_prefix',
+    'text_lookup_code',
+    'item_type',
+    'product_type',
+    'category',
+    'sub_category',
+    'scale_item',
+    'ishida_sync',
+    'is_active',
+    'sell_price',
+    'cost_price',
+    'target_margin_pct',
+    'freezer_markdown_pct',
+    'vat_group',
+    'stock_control_type',
+    'unit_type',
+    'allow_sell_by_fraction',
+    'pack_size',
+    'reorder_level',
+    'slow_moving_trigger_days',
+    'shelf_life_fresh',
+    'shelf_life_frozen',
+    'shrinkage_allowance_pct',
+    'min_stock_alert',
+    'is_frozen_variant',
+    'dryer_biltong_product',
+    'scale_shelf_life',
+    'best_by',
+    'label_format',
+    'bar_flag',
+    'department_no',
+    'des_li1',
+    'des_li2',
+    'des_li3',
+    'des_li4',
+    'weighed',
+    'has_ingredient',
+    'cdv',
+    'modifier_group_ids',
+    'recipe_id',
+    'dryer_product_type',
+    'manufactured_item',
+    'image_url',
+    'dietary_tags',
+    'allergen_info',
+    'internal_notes',
+    'available_pos',
+    'available_loyalty_app',
+    'available_online',
+    'online_display_name',
+    'online_description',
+    'online_weight_description',
+    'online_ingredients',
+    'online_allergens',
+    'online_cooking_tips',
+    'online_image_url',
+    'online_sort_order',
+    'online_min_stock_threshold',
+    'is_best_seller',
+    'is_featured',
+    'delivery_eligible',
+  ];
 
   @override
   void initState() {
@@ -45,17 +126,13 @@ class ProductListScreenState extends State<ProductListScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        final staleItems = await IsarService.isInventoryItemsCacheStale();
-        final staleCat = await IsarService.isCategoriesCacheStale();
-        if (staleItems || staleCat) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-        }
-      } else {
+      // DATABASE-FIRST: Fetch from Supabase FIRST with 300-record limit
+      try {
+        await _fetchFromSupabaseAndSave();
+      } catch (e) {
+        // Fallback to cache if database fails
+        debugPrint('Supabase fetch failed, using cache: $e');
         await _loadFromCache();
       }
       _filterProducts();
@@ -63,6 +140,49 @@ class ProductListScreenState extends State<ProductListScreen> {
       debugPrint('Product list error: $e');
     }
     if (mounted) setState(() => _isLoading = false);
+    final openId = widget.openInventoryItemId;
+    if (openId != null &&
+        !_didConsumeOpenInventoryItemId &&
+        mounted) {
+      _didConsumeOpenInventoryItemId = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_tryOpenProductById(openId));
+      });
+    }
+  }
+
+  Future<Map<String, dynamic>?> _fetchSingleInventoryItem(String id) async {
+    try {
+      final row = await _supabase
+          .from('inventory_items')
+          .select('*')
+          .eq('id', id)
+          .maybeSingle();
+      if (row == null) return null;
+      return Map<String, dynamic>.from(row as Map);
+    } catch (e) {
+      debugPrint('Fetch single inventory item failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> _tryOpenProductById(String id) async {
+    Map<String, dynamic>? found;
+    for (final p in _products) {
+      if (p['id']?.toString() == id) {
+        found = p;
+        break;
+      }
+    }
+    found ??= await _fetchSingleInventoryItem(id);
+    if (!mounted) return;
+    if (found != null) {
+      _openProduct(found);
+    } else {
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        const SnackBar(content: Text('Product not found')),
+      );
+    }
   }
 
   Future<void> _loadFromCache() async {
@@ -77,6 +197,7 @@ class ProductListScreenState extends State<ProductListScreen> {
   }
 
   Future<void> _fetchFromSupabaseAndSave() async {
+    // Fetch categories
     final cats = await _supabase
         .from('categories')
         .select('id, name, parent_id, active')
@@ -85,7 +206,6 @@ class ProductListScreenState extends State<ProductListScreen> {
     final categoryList = (cats as List)
         .map((c) => CachedCategory.fromSupabase(Map<String, dynamic>.from(c as Map)))
         .toList();
-    await IsarService.saveCategories(categoryList);
     _categories = [
       {'id': null, 'name': 'All'},
       ...(cats as List).map((c) {
@@ -94,12 +214,16 @@ class ProductListScreenState extends State<ProductListScreen> {
       }),
     ];
 
+    // DATABASE-FIRST: Fetch products with 300-record limit (preserving original plu_code ordering)
     var q = _supabase.from('inventory_items').select('*');
     if (!_showInactive) q = q.eq('is_active', true);
-    final res = await q.order('plu_code');
+    final res = await q.order('plu_code').limit(300);
     _products = List<Map<String, dynamic>>.from(res);
+    
+    // Update cache in background (non-blocking)
+    unawaited(IsarService.saveCategories(categoryList));
     final itemList = _products.map((i) => CachedInventoryItem.fromSupabase(i)).toList();
-    await IsarService.saveInventoryItems(itemList);
+    unawaited(IsarService.saveInventoryItems(itemList));
   }
 
   void _filterProducts() {
@@ -285,6 +409,371 @@ class ProductListScreenState extends State<ProductListScreen> {
         .update({'is_active': newVal})
         .eq('id', product['id']);
     _loadData();
+  }
+
+  Future<void> _exportProductsCsv() async {
+    if (mounted) setState(() => _isExportingCsv = true);
+    try {
+      var q = _supabase.from('inventory_items').select('*');
+      if (!_showInactive) q = q.eq('is_active', true);
+      final rows = await q.order('plu_code');
+      final list = List<Map<String, dynamic>>.from(rows as List);
+
+      String boolString(dynamic v) => v == true ? 'true' : 'false';
+      String listString(dynamic v) {
+        if (v is List) {
+          return v.map((e) => e?.toString() ?? '').where((e) => e.isNotEmpty).join(';');
+        }
+        return '';
+      }
+      String val(dynamic v) => v == null ? '' : v.toString();
+
+      final data = list.map((r) {
+        return <String, dynamic>{
+          'plu_code': val(r['plu_code']),
+          'name': val(r['name']),
+          'pos_display_name': val(r['pos_display_name']),
+          'scale_label_name': val(r['scale_label_name']),
+          'barcode': val(r['barcode']),
+          'barcode_prefix': val(r['barcode_prefix']),
+          'text_lookup_code': val(r['text_lookup_code']),
+          'item_type': val(r['item_type']),
+          'product_type': val(r['product_type']),
+          'category': val(r['category']),
+          'sub_category': val(r['sub_category']),
+          'scale_item': boolString(r['scale_item']),
+          'ishida_sync': boolString(r['ishida_sync']),
+          'is_active': boolString(r['is_active']),
+          'sell_price': val(r['sell_price']),
+          'cost_price': val(r['cost_price']),
+          'target_margin_pct': val(r['target_margin_pct']),
+          'freezer_markdown_pct': val(r['freezer_markdown_pct']),
+          'vat_group': val(r['vat_group']),
+          'stock_control_type': val(r['stock_control_type']),
+          'unit_type': val(r['unit_type']),
+          'allow_sell_by_fraction': boolString(r['allow_sell_by_fraction']),
+          'pack_size': val(r['pack_size']),
+          'reorder_level': val(r['reorder_level']),
+          'slow_moving_trigger_days': val(r['slow_moving_trigger_days']),
+          'shelf_life_fresh': val(r['shelf_life_fresh']),
+          'shelf_life_frozen': val(r['shelf_life_frozen']),
+          'shrinkage_allowance_pct': val(r['shrinkage_allowance_pct']),
+          'min_stock_alert': val(r['min_stock_alert']),
+          'is_frozen_variant': boolString(r['is_frozen_variant']),
+          'dryer_biltong_product': boolString(r['dryer_biltong_product']),
+          'scale_shelf_life': val(r['scale_shelf_life']),
+          'best_by': val(r['best_by']),
+          'label_format': val(r['label_format']),
+          'bar_flag': val(r['bar_flag']),
+          'department_no': val(r['department_no']),
+          'des_li1': val(r['des_li1']),
+          'des_li2': val(r['des_li2']),
+          'des_li3': val(r['des_li3']),
+          'des_li4': val(r['des_li4']),
+          'weighed': boolString(r['weighed']),
+          'has_ingredient': boolString(r['has_ingredient']),
+          'cdv': val(r['cdv']),
+          'modifier_group_ids': listString(r['modifier_group_ids']),
+          'recipe_id': val(r['recipe_id']),
+          'dryer_product_type': val(r['dryer_product_type']),
+          'manufactured_item': boolString(r['manufactured_item']),
+          'image_url': val(r['image_url']),
+          'dietary_tags': listString(r['dietary_tags']),
+          'allergen_info': listString(r['allergen_info']),
+          'internal_notes': val(r['internal_notes']),
+          'available_pos': boolString(r['available_pos']),
+          'available_loyalty_app': boolString(r['available_loyalty_app']),
+          'available_online': boolString(r['available_online']),
+          'online_display_name': val(r['online_display_name']),
+          'online_description': val(r['online_description']),
+          'online_weight_description': val(r['online_weight_description']),
+          'online_ingredients': val(r['online_ingredients']),
+          'online_allergens': val(r['online_allergens']),
+          'online_cooking_tips': val(r['online_cooking_tips']),
+          'online_image_url': val(r['online_image_url']),
+          'online_sort_order': val(r['online_sort_order']),
+          'online_min_stock_threshold': val(r['online_min_stock_threshold']),
+          'is_best_seller': boolString(r['is_best_seller']),
+          'is_featured': boolString(r['is_featured']),
+          'delivery_eligible': boolString(r['delivery_eligible']),
+        };
+      }).toList();
+
+      final dateStr = DateTime.now().toIso8601String().split('T')[0];
+      final path = await _export.saveCsvToFile(
+        suggestedFileName: 'products_$dateStr.csv',
+        data: data,
+        columns: _productCsvColumns,
+      );
+      if (mounted && path != null) {
+        final fileName = path.split(RegExp(r'[/\\]')).last;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Exported to Downloads/$fileName'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.friendlyMessage(e)),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isExportingCsv = false);
+    }
+  }
+
+  Future<void> _importProductsCsv() async {
+    if (mounted) setState(() => _isImportingCsv = true);
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty || result.files.single.bytes == null || !mounted) {
+        return;
+      }
+      final bytes = result.files.single.bytes!;
+      final content = String.fromCharCodes(bytes);
+      final rows = const CsvToListConverter().convert(content);
+      if (rows.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File is empty'), backgroundColor: AppColors.warning),
+          );
+        }
+        return;
+      }
+
+      final headerRow = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+      final headerIndex = <String, int>{};
+      for (var i = 0; i < headerRow.length; i++) {
+        headerIndex[headerRow[i]] = i;
+      }
+      if (!headerIndex.containsKey('plu_code')) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Missing required column: plu_code'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+        return;
+      }
+
+      final parsed = <Map<String, dynamic>>[];
+      for (var i = 1; i < rows.length; i++) {
+        final row = rows[i] as List;
+        final item = <String, dynamic>{};
+        for (final col in _productCsvColumns) {
+          final idx = headerIndex[col];
+          item[col] = (idx != null && idx < row.length) ? row[idx]?.toString().trim() ?? '' : '';
+        }
+        if ((item['plu_code']?.toString() ?? '').trim().isEmpty) continue;
+        parsed.add(item);
+      }
+      if (!mounted) return;
+
+      final missingPlu = rows.length - 1 - parsed.length;
+      await showDialog<void>(
+        context: context,
+        builder: (ctx) => _ProductImportPreviewDialog(
+          rows: parsed,
+          missingPluCount: missingPlu < 0 ? 0 : missingPlu,
+          onConfirm: () async {
+            Navigator.pop(ctx);
+            await _applyProductImport(parsed);
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingCsv = false);
+    }
+  }
+
+  int? _toInt(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    if (s.isEmpty) return null;
+    return int.tryParse(s);
+  }
+
+  double? _toDouble(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    if (s.isEmpty) return null;
+    return double.tryParse(s);
+  }
+
+  bool? _toBool(dynamic raw) {
+    final s = raw?.toString().trim().toLowerCase() ?? '';
+    if (s.isEmpty) return null;
+    if (s == 'true' || s == '1' || s == 'yes' || s == 'y') return true;
+    if (s == 'false' || s == '0' || s == 'no' || s == 'n') return false;
+    return null;
+  }
+
+  List<String>? _toList(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    if (s.isEmpty) return null;
+    final values = s.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    return values.isEmpty ? null : values;
+  }
+
+  String? _toStringOrNull(dynamic raw) {
+    final s = raw?.toString().trim() ?? '';
+    return s.isEmpty ? null : s;
+  }
+
+  Future<void> _applyProductImport(List<Map<String, dynamic>> rows) async {
+    int inserted = 0, updated = 0, skipped = 0, errors = 0;
+    if (mounted) setState(() => _isImportingCsv = true);
+    try {
+      for (final row in rows) {
+        try {
+          final pluCode = _toInt(row['plu_code']);
+          if (pluCode == null) {
+            skipped++;
+            continue;
+          }
+
+          final payload = <String, dynamic>{
+            'plu_code': pluCode,
+            'name': _toStringOrNull(row['name']),
+            'pos_display_name': _toStringOrNull(row['pos_display_name']),
+            'scale_label_name': _toStringOrNull(row['scale_label_name']),
+            'barcode': _toStringOrNull(row['barcode']),
+            'barcode_prefix': _toStringOrNull(row['barcode_prefix']),
+            'text_lookup_code': _toStringOrNull(row['text_lookup_code']),
+            'item_type': _toStringOrNull(row['item_type']),
+            'product_type': _toStringOrNull(row['product_type']),
+            'category': _toStringOrNull(row['category']),
+            'sub_category': _toStringOrNull(row['sub_category']),
+            'scale_item': _toBool(row['scale_item']),
+            'ishida_sync': _toBool(row['ishida_sync']),
+            'is_active': _toBool(row['is_active']),
+            'sell_price': _toDouble(row['sell_price']),
+            'cost_price': _toDouble(row['cost_price']),
+            'target_margin_pct': _toDouble(row['target_margin_pct']),
+            'freezer_markdown_pct': _toDouble(row['freezer_markdown_pct']),
+            'vat_group': _toStringOrNull(row['vat_group']),
+            'stock_control_type': _toStringOrNull(row['stock_control_type']),
+            'unit_type': _toStringOrNull(row['unit_type']),
+            'allow_sell_by_fraction': _toBool(row['allow_sell_by_fraction']),
+            'pack_size': _toDouble(row['pack_size']),
+            'reorder_level': _toDouble(row['reorder_level']),
+            'slow_moving_trigger_days': _toInt(row['slow_moving_trigger_days']),
+            'shelf_life_fresh': _toInt(row['shelf_life_fresh']),
+            'shelf_life_frozen': _toInt(row['shelf_life_frozen']),
+            'shrinkage_allowance_pct': _toDouble(row['shrinkage_allowance_pct']),
+            'min_stock_alert': _toDouble(row['min_stock_alert']),
+            'is_frozen_variant': _toBool(row['is_frozen_variant']),
+            'dryer_biltong_product': _toBool(row['dryer_biltong_product']),
+            'scale_shelf_life': _toInt(row['scale_shelf_life']),
+            'best_by': _toInt(row['best_by']),
+            'label_format': _toStringOrNull(row['label_format']),
+            'bar_flag': _toStringOrNull(row['bar_flag']),
+            'department_no': _toInt(row['department_no']),
+            'des_li1': _toStringOrNull(row['des_li1']),
+            'des_li2': _toStringOrNull(row['des_li2']),
+            'des_li3': _toStringOrNull(row['des_li3']),
+            'des_li4': _toStringOrNull(row['des_li4']),
+            'weighed': _toBool(row['weighed']),
+            'has_ingredient': _toBool(row['has_ingredient']),
+            'cdv': _toStringOrNull(row['cdv']),
+            'modifier_group_ids': _toList(row['modifier_group_ids']),
+            'recipe_id': _toStringOrNull(row['recipe_id']),
+            'dryer_product_type': _toStringOrNull(row['dryer_product_type']),
+            'manufactured_item': _toBool(row['manufactured_item']),
+            'image_url': _toStringOrNull(row['image_url']),
+            'dietary_tags': _toList(row['dietary_tags']),
+            'allergen_info': _toList(row['allergen_info']),
+            'internal_notes': _toStringOrNull(row['internal_notes']),
+            'available_pos': _toBool(row['available_pos']),
+            'available_loyalty_app': _toBool(row['available_loyalty_app']),
+            'available_online': _toBool(row['available_online']),
+            'online_display_name': _toStringOrNull(row['online_display_name']),
+            'online_description': _toStringOrNull(row['online_description']),
+            'online_weight_description': _toStringOrNull(row['online_weight_description']),
+            'online_ingredients': _toStringOrNull(row['online_ingredients']),
+            'online_allergens': _toStringOrNull(row['online_allergens']),
+            'online_cooking_tips': _toStringOrNull(row['online_cooking_tips']),
+            'online_image_url': _toStringOrNull(row['online_image_url']),
+            'online_sort_order': _toInt(row['online_sort_order']),
+            'online_min_stock_threshold': _toDouble(row['online_min_stock_threshold']),
+            'is_best_seller': _toBool(row['is_best_seller']),
+            'is_featured': _toBool(row['is_featured']),
+            'delivery_eligible': _toBool(row['delivery_eligible']),
+            'updated_at': DateTime.now().toIso8601String(),
+          };
+
+          // Guard required NOT NULL columns — never let these be null or absent on insert
+          if (payload['name'] == null || payload['name'].toString().trim().isEmpty) {
+            payload['name'] = 'Unnamed Product ${payload['plu_code']}';
+          }
+          // online_min_stock_threshold and delivery_eligible have DB defaults so they're safe
+          payload.removeWhere((key, value) => value == null && key != 'name' && key != 'plu_code');
+
+          payload.remove('current_stock');
+          payload.remove('stock_on_hand_fresh');
+          payload.remove('stock_on_hand_frozen');
+          payload.remove('average_cost');
+          payload.remove('average_cost_price');
+          payload.remove('id');
+          payload.remove('category_id');
+          payload.remove('stock_deduction_qty');
+
+          final existing = await _supabase
+              .from('inventory_items')
+              .select('id')
+              .eq('plu_code', pluCode)
+              .maybeSingle();
+
+          if (existing != null) {
+            await _supabase.from('inventory_items').update(payload).eq('id', existing['id']);
+            updated++;
+          } else {
+            await _supabase.from('inventory_items').insert(payload);
+            inserted++;
+          }
+        } catch (e) {
+          errors++;
+          debugPrint("IMPORT ROW ERROR [plu=${row['plu_code']}]: $e");
+          if (errors <= 3) debugPrint('IMPORT ROW DATA: $row');
+        }
+      }
+
+      await IsarService.clearInventoryItemsCache();
+      await _loadData();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$inserted inserted, $updated updated, $skipped skipped, $errors errors'),
+            backgroundColor: AppColors.success,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isImportingCsv = false);
+    }
   }
 
   @override
@@ -580,16 +1069,75 @@ class ProductListScreenState extends State<ProductListScreen> {
                 if (isWide) {
                   return Row(
                     children: [
-                      searchField,
-                      const SizedBox(width: 8),
-                      filters,
+                      SizedBox(width: 220, child: searchField),
+                      const SizedBox(width: 6),
+                      categoryFilterBtn,
+                      const SizedBox(width: 4),
+                      SizedBox(
+                        width: 110,
+                        child: DropdownButton<String?>(
+                          value: _selectedChannelFilter,
+                          underline: const SizedBox(),
+                          hint: const Text('All'),
+                          isExpanded: true,
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('All')),
+                            DropdownMenuItem(value: 'pos', child: Text('POS Only')),
+                            DropdownMenuItem(value: 'app', child: Text('App')),
+                            DropdownMenuItem(value: 'online', child: Text('Online')),
+                          ],
+                          onChanged: (v) {
+                            setState(() => _selectedChannelFilter = v);
+                            _filterProducts();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Switch(
+                            value: _showInactive,
+                            onChanged: (v) {
+                              setState(() => _showInactive = v);
+                              _filterProducts();
+                            },
+                            activeThumbColor: AppColors.primary,
+                          ),
+                          const Text('Show inactive',
+                              style: TextStyle(
+                                  fontSize: 13, color: AppColors.textSecondary)),
+                        ],
+                      ),
                       const Spacer(),
                       countText,
-                      const SizedBox(width: 12),
+                      const SizedBox(width: 6),
                       bulkButton,
-                      refreshButton,
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        tooltip: 'Refresh from server',
+                        onPressed: () async {
+                          await IsarService.clearInventoryItemsCache();
+                          _loadData();
+                        },
+                      ),
+                      IconButton(
+                        onPressed: _isExportingCsv ? null : _exportProductsCsv,
+                        icon: _isExportingCsv
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.download, size: 20),
+                        tooltip: 'Export CSV',
+                      ),
+                      IconButton(
+                        onPressed: _isImportingCsv ? null : _importProductsCsv,
+                        icon: _isImportingCsv
+                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                            : const Icon(Icons.upload_file, size: 20),
+                        tooltip: 'Import CSV',
+                      ),
+                      const SizedBox(width: 4),
                       sortButton,
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       addButton,
                     ],
                   );
@@ -600,9 +1148,25 @@ class ProductListScreenState extends State<ProductListScreen> {
                       Row(
                         children: [
                           Expanded(child: searchField),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: 4),
                           bulkButton,
                           refreshButton,
+                          IconButton(
+                            onPressed: _isExportingCsv ? null : _exportProductsCsv,
+                            icon: _isExportingCsv
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.download, size: 20),
+                            tooltip: 'Export CSV',
+                          ),
+                          const SizedBox(width: 2),
+                          IconButton(
+                            onPressed: _isImportingCsv ? null : _importProductsCsv,
+                            icon: _isImportingCsv
+                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.upload_file, size: 20),
+                            tooltip: 'Import CSV',
+                          ),
+                          const SizedBox(width: 2),
                           sortButton,
                           addButton,
                         ],
@@ -1053,6 +1617,13 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   final _desLi4Controller = TextEditingController();
   bool _weighed = true;
   bool _hasIngredient = false;
+  // Section I - Online Shop fields
+  final _onlineDisplayNameController = TextEditingController();
+  final _onlineDescriptionController = TextEditingController();
+  final _onlineImageUrlController = TextEditingController();
+  final _onlineMinStockThresholdController = TextEditingController();
+  final _onlineSortOrderController = TextEditingController();
+  bool _availableOnline = false;
   bool _isActive = true;
   List<String> _supplierIds = [];
   List<Map<String, dynamic>> _allSuppliers = [];
@@ -1130,10 +1701,29 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   // Section G — Channels
   bool _availablePos = true;
   bool _availableLoyaltyApp = false;
-  bool _availableOnline = false;
-  final _onlineDescriptionController = TextEditingController();
-  final _onlineImageUrlController = TextEditingController();
-  final _onlineSortOrderController = TextEditingController();
+
+  // Section J — Online Store (Enhanced)
+  bool _isBestSeller = false;
+  bool _isFeatured = false;
+  final _onlineWeightDescriptionController = TextEditingController();
+  final _onlineIngredientsController = TextEditingController();
+  final _onlineAllergensController = TextEditingController();
+  final _onlineCookingTipsController = TextEditingController();
+  Set<String> _selectedOnlineCategoryIds = {};
+  List<Map<String, dynamic>> _onlineCategories = [];
+  List<Map<String, dynamic>> _linkedRecipes = [];
+  List<Map<String, dynamic>> _allCustomerRecipes = [];
+  bool _isUploadingImage = false;
+  
+  // Parent Stock Link
+  String? _parentStockItemId;
+  String? _parentStockItemName;
+  String? _parentStockItemPlu;
+  final _parentStockSearchController = TextEditingController();
+  final _stockDeductionQtyController = TextEditingController();
+  String _stockDeductionUnit = 'kg';
+  List<Map<String, dynamic>> _parentStockSearchResults = [];
+  Timer? _parentStockDebounce;
 
   // Section H — Media & Notes
   final _internalNotesController = TextEditingController();
@@ -1150,10 +1740,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     if (widget.product != null) {
       _populateForm(widget.product!);
       _loadProductSuppliers();
+      _loadOnlineProductCategories();
+      _loadLinkedRecipes();
     }
     _loadModifierGroups();
     _loadRecipes();
     _loadSuppliers();
+    _loadOnlineCategories();
+    _loadCustomerRecipes();
   }
 
   Future<void> _loadProductSuppliers() async {
@@ -1193,6 +1787,119 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       }
     } catch (e) {
       debugPrint('Error loading recipes: $e');
+    }
+  }
+
+  Future<void> _loadOnlineCategories() async {
+    try {
+      final r = await _supabase
+          .from('categories')
+          .select('id, name, sort_order')
+          .eq('available_online', true)
+          .order('sort_order');
+      if (mounted) {
+        setState(() => _onlineCategories = List<Map<String, dynamic>>.from(r));
+      }
+    } catch (e) {
+      debugPrint('Error loading online categories: $e');
+    }
+  }
+
+  Future<void> _loadCustomerRecipes() async {
+    try {
+      final r = await _supabase
+          .from('customer_recipes')
+          .select('id, title, image_url')
+          .eq('status', 'published')
+          .order('title');
+      if (mounted) {
+        setState(() => _allCustomerRecipes = List<Map<String, dynamic>>.from(r));
+      }
+    } catch (e) {
+      debugPrint('Error loading customer recipes: $e');
+    }
+  }
+
+  Future<void> _loadOnlineProductCategories() async {
+    if (widget.product == null) return;
+    try {
+      final rows = await _supabase
+          .from('online_product_categories')
+          .select('category_id')
+          .eq('inventory_item_id', widget.product!['id']);
+      if (mounted) {
+        setState(() {
+          _selectedOnlineCategoryIds = (rows as List)
+              .map((r) => (r as Map)['category_id']?.toString() ?? '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading online product categories: $e');
+    }
+  }
+
+  Future<void> _loadLinkedRecipes() async {
+    if (widget.product == null) return;
+    try {
+      final rows = await _supabase
+          .from('online_product_recipes')
+          .select('id, customer_recipe_id, display_order, customer_recipes(title, image_url)')
+          .eq('inventory_item_id', widget.product!['id'])
+          .order('display_order');
+      if (mounted) {
+        setState(() => _linkedRecipes = List<Map<String, dynamic>>.from(rows));
+      }
+    } catch (e) {
+      debugPrint('Error loading linked recipes: $e');
+    }
+  }
+
+  Future<void> _uploadProductImage() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        allowMultiple: false,
+        withData: true,
+      );
+      if (result == null || result.files.isEmpty) return;
+      
+      final file = result.files.first;
+      if (file.bytes == null) return;
+      
+      setState(() => _isUploadingImage = true);
+      
+      final productId = widget.product?['id'] ?? const Uuid().v4();
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${file.name}';
+      final storagePath = 'products/$productId/$fileName';
+      
+      await Supabase.instance.client.storage
+        .from('product-images')
+        .uploadBinary(
+          storagePath,
+          file.bytes!,
+          fileOptions: const FileOptions(upsert: true),
+        );
+      
+      final publicUrl = Supabase.instance.client.storage
+        .from('product-images')
+        .getPublicUrl(storagePath);
+      
+      setState(() {
+        _onlineImageUrlController.text = publicUrl;
+        _isUploadingImage = false;
+      });
+    } catch (e) {
+      setState(() => _isUploadingImage = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Upload failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -1245,7 +1952,54 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     }
   }
 
+  Future<void> _loadParentStockItemDetails(String parentId) async {
+    try {
+      final result = await _supabase
+          .from('inventory_items')
+          .select('id, name, plu_code')
+          .eq('id', parentId)
+          .maybeSingle();
+      if (result != null && mounted) {
+        setState(() {
+          _parentStockItemName = result['name'] as String?;
+          _parentStockItemPlu = result['plu_code']?.toString();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading parent stock item: $e');
+    }
+  }
+
+  void _searchParentStockItems(String query) {
+    _parentStockDebounce?.cancel();
+    _parentStockDebounce = Timer(const Duration(milliseconds: 300), () async {
+      if (query.trim().isEmpty) {
+        setState(() => _parentStockSearchResults = []);
+        return;
+      }
+      try {
+        final results = await _supabase
+            .from('inventory_items')
+            .select('id, name, plu_code')
+            .or('name.ilike.%$query%,plu_code.ilike.%$query%')
+            .eq('is_active', true)
+            .neq('id', widget.product?['id'] ?? '')
+            .limit(10);
+        if (mounted) {
+          setState(() => _parentStockSearchResults = List<Map<String, dynamic>>.from(results));
+        }
+      } catch (e) {
+        debugPrint('Error searching parent stock items: $e');
+      }
+    });
+  }
+
   void _populateForm(Map<String, dynamic> p) {
+    debugPrint('POPULATE DEBUG: available_online=${p['available_online']}');
+    debugPrint('POPULATE DEBUG: is_best_seller=${p['is_best_seller']}');
+    debugPrint('POPULATE DEBUG: online_display_name=${p['online_display_name']}');
+    debugPrint('POPULATE DEBUG: online_ingredients=${p['online_ingredients']}');
+    
     _pluController.text = p['plu_code']?.toString() ?? '';
     _nameController.text = p['name'] ?? '';
     _posNameController.text = p['pos_display_name'] ?? '';
@@ -1312,9 +2066,26 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _availablePos = p['available_pos'] as bool? ?? true;
     _availableLoyaltyApp = p['available_loyalty_app'] as bool? ?? false;
     _availableOnline = p['available_online'] as bool? ?? false;
+    _onlineDisplayNameController.text = p['online_display_name']?.toString() ?? '';
     _onlineDescriptionController.text = p['online_description']?.toString() ?? '';
-    _onlineImageUrlController.text = p['online_image_url']?.toString() ?? '';
+    _onlineMinStockThresholdController.text = p['online_min_stock_threshold']?.toString() ?? '';
     _onlineSortOrderController.text = p['online_sort_order']?.toString() ?? '';
+    _onlineImageUrlController.text = p['online_image_url']?.toString() ?? '';
+    // New online store fields
+    _isBestSeller = p['is_best_seller'] as bool? ?? false;
+    _isFeatured = p['is_featured'] as bool? ?? false;
+    _onlineWeightDescriptionController.text = p['online_weight_description']?.toString() ?? '';
+    _onlineIngredientsController.text = p['online_ingredients']?.toString() ?? '';
+    _onlineAllergensController.text = p['online_allergens']?.toString() ?? '';
+    _onlineCookingTipsController.text = p['online_cooking_tips']?.toString() ?? '';
+    
+    // Parent Stock Link
+    _parentStockItemId = p['parent_stock_item_id']?.toString();
+    _stockDeductionQtyController.text = p['stock_deduction_qty']?.toString() ?? '';
+    _stockDeductionUnit = p['stock_deduction_unit']?.toString() ?? 'kg';
+    if (_parentStockItemId != null) {
+      _loadParentStockItemDetails(_parentStockItemId!);
+    }
   }
 
   Future<void> _confirmDeleteProduct(Map<String, dynamic> product) async {
@@ -1438,9 +2209,21 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'available_pos': _availablePos,
       'available_loyalty_app': _availableLoyaltyApp,
       'available_online': _availableOnline,
+      'online_display_name': _onlineDisplayNameController.text.trim().isEmpty ? null : _onlineDisplayNameController.text.trim(),
       'online_description': _onlineDescriptionController.text.trim().isEmpty ? null : _onlineDescriptionController.text.trim(),
+      'online_min_stock_threshold': double.tryParse(_onlineMinStockThresholdController.text) ?? 0,
+      'online_sort_order': int.tryParse(_onlineSortOrderController.text) ?? 0,
+      'delivery_eligible': false, // Always false - controlled globally
       'online_image_url': _onlineImageUrlController.text.trim().isEmpty ? null : _onlineImageUrlController.text.trim(),
-      'online_sort_order': int.tryParse(_onlineSortOrderController.text),
+      'is_best_seller': _isBestSeller,
+      'is_featured': _isFeatured,
+      'online_weight_description': _onlineWeightDescriptionController.text.trim().isEmpty ? null : _onlineWeightDescriptionController.text.trim(),
+      'online_ingredients': _onlineIngredientsController.text.trim().isEmpty ? null : _onlineIngredientsController.text.trim(),
+      'online_allergens': _onlineAllergensController.text.trim().isEmpty ? null : _onlineAllergensController.text.trim(),
+      'online_cooking_tips': _onlineCookingTipsController.text.trim().isEmpty ? null : _onlineCookingTipsController.text.trim(),
+      'parent_stock_item_id': _parentStockItemId,
+      'stock_deduction_qty': double.tryParse(_stockDeductionQtyController.text),
+      'stock_deduction_unit': _parentStockItemId != null ? _stockDeductionUnit : null,
       'price_last_changed': DateTime.now().toIso8601String(),
       'last_edited_at': DateTime.now().toIso8601String(),
       'updated_at': DateTime.now().toIso8601String(),
@@ -1526,6 +2309,27 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           newValues: data,
         );
       }
+
+      // Save online product categories (delete all, then re-insert selected)
+      final productId = widget.product?['id'] ?? data['id'];
+      if (productId != null) {
+        await _supabase
+            .from('online_product_categories')
+            .delete()
+            .eq('inventory_item_id', productId);
+        
+        if (_selectedOnlineCategoryIds.isNotEmpty) {
+          final categoryInserts = _selectedOnlineCategoryIds
+              .map((catId) => {
+                    'inventory_item_id': productId,
+                    'category_id': catId,
+                  })
+              .toList();
+          await _supabase.from('online_product_categories').insert(categoryInserts);
+        }
+      }
+
+      await IsarService.clearInventoryItemsCache();
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -1541,6 +2345,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
   @override
   void dispose() {
+    _onlineDisplayNameController.dispose();
+    _onlineDescriptionController.dispose();
+    _onlineMinStockThresholdController.dispose();
+    _onlineSortOrderController.dispose();
+    _onlineWeightDescriptionController.dispose();
+    _onlineIngredientsController.dispose();
+    _onlineAllergensController.dispose();
+    _onlineCookingTipsController.dispose();
     _tabController.dispose();
     _pluController.dispose();
     _nameController.dispose();
@@ -1568,9 +2380,10 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _packSizeController.dispose();
     _internalNotesController.dispose();
     _imageUrlController.dispose();
-    _onlineDescriptionController.dispose();
     _onlineImageUrlController.dispose();
-    _onlineSortOrderController.dispose();
+    _parentStockSearchController.dispose();
+    _stockDeductionQtyController.dispose();
+    _parentStockDebounce?.cancel();
     super.dispose();
   }
 
@@ -1632,9 +2445,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 Tab(text: 'E — Modifiers'),
                 Tab(text: 'F — Production'),
                 Tab(text: 'G — Scale/Label'),
-                Tab(text: 'G — Channels'),
                 Tab(text: 'H — Media/Notes'),
                 Tab(text: 'I — Activity'),
+                Tab(text: 'J — Online Shop'),
               ],
             ),
             const Divider(height: 1, color: AppColors.border),
@@ -1653,9 +2466,9 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     _buildTabE(),
                     _buildTabF(),
                     _buildTabG(),
-                    _buildTabChannels(),
                     _buildTabH(),
                     _buildTabI(),
+                    _buildTabJ(),
                   ],
                 ),
               ),
@@ -3128,111 +3941,6 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     return '$plu,$dept,DEPT1,01,$barFlag,$eanNo,$price,,$shelfLife,$bestBy,$weighed,$cdv,7,$des1,,$des2,,,,,$hasIng,,';
   }
 
-  Widget _buildTabChannels() {
-    final showAppListing = _availableLoyaltyApp || _availableOnline;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Channel availability',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _channelToggle(
-                  label: 'POS / Till',
-                  value: _availablePos,
-                  onChanged: (v) => setState(() => _availablePos = v),
-                  hint: 'Show this product on the point of sale screen',
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _channelToggle(
-                  label: 'Loyalty App',
-                  value: _availableLoyaltyApp,
-                  onChanged: (v) => setState(() => _availableLoyaltyApp = v),
-                  hint: 'Customers can order this via the loyalty app',
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: _channelToggle(
-                  label: 'Online Orders',
-                  value: _availableOnline,
-                  onChanged: (v) => setState(() => _availableOnline = v),
-                  hint: 'Available when online ordering is launched',
-                ),
-              ),
-            ],
-          ),
-          if (showAppListing) ...[
-            const SizedBox(height: 24),
-            const Text('App listing',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
-            const SizedBox(height: 12),
-            _field(
-              label: 'App Description',
-              controller: _onlineDescriptionController,
-              hint: 'Describe this product for customers in the app. Can be more detailed than the POS name.',
-              maxLength: 2000,
-              maxLines: 4,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _field(
-                    label: 'App Display Order',
-                    controller: _onlineSortOrderController,
-                    hint: 'Lower numbers appear first in app listings',
-                    keyboardType: TextInputType.number,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 2,
-                  child: _field(
-                    label: 'Product Image URL',
-                    controller: _onlineImageUrlController,
-                    hint: 'Link to product photo for app display (Image upload will be added when app is built)',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _channelToggle({
-    required String label,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-    required String hint,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Switch(
-              value: value,
-              onChanged: onChanged,
-              activeThumbColor: AppColors.primary,
-            ),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-          ],
-        ),
-        const SizedBox(height: 4),
-        Text(hint, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-      ],
-    );
-  }
-
   Widget _buildTabH() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
@@ -3363,6 +4071,489 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabJ() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SwitchListTile(
+            title: const Text('Available on POS / Till'),
+            value: _availablePos,
+            onChanged: (v) => setState(() => _availablePos = v),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const Divider(height: 32),
+          // SECTION: Store Listing
+          const Text(
+            'Store Listing',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 16),
+          SwitchListTile(
+            title: const Text('Show in online store'),
+            value: _availableOnline,
+            onChanged: (v) => setState(() => _availableOnline = v),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('Show in loyalty app'),
+            value: _availableLoyaltyApp,
+            onChanged: (v) => setState(() => _availableLoyaltyApp = v),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineDisplayNameController,
+            decoration: const InputDecoration(
+              labelText: 'Display name in store',
+              hintText: 'Leave blank to use product name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineWeightDescriptionController,
+            decoration: const InputDecoration(
+              labelText: 'Weight / size description',
+              hintText: 'e.g. ±450g per pack, 6 per pack',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _sellPriceController,
+            decoration: const InputDecoration(
+              labelText: 'Store price (R)',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineSortOrderController,
+            decoration: const InputDecoration(
+              labelText: 'Sort order',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: TextInputType.number,
+          ),
+          const SizedBox(height: 8),
+          SwitchListTile(
+            title: const Text('Mark as best seller'),
+            value: _isBestSeller,
+            onChanged: (v) => setState(() => _isBestSeller = v),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+          SwitchListTile(
+            title: const Text('Mark as featured'),
+            value: _isFeatured,
+            onChanged: (v) => setState(() => _isFeatured = v),
+            activeColor: AppColors.success,
+            contentPadding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineMinStockThresholdController,
+            decoration: const InputDecoration(
+              labelText: 'Min stock before hiding from store',
+              hintText: 'Product hides when stock falls to or below this number',
+              border: OutlineInputBorder(),
+            ),
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+          ),
+          const Divider(height: 48),
+          
+          // SECTION: Product Label
+          const Text(
+            'Product Label',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineIngredientsController,
+            decoration: const InputDecoration(
+              labelText: 'Ingredients',
+              hintText: 'e.g. Lamb, Salt, Pepper, Rosemary',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 5,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineAllergensController,
+            decoration: const InputDecoration(
+              labelText: 'Allergens',
+              hintText: 'e.g. Contains: Gluten, Soy',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _onlineCookingTipsController,
+            decoration: const InputDecoration(
+              labelText: 'Cooking tips',
+              hintText: 'e.g. Pan fry on medium heat for 4 min per side',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 3,
+          ),
+          const SizedBox(height: 16),
+          // Live preview card
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              border: Border.all(color: Colors.black, width: 2),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _onlineDisplayNameController.text.isEmpty
+                      ? _nameController.text
+                      : _onlineDisplayNameController.text,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                if (_onlineWeightDescriptionController.text.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    _onlineWeightDescriptionController.text,
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+                if (_onlineIngredientsController.text.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  const Text('Ingredients:', style: TextStyle(fontSize: 12)),
+                  Text(
+                    _onlineIngredientsController.text,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ],
+                if (_onlineAllergensController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    _onlineAllergensController.text,
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                ],
+                if (_onlineCookingTipsController.text.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('Cooking Tips:', style: TextStyle(fontSize: 12)),
+                  Text(
+                    _onlineCookingTipsController.text,
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const Divider(height: 48),
+          
+          // SECTION: Categories
+          const Text(
+            'Categories',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Select which online store categories this product belongs to',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _onlineCategories.map((cat) {
+              final catId = cat['id']?.toString() ?? '';
+              final catName = cat['name']?.toString() ?? '';
+              final isSelected = _selectedOnlineCategoryIds.contains(catId);
+              return FilterChip(
+                label: Text(catName),
+                selected: isSelected,
+                onSelected: (selected) {
+                  setState(() {
+                    if (selected) {
+                      _selectedOnlineCategoryIds.add(catId);
+                    } else {
+                      _selectedOnlineCategoryIds.remove(catId);
+                    }
+                  });
+                },
+                selectedColor: AppColors.primary.withOpacity(0.2),
+              );
+            }).toList(),
+          ),
+          const Divider(height: 48),
+          
+          // SECTION: Recipes
+          const Text(
+            'Recipes',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'First 2 recipes shown in store',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          if (_linkedRecipes.isEmpty)
+            const Text(
+              'No recipes linked',
+              style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            )
+          else
+            ..._linkedRecipes.asMap().entries.map((entry) {
+              final idx = entry.key;
+              final recipe = entry.value;
+              final recipeData = recipe['customer_recipes'] as Map?;
+              final title = recipeData?['title']?.toString() ?? 'Unknown';
+              final displayOrder = recipe['display_order'] ?? (idx + 1);
+              return Card(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Text('$displayOrder'),
+                  ),
+                  title: Text(title),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete, color: AppColors.error),
+                    onPressed: () async {
+                      await _supabase
+                          .from('online_product_recipes')
+                          .delete()
+                          .eq('id', recipe['id']);
+                      _loadLinkedRecipes();
+                    },
+                  ),
+                ),
+              );
+            }),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final selected = await showDialog<Map<String, dynamic>>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('Add Recipe'),
+                  content: SizedBox(
+                    width: 400,
+                    height: 400,
+                    child: ListView.builder(
+                      itemCount: _allCustomerRecipes.length,
+                      itemBuilder: (ctx, i) {
+                        final recipe = _allCustomerRecipes[i];
+                        return ListTile(
+                          title: Text(recipe['title'] ?? ''),
+                          onTap: () => Navigator.pop(ctx, recipe),
+                        );
+                      },
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Cancel'),
+                    ),
+                  ],
+                ),
+              );
+              if (selected != null && widget.product != null) {
+                final nextOrder = _linkedRecipes.isEmpty
+                    ? 1
+                    : (_linkedRecipes.map((r) => r['display_order'] as int? ?? 0).reduce((a, b) => a > b ? a : b) + 1);
+                await _supabase.from('online_product_recipes').insert({
+                  'inventory_item_id': widget.product!['id'],
+                  'customer_recipe_id': selected['id'],
+                  'display_order': nextOrder,
+                });
+                _loadLinkedRecipes();
+              }
+            },
+            icon: const Icon(Icons.add),
+            label: const Text('Add Recipe'),
+          ),
+          const Divider(height: 48),
+          
+          // SECTION: Product Image
+          const Text(
+            'Product Image',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 16),
+          if (_onlineImageUrlController.text.isNotEmpty)
+            Column(
+              children: [
+                Container(
+                  height: 250,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.grey),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.network(
+                      _onlineImageUrlController.text,
+                      height: 250,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        height: 250,
+                        color: Colors.grey[300],
+                        child: const Center(child: Text('Image load error')),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    setState(() => _onlineImageUrlController.clear());
+                  },
+                  icon: const Icon(Icons.delete),
+                  label: const Text('Remove Image'),
+                ),
+              ],
+            ),
+          const SizedBox(height: 16),
+          
+          // Upload Button
+          _isUploadingImage
+              ? const Center(child: CircularProgressIndicator())
+              : OutlinedButton.icon(
+                  onPressed: _uploadProductImage,
+                  icon: const Icon(Icons.upload),
+                  label: const Text('Upload Product Image'),
+                ),
+          const Divider(height: 48),
+          
+          // SECTION: Parent Stock Link
+          const Text(
+            'Parent Stock Link',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Link this product to a bulk inventory item. When an online order is confirmed, the deduction quantity will be removed from the parent item\'s stock.',
+            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          
+          // Parent stock item search
+          TextFormField(
+            controller: _parentStockSearchController,
+            decoration: InputDecoration(
+              labelText: 'Search parent product by name or PLU',
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              suffixIcon: _parentStockSearchController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        setState(() {
+                          _parentStockSearchController.clear();
+                          _parentStockSearchResults = [];
+                        });
+                      },
+                    )
+                  : null,
+            ),
+            onChanged: _searchParentStockItems,
+          ),
+          
+          // Search results dropdown
+          if (_parentStockSearchResults.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _parentStockSearchResults.length,
+                itemBuilder: (context, index) {
+                  final item = _parentStockSearchResults[index];
+                  return ListTile(
+                    dense: true,
+                    title: Text('${item['name']}'),
+                    subtitle: Text('PLU: ${item['plu_code']}'),
+                    onTap: () {
+                      setState(() {
+                        _parentStockItemId = item['id']?.toString();
+                        _parentStockItemName = item['name'] as String?;
+                        _parentStockItemPlu = item['plu_code']?.toString();
+                        _parentStockSearchController.clear();
+                        _parentStockSearchResults = [];
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+          
+          // Selected parent item chip
+          if (_parentStockItemId != null) ...[
+            const SizedBox(height: 16),
+            Chip(
+              avatar: const Icon(Icons.link, size: 18),
+              label: Text('${_parentStockItemName ?? 'Unknown'} (PLU: ${_parentStockItemPlu ?? 'N/A'})'),
+              deleteIcon: const Icon(Icons.close),
+              onDeleted: () {
+                setState(() {
+                  _parentStockItemId = null;
+                  _parentStockItemName = null;
+                  _parentStockItemPlu = null;
+                  _stockDeductionQtyController.clear();
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            
+            // Deduction quantity
+            TextFormField(
+              controller: _stockDeductionQtyController,
+              decoration: const InputDecoration(
+                labelText: 'Deduction quantity per unit sold',
+                hintText: 'e.g. 0.280 for 280g',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 16),
+            
+            // Deduction unit dropdown
+            DropdownButtonFormField<String>(
+              value: _stockDeductionUnit,
+              decoration: const InputDecoration(
+                labelText: 'Deduction unit',
+                border: OutlineInputBorder(),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'g', child: Text('g (grams)')),
+                DropdownMenuItem(value: 'kg', child: Text('kg (kilograms)')),
+                DropdownMenuItem(value: 'units', child: Text('units')),
+              ],
+              onChanged: (value) {
+                if (value != null) {
+                  setState(() => _stockDeductionUnit = value);
+                }
+              },
+            ),
+          ],
         ],
       ),
     );
@@ -3939,6 +5130,96 @@ class _BulkChannelDialogState extends State<_BulkChannelDialog> {
           child: _saving
               ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
               : const Text('Apply'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProductImportPreviewDialog extends StatelessWidget {
+  final List<Map<String, dynamic>> rows;
+  final int missingPluCount;
+  final VoidCallback onConfirm;
+
+  const _ProductImportPreviewDialog({
+    required this.rows,
+    required this.missingPluCount,
+    required this.onConfirm,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final previewRows = rows.take(10).toList();
+    return AlertDialog(
+      title: const Text('Import products — Preview'),
+      content: SizedBox(
+        width: 760,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '${rows.length} product rows found in file.',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+              if (missingPluCount > 0)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '$missingPluCount row(s) missing required field "plu_code" (will be skipped).',
+                    style: const TextStyle(color: AppColors.warning, fontSize: 13),
+                  ),
+                ),
+              const SizedBox(height: 16),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: const [
+                    DataColumn(label: Text('PLU')),
+                    DataColumn(label: Text('Name')),
+                    DataColumn(label: Text('Sell Price')),
+                    DataColumn(label: Text('Cost Price')),
+                    DataColumn(label: Text('Active')),
+                    DataColumn(label: Text('VAT Group')),
+                  ],
+                  rows: previewRows.map((r) {
+                    return DataRow(
+                      cells: [
+                        DataCell(Text((r['plu_code'] ?? '').toString().trim().isEmpty ? '(missing)' : (r['plu_code'] ?? '').toString().trim())),
+                        DataCell(Text((r['name'] ?? '').toString().trim().isEmpty ? '—' : (r['name'] ?? '').toString().trim())),
+                        DataCell(Text((r['sell_price'] ?? '').toString().trim().isEmpty ? '—' : (r['sell_price'] ?? '').toString().trim())),
+                        DataCell(Text((r['cost_price'] ?? '').toString().trim().isEmpty ? '—' : (r['cost_price'] ?? '').toString().trim())),
+                        DataCell(Text((r['is_active'] ?? '').toString().trim().isEmpty ? '—' : (r['is_active'] ?? '').toString().trim())),
+                        DataCell(Text((r['vat_group'] ?? '').toString().trim().isEmpty ? '—' : (r['vat_group'] ?? '').toString().trim())),
+                      ],
+                    );
+                  }).toList(),
+                ),
+              ),
+              if (rows.length > 10)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    '... and ${rows.length - 10} more',
+                    style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            onConfirm();
+          },
+          style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+          child: const Text('Confirm import'),
         ),
       ],
     );

@@ -57,6 +57,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
   bool _autoMatching = false;
   int _autoMatchedCount = 0;
   bool _scanning = false;
+  bool _isOpeningBalance = false;
 
   void _updateDateDisplays() {
     _invoiceDateController.text = _formatDate(_invoiceDate);
@@ -80,6 +81,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
         _selectedSupplierId = inv.supplierId;
         _invoiceDate = inv.invoiceDate;
         _dueDate = inv.dueDate;
+        _isOpeningBalance = inv.isOpeningBalance;
         _taxAmountController.text = inv.taxAmount.toStringAsFixed(2);
         for (final item in inv.lineItems) {
           final row = _LineRow();
@@ -470,6 +472,28 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     final total = _total();
     final lineItems = _buildLineItems();
 
+    final calcErrors = _repo.verifyCalculations(
+      lineItems: lineItems,
+      subtotal: subtotal,
+      taxAmount: taxAmount,
+      total: total,
+    );
+    if (calcErrors.isNotEmpty) {
+      setState(() => _calcErrors = calcErrors);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Fix calculation errors before saving. Use Verify totals for details.',
+            ),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+    setState(() => _calcErrors = []);
+
     setState(() => _saving = true);
     try {
       if (widget.invoice != null) {
@@ -482,9 +506,22 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
           setState(() => _saving = false);
           return;
         }
+        final invNum = _invoiceNumberController.text.trim();
+        if (invNum.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Invoice number is required'),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+          setState(() => _saving = false);
+          return;
+        }
         final updated = SupplierInvoice(
           id: inv.id,
-          invoiceNumber: _invoiceNumberController.text.trim(),
+          invoiceNumber: invNum,
           supplierId: _selectedSupplierId,
           invoiceDate: _invoiceDate,
           dueDate: _dueDate,
@@ -492,6 +529,8 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
           subtotal: subtotal,
           taxAmount: taxAmount,
           total: total,
+          amountPaid: inv.amountPaid,
+          balanceDue: inv.balanceDue,
           status: inv.status,
           notes: _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
           createdBy: inv.createdBy,
@@ -501,10 +540,34 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
         await _repo.update(updated);
       } else {
         // Build payload using ONLY confirmed supplier_invoices columns
-        final invoiceNumber = _invoiceNumberController.text.trim().isNotEmpty
-            ? _invoiceNumberController.text.trim()
-            : 'INV-${DateTime.now().millisecondsSinceEpoch}';
-        
+        final invoiceNumber = _invoiceNumberController.text.trim();
+        if (invoiceNumber.isEmpty) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Invoice number is required'),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+          setState(() => _saving = false);
+          return;
+        }
+        if (await _repo.invoiceNumberExists(invoiceNumber)) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'Invoice number already exists. Please verify the document.',
+                ),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+          setState(() => _saving = false);
+          return;
+        }
+
         final payload = <String, dynamic>{
           'invoice_number': invoiceNumber,
           'supplier_id': _selectedSupplierId,
@@ -517,6 +580,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
           'status': 'draft',
           'notes': _notesController.text.trim().isEmpty ? null : _notesController.text.trim(),
           'created_by': createdBy,
+          'is_opening_balance': _isOpeningBalance,
         };
         
         // Remove null values before sending
@@ -835,6 +899,27 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
                 decoration: const InputDecoration(labelText: 'Notes'),
                 maxLines: 2,
               ),
+              const SizedBox(height: 16),
+              if (widget.invoice == null)
+                CheckboxListTile(
+                  value: _isOpeningBalance,
+                  onChanged: (v) {
+                    setState(() {
+                      _isOpeningBalance = v ?? false;
+                      if (_isOpeningBalance) {
+                        _invoiceDate = DateTime(2026, 2, 28);
+                        _dueDate = DateTime(2026, 2, 28);
+                        _updateDateDisplays();
+                      }
+                    });
+                  },
+                  title: const Text('Opening balance — brought forward from before 1 March 2026'),
+                  subtitle: const Text(
+                    'Tick this for any supplier debt that existed before the Pty Ltd was registered',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  contentPadding: EdgeInsets.zero,
+                ),
               const SizedBox(height: 24),
               SizedBox(
                 width: double.infinity,

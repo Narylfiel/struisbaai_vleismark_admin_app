@@ -73,68 +73,133 @@ const CachedInventoryItemSchema = CollectionSchema(
       name: r'isActive',
       type: IsarType.bool,
     ),
-    r'itemId': PropertySchema(
+    r'isBestSeller': PropertySchema(
       id: 11,
+      name: r'isBestSeller',
+      type: IsarType.bool,
+    ),
+    r'isFeatured': PropertySchema(
+      id: 12,
+      name: r'isFeatured',
+      type: IsarType.bool,
+    ),
+    r'itemId': PropertySchema(
+      id: 13,
       name: r'itemId',
       type: IsarType.string,
     ),
     r'name': PropertySchema(
-      id: 12,
+      id: 14,
       name: r'name',
       type: IsarType.string,
     ),
+    r'onlineAllergens': PropertySchema(
+      id: 15,
+      name: r'onlineAllergens',
+      type: IsarType.string,
+    ),
+    r'onlineCookingTips': PropertySchema(
+      id: 16,
+      name: r'onlineCookingTips',
+      type: IsarType.string,
+    ),
+    r'onlineDisplayName': PropertySchema(
+      id: 17,
+      name: r'onlineDisplayName',
+      type: IsarType.string,
+    ),
+    r'onlineImageUrl': PropertySchema(
+      id: 18,
+      name: r'onlineImageUrl',
+      type: IsarType.string,
+    ),
+    r'onlineIngredients': PropertySchema(
+      id: 19,
+      name: r'onlineIngredients',
+      type: IsarType.string,
+    ),
+    r'onlineMinStockThreshold': PropertySchema(
+      id: 20,
+      name: r'onlineMinStockThreshold',
+      type: IsarType.double,
+    ),
+    r'onlineSortOrder': PropertySchema(
+      id: 21,
+      name: r'onlineSortOrder',
+      type: IsarType.long,
+    ),
+    r'onlineWeightDescription': PropertySchema(
+      id: 22,
+      name: r'onlineWeightDescription',
+      type: IsarType.string,
+    ),
+    r'parentStockItemId': PropertySchema(
+      id: 23,
+      name: r'parentStockItemId',
+      type: IsarType.string,
+    ),
     r'pluCode': PropertySchema(
-      id: 13,
+      id: 24,
       name: r'pluCode',
       type: IsarType.long,
     ),
     r'posDisplayName': PropertySchema(
-      id: 14,
+      id: 25,
       name: r'posDisplayName',
       type: IsarType.string,
     ),
     r'reorderLevel': PropertySchema(
-      id: 15,
+      id: 26,
       name: r'reorderLevel',
       type: IsarType.double,
     ),
     r'scaleItem': PropertySchema(
-      id: 16,
+      id: 27,
       name: r'scaleItem',
       type: IsarType.bool,
     ),
     r'sellPrice': PropertySchema(
-      id: 17,
+      id: 28,
       name: r'sellPrice',
       type: IsarType.double,
     ),
     r'stockControlType': PropertySchema(
-      id: 18,
+      id: 29,
       name: r'stockControlType',
       type: IsarType.string,
     ),
+    r'stockDeductionQty': PropertySchema(
+      id: 30,
+      name: r'stockDeductionQty',
+      type: IsarType.double,
+    ),
+    r'stockDeductionUnit': PropertySchema(
+      id: 31,
+      name: r'stockDeductionUnit',
+      type: IsarType.string,
+    ),
     r'stockOnHandFresh': PropertySchema(
-      id: 19,
+      id: 32,
       name: r'stockOnHandFresh',
       type: IsarType.double,
     ),
     r'stockOnHandFrozen': PropertySchema(
-      id: 20,
+      id: 33,
       name: r'stockOnHandFrozen',
       type: IsarType.double,
     ),
     r'targetMarginPct': PropertySchema(
-      id: 21,
+      id: 34,
       name: r'targetMarginPct',
       type: IsarType.double,
     ),
     r'unitType': PropertySchema(
-      id: 22,
+      id: 35,
       name: r'unitType',
       type: IsarType.string,
     ),
     r'vatGroup': PropertySchema(
-      id: 23,
+      id: 36,
       name: r'vatGroup',
       type: IsarType.string,
     )
@@ -194,12 +259,60 @@ int _cachedInventoryItemEstimateSize(
   bytesCount += 3 + object.itemId.length * 3;
   bytesCount += 3 + object.name.length * 3;
   {
+    final value = object.onlineAllergens;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.onlineCookingTips;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.onlineDisplayName;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.onlineImageUrl;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.onlineIngredients;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.onlineWeightDescription;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
+    final value = object.parentStockItemId;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
+  {
     final value = object.posDisplayName;
     if (value != null) {
       bytesCount += 3 + value.length * 3;
     }
   }
   bytesCount += 3 + object.stockControlType.length * 3;
+  {
+    final value = object.stockDeductionUnit;
+    if (value != null) {
+      bytesCount += 3 + value.length * 3;
+    }
+  }
   bytesCount += 3 + object.unitType.length * 3;
   {
     final value = object.vatGroup;
@@ -227,19 +340,32 @@ void _cachedInventoryItemSerialize(
   writer.writeDouble(offsets[8], object.costPrice);
   writer.writeDouble(offsets[9], object.currentStock);
   writer.writeBool(offsets[10], object.isActive);
-  writer.writeString(offsets[11], object.itemId);
-  writer.writeString(offsets[12], object.name);
-  writer.writeLong(offsets[13], object.pluCode);
-  writer.writeString(offsets[14], object.posDisplayName);
-  writer.writeDouble(offsets[15], object.reorderLevel);
-  writer.writeBool(offsets[16], object.scaleItem);
-  writer.writeDouble(offsets[17], object.sellPrice);
-  writer.writeString(offsets[18], object.stockControlType);
-  writer.writeDouble(offsets[19], object.stockOnHandFresh);
-  writer.writeDouble(offsets[20], object.stockOnHandFrozen);
-  writer.writeDouble(offsets[21], object.targetMarginPct);
-  writer.writeString(offsets[22], object.unitType);
-  writer.writeString(offsets[23], object.vatGroup);
+  writer.writeBool(offsets[11], object.isBestSeller);
+  writer.writeBool(offsets[12], object.isFeatured);
+  writer.writeString(offsets[13], object.itemId);
+  writer.writeString(offsets[14], object.name);
+  writer.writeString(offsets[15], object.onlineAllergens);
+  writer.writeString(offsets[16], object.onlineCookingTips);
+  writer.writeString(offsets[17], object.onlineDisplayName);
+  writer.writeString(offsets[18], object.onlineImageUrl);
+  writer.writeString(offsets[19], object.onlineIngredients);
+  writer.writeDouble(offsets[20], object.onlineMinStockThreshold);
+  writer.writeLong(offsets[21], object.onlineSortOrder);
+  writer.writeString(offsets[22], object.onlineWeightDescription);
+  writer.writeString(offsets[23], object.parentStockItemId);
+  writer.writeLong(offsets[24], object.pluCode);
+  writer.writeString(offsets[25], object.posDisplayName);
+  writer.writeDouble(offsets[26], object.reorderLevel);
+  writer.writeBool(offsets[27], object.scaleItem);
+  writer.writeDouble(offsets[28], object.sellPrice);
+  writer.writeString(offsets[29], object.stockControlType);
+  writer.writeDouble(offsets[30], object.stockDeductionQty);
+  writer.writeString(offsets[31], object.stockDeductionUnit);
+  writer.writeDouble(offsets[32], object.stockOnHandFresh);
+  writer.writeDouble(offsets[33], object.stockOnHandFrozen);
+  writer.writeDouble(offsets[34], object.targetMarginPct);
+  writer.writeString(offsets[35], object.unitType);
+  writer.writeString(offsets[36], object.vatGroup);
 }
 
 CachedInventoryItem _cachedInventoryItemDeserialize(
@@ -261,19 +387,32 @@ CachedInventoryItem _cachedInventoryItemDeserialize(
   object.currentStock = reader.readDouble(offsets[9]);
   object.id = id;
   object.isActive = reader.readBool(offsets[10]);
-  object.itemId = reader.readString(offsets[11]);
-  object.name = reader.readString(offsets[12]);
-  object.pluCode = reader.readLong(offsets[13]);
-  object.posDisplayName = reader.readStringOrNull(offsets[14]);
-  object.reorderLevel = reader.readDoubleOrNull(offsets[15]);
-  object.scaleItem = reader.readBoolOrNull(offsets[16]);
-  object.sellPrice = reader.readDoubleOrNull(offsets[17]);
-  object.stockControlType = reader.readString(offsets[18]);
-  object.stockOnHandFresh = reader.readDoubleOrNull(offsets[19]);
-  object.stockOnHandFrozen = reader.readDoubleOrNull(offsets[20]);
-  object.targetMarginPct = reader.readDoubleOrNull(offsets[21]);
-  object.unitType = reader.readString(offsets[22]);
-  object.vatGroup = reader.readStringOrNull(offsets[23]);
+  object.isBestSeller = reader.readBoolOrNull(offsets[11]);
+  object.isFeatured = reader.readBoolOrNull(offsets[12]);
+  object.itemId = reader.readString(offsets[13]);
+  object.name = reader.readString(offsets[14]);
+  object.onlineAllergens = reader.readStringOrNull(offsets[15]);
+  object.onlineCookingTips = reader.readStringOrNull(offsets[16]);
+  object.onlineDisplayName = reader.readStringOrNull(offsets[17]);
+  object.onlineImageUrl = reader.readStringOrNull(offsets[18]);
+  object.onlineIngredients = reader.readStringOrNull(offsets[19]);
+  object.onlineMinStockThreshold = reader.readDoubleOrNull(offsets[20]);
+  object.onlineSortOrder = reader.readLongOrNull(offsets[21]);
+  object.onlineWeightDescription = reader.readStringOrNull(offsets[22]);
+  object.parentStockItemId = reader.readStringOrNull(offsets[23]);
+  object.pluCode = reader.readLong(offsets[24]);
+  object.posDisplayName = reader.readStringOrNull(offsets[25]);
+  object.reorderLevel = reader.readDoubleOrNull(offsets[26]);
+  object.scaleItem = reader.readBoolOrNull(offsets[27]);
+  object.sellPrice = reader.readDoubleOrNull(offsets[28]);
+  object.stockControlType = reader.readString(offsets[29]);
+  object.stockDeductionQty = reader.readDoubleOrNull(offsets[30]);
+  object.stockDeductionUnit = reader.readStringOrNull(offsets[31]);
+  object.stockOnHandFresh = reader.readDoubleOrNull(offsets[32]);
+  object.stockOnHandFrozen = reader.readDoubleOrNull(offsets[33]);
+  object.targetMarginPct = reader.readDoubleOrNull(offsets[34]);
+  object.unitType = reader.readString(offsets[35]);
+  object.vatGroup = reader.readStringOrNull(offsets[36]);
   return object;
 }
 
@@ -307,30 +446,56 @@ P _cachedInventoryItemDeserializeProp<P>(
     case 10:
       return (reader.readBool(offset)) as P;
     case 11:
-      return (reader.readString(offset)) as P;
-    case 12:
-      return (reader.readString(offset)) as P;
-    case 13:
-      return (reader.readLong(offset)) as P;
-    case 14:
-      return (reader.readStringOrNull(offset)) as P;
-    case 15:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 16:
       return (reader.readBoolOrNull(offset)) as P;
-    case 17:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 18:
+    case 12:
+      return (reader.readBoolOrNull(offset)) as P;
+    case 13:
       return (reader.readString(offset)) as P;
+    case 14:
+      return (reader.readString(offset)) as P;
+    case 15:
+      return (reader.readStringOrNull(offset)) as P;
+    case 16:
+      return (reader.readStringOrNull(offset)) as P;
+    case 17:
+      return (reader.readStringOrNull(offset)) as P;
+    case 18:
+      return (reader.readStringOrNull(offset)) as P;
     case 19:
-      return (reader.readDoubleOrNull(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 20:
       return (reader.readDoubleOrNull(offset)) as P;
     case 21:
-      return (reader.readDoubleOrNull(offset)) as P;
+      return (reader.readLongOrNull(offset)) as P;
     case 22:
-      return (reader.readString(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 23:
+      return (reader.readStringOrNull(offset)) as P;
+    case 24:
+      return (reader.readLong(offset)) as P;
+    case 25:
+      return (reader.readStringOrNull(offset)) as P;
+    case 26:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 27:
+      return (reader.readBoolOrNull(offset)) as P;
+    case 28:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 29:
+      return (reader.readString(offset)) as P;
+    case 30:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 31:
+      return (reader.readStringOrNull(offset)) as P;
+    case 32:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 33:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 34:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 35:
+      return (reader.readString(offset)) as P;
+    case 36:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1436,6 +1601,62 @@ extension CachedInventoryItemQueryFilter on QueryBuilder<CachedInventoryItem,
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBestSellerIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'isBestSeller',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBestSellerIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'isBestSeller',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBestSellerEqualTo(bool? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isBestSeller',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isFeaturedIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'isFeatured',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isFeaturedIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'isFeatured',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isFeaturedEqualTo(bool? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isFeatured',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
       itemIdEqualTo(
     String value, {
     bool caseSensitive = true,
@@ -1702,6 +1923,1244 @@ extension CachedInventoryItemQueryFilter on QueryBuilder<CachedInventoryItem,
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'name',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineAllergens',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineAllergens',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineAllergens',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineAllergens',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineAllergens',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineAllergens',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineAllergensIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineAllergens',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineCookingTips',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineCookingTips',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineCookingTips',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineCookingTips',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineCookingTips',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineCookingTips',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineCookingTipsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineCookingTips',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineDisplayName',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineDisplayName',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineDisplayName',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineDisplayName',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineDisplayName',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineDisplayName',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineDisplayNameIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineDisplayName',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineImageUrl',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineImageUrl',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineImageUrl',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineImageUrl',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineImageUrl',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineImageUrl',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineImageUrlIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineImageUrl',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineIngredients',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineIngredients',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineIngredients',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineIngredients',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineIngredients',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineIngredients',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineIngredientsIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineIngredients',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineMinStockThreshold',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineMinStockThreshold',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineMinStockThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineMinStockThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineMinStockThreshold',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineMinStockThresholdBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineMinStockThreshold',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineSortOrder',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineSortOrder',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderEqualTo(int? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineSortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderGreaterThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineSortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderLessThan(
+    int? value, {
+    bool include = false,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineSortOrder',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineSortOrderBetween(
+    int? lower,
+    int? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineSortOrder',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'onlineWeightDescription',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'onlineWeightDescription',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'onlineWeightDescription',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionContains(String value,
+          {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'onlineWeightDescription',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionMatches(String pattern,
+          {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'onlineWeightDescription',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'onlineWeightDescription',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      onlineWeightDescriptionIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'onlineWeightDescription',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'parentStockItemId',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'parentStockItemId',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'parentStockItemId',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'parentStockItemId',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'parentStockItemId',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'parentStockItemId',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      parentStockItemIdIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'parentStockItemId',
         value: '',
       ));
     });
@@ -2244,6 +3703,244 @@ extension CachedInventoryItemQueryFilter on QueryBuilder<CachedInventoryItem,
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.greaterThan(
         property: r'stockControlType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'stockDeductionQty',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'stockDeductionQty',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyEqualTo(
+    double? value, {
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'stockDeductionQty',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyGreaterThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'stockDeductionQty',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyLessThan(
+    double? value, {
+    bool include = false,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'stockDeductionQty',
+        value: value,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionQtyBetween(
+    double? lower,
+    double? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    double epsilon = Query.epsilon,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'stockDeductionQty',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        epsilon: epsilon,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'stockDeductionUnit',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'stockDeductionUnit',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitEqualTo(
+    String? value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitGreaterThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitLessThan(
+    String? value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitBetween(
+    String? lower,
+    String? upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'stockDeductionUnit',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'stockDeductionUnit',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'stockDeductionUnit',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'stockDeductionUnit',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      stockDeductionUnitIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'stockDeductionUnit',
         value: '',
       ));
     });
@@ -2955,6 +4652,34 @@ extension CachedInventoryItemQuerySortBy
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsBestSeller() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBestSeller', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsBestSellerDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBestSeller', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsFeatured() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFeatured', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsFeaturedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFeatured', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
       sortByItemId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'itemId', Sort.asc);
@@ -2979,6 +4704,132 @@ extension CachedInventoryItemQuerySortBy
       sortByNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineAllergens() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineAllergens', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineAllergensDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineAllergens', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineCookingTips() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineCookingTips', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineCookingTipsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineCookingTips', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineDisplayName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineDisplayName', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineDisplayNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineDisplayName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineImageUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineImageUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineImageUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineImageUrl', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineIngredients() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineIngredients', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineIngredientsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineIngredients', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineMinStockThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineMinStockThreshold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineMinStockThresholdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineMinStockThreshold', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineSortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineSortOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineSortOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineSortOrder', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineWeightDescription() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineWeightDescription', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByOnlineWeightDescriptionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineWeightDescription', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByParentStockItemId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentStockItemId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByParentStockItemIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentStockItemId', Sort.desc);
     });
   }
 
@@ -3063,6 +4914,34 @@ extension CachedInventoryItemQuerySortBy
       sortByStockControlTypeDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'stockControlType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByStockDeductionQty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionQty', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByStockDeductionQtyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionQty', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByStockDeductionUnit() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionUnit', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByStockDeductionUnitDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionUnit', Sort.desc);
     });
   }
 
@@ -3308,6 +5187,34 @@ extension CachedInventoryItemQuerySortThenBy
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsBestSeller() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBestSeller', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsBestSellerDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBestSeller', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsFeatured() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFeatured', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsFeaturedDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isFeatured', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
       thenByItemId() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'itemId', Sort.asc);
@@ -3332,6 +5239,132 @@ extension CachedInventoryItemQuerySortThenBy
       thenByNameDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'name', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineAllergens() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineAllergens', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineAllergensDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineAllergens', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineCookingTips() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineCookingTips', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineCookingTipsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineCookingTips', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineDisplayName() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineDisplayName', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineDisplayNameDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineDisplayName', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineImageUrl() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineImageUrl', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineImageUrlDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineImageUrl', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineIngredients() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineIngredients', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineIngredientsDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineIngredients', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineMinStockThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineMinStockThreshold', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineMinStockThresholdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineMinStockThreshold', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineSortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineSortOrder', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineSortOrderDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineSortOrder', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineWeightDescription() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineWeightDescription', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByOnlineWeightDescriptionDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'onlineWeightDescription', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByParentStockItemId() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentStockItemId', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByParentStockItemIdDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'parentStockItemId', Sort.desc);
     });
   }
 
@@ -3416,6 +5449,34 @@ extension CachedInventoryItemQuerySortThenBy
       thenByStockControlTypeDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'stockControlType', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByStockDeductionQty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionQty', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByStockDeductionQtyDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionQty', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByStockDeductionUnit() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionUnit', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByStockDeductionUnitDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'stockDeductionUnit', Sort.desc);
     });
   }
 
@@ -3571,6 +5632,20 @@ extension CachedInventoryItemQueryWhereDistinct
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByIsBestSeller() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isBestSeller');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByIsFeatured() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isFeatured');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
       distinctByItemId({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'itemId', caseSensitive: caseSensitive);
@@ -3581,6 +5656,76 @@ extension CachedInventoryItemQueryWhereDistinct
       distinctByName({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'name', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineAllergens({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineAllergens',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineCookingTips({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineCookingTips',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineDisplayName({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineDisplayName',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineImageUrl({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineImageUrl',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineIngredients({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineIngredients',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineMinStockThreshold() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineMinStockThreshold');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineSortOrder() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineSortOrder');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByOnlineWeightDescription({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'onlineWeightDescription',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByParentStockItemId({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'parentStockItemId',
+          caseSensitive: caseSensitive);
     });
   }
 
@@ -3624,6 +5769,21 @@ extension CachedInventoryItemQueryWhereDistinct
       distinctByStockControlType({bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'stockControlType',
+          caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByStockDeductionQty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'stockDeductionQty');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByStockDeductionUnit({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'stockDeductionUnit',
           caseSensitive: caseSensitive);
     });
   }
@@ -3748,6 +5908,20 @@ extension CachedInventoryItemQueryProperty
     });
   }
 
+  QueryBuilder<CachedInventoryItem, bool?, QQueryOperations>
+      isBestSellerProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isBestSeller');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, bool?, QQueryOperations>
+      isFeaturedProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isFeatured');
+    });
+  }
+
   QueryBuilder<CachedInventoryItem, String, QQueryOperations> itemIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'itemId');
@@ -3757,6 +5931,69 @@ extension CachedInventoryItemQueryProperty
   QueryBuilder<CachedInventoryItem, String, QQueryOperations> nameProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'name');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineAllergensProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineAllergens');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineCookingTipsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineCookingTips');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineDisplayNameProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineDisplayName');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineImageUrlProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineImageUrl');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineIngredientsProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineIngredients');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, double?, QQueryOperations>
+      onlineMinStockThresholdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineMinStockThreshold');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, int?, QQueryOperations>
+      onlineSortOrderProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineSortOrder');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      onlineWeightDescriptionProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'onlineWeightDescription');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      parentStockItemIdProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'parentStockItemId');
     });
   }
 
@@ -3798,6 +6035,20 @@ extension CachedInventoryItemQueryProperty
       stockControlTypeProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'stockControlType');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, double?, QQueryOperations>
+      stockDeductionQtyProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'stockDeductionQty');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, String?, QQueryOperations>
+      stockDeductionUnitProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'stockDeductionUnit');
     });
   }
 

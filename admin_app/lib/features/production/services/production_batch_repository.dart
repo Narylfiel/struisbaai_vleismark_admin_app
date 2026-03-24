@@ -34,7 +34,7 @@ class ProductionBatchRepository {
     if (status != null && status.isNotEmpty) {
       q = q.eq('status', status);
     }
-    final list = await q.order('created_at', ascending: false);
+    final list = await q.order('created_at', ascending: false).limit(300);
     return (list as List)
         .map((e) => ProductionBatch.fromJson(e as Map<String, dynamic>))
         .toList();

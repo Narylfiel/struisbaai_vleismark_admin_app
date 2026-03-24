@@ -25,7 +25,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 10, vsync: this);
   }
 
   @override
@@ -57,6 +57,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 Tab(icon: Icon(Icons.email_outlined, size: 18), text: 'Email'),
                 Tab(icon: Icon(Icons.auto_awesome, size: 18), text: 'AI'),
                 Tab(icon: Icon(Icons.folder_shared_outlined, size: 18), text: 'Drive'),
+                Tab(icon: Icon(Icons.shopping_bag, size: 18), text: 'Online Shop'),
               ],
             ),
           ),
@@ -74,6 +75,7 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
                 const _EmailSettingsTab(),
                 const _AiSettingsTab(),
                 const _DriveSettingsTab(),
+                _OnlineShopTab(),
               ],
             ),
           ),
@@ -817,6 +819,229 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
         ),
       ],
     );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 10: ONLINE SHOP
+// ══════════════════════════════════════════════════════════════════
+class _OnlineShopTab extends StatefulWidget {
+  @override
+  State<_OnlineShopTab> createState() => _OnlineShopTabState();
+}
+
+class _OnlineShopTabState extends State<_OnlineShopTab> {
+  final _repo = SettingsRepository();
+  bool _isLoading = true;
+  bool _onlineShopEnabled = false;
+  bool _deliveryEnabled = false;
+  final _collectionTimeController = TextEditingController();
+  final _deliveryTimeController = TextEditingController();
+  final _minOrderController = TextEditingController();
+  final _deliveryFeeController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    setState(() => _isLoading = true);
+    try {
+      final settings = await _repo.getBusinessSettings();
+      if (mounted) {
+        setState(() {
+          _onlineShopEnabled = settings['online_shop_enabled'] ?? false;
+          _deliveryEnabled = settings['delivery_enabled'] ?? false;
+          _collectionTimeController.text = settings['collection_time'] ?? 'Same day (before 2pm)';
+          _deliveryTimeController.text = settings['delivery_time'] ?? 'Next day delivery';
+          _minOrderController.text = (settings['min_order_amount'] ?? 0).toString();
+          _deliveryFeeController.text = (settings['delivery_fee'] ?? 0).toString();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load online shop settings: $e');
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    try {
+      await _repo.updateBusinessSettings({
+        'online_shop_enabled': _onlineShopEnabled,
+        'delivery_enabled': _deliveryEnabled,
+        'collection_time': _collectionTimeController.text.trim(),
+        'delivery_time': _deliveryTimeController.text.trim(),
+        'min_order_amount': double.tryParse(_minOrderController.text) ?? 0,
+        'delivery_fee': double.tryParse(_deliveryFeeController.text) ?? 0,
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Online Shop settings saved'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Enable/Disable Online Shop
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Online Shop Status',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  SwitchListTile(
+                    title: const Text('Enable Online Shop'),
+                    subtitle: const Text('Allow customers to order through the loyalty app'),
+                    value: _onlineShopEnabled,
+                    onChanged: (value) => setState(() => _onlineShopEnabled = value),
+                    activeThumbColor: AppColors.success,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Collection Settings
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Collection Settings',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _collectionTimeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Collection Time Description',
+                      hintText: 'e.g. Same day (before 2pm)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _minOrderController,
+                    decoration: const InputDecoration(
+                      labelText: 'Minimum Order Amount (R)',
+                      hintText: '0',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 16),
+          
+          // Delivery Settings (Hidden until enabled by developer)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Delivery Settings',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '⚠️ Delivery is disabled until enabled by a developer',
+                    style: TextStyle(
+                      color: AppColors.warning,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _deliveryTimeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Delivery Time Description',
+                      hintText: 'e.g. Next day delivery',
+                      border: OutlineInputBorder(),
+                    ),
+                    enabled: false,
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: _deliveryFeeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Delivery Fee (R)',
+                      hintText: '0',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.number,
+                    enabled: false,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          
+          const SizedBox(height: 24),
+          
+          // Save Button
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _saveSettings,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+              child: const Text('Save Settings'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _collectionTimeController.dispose();
+    _deliveryTimeController.dispose();
+    _minOrderController.dispose();
+    _deliveryFeeController.dispose();
+    super.dispose();
   }
 }
 

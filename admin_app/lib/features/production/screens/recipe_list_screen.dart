@@ -1,8 +1,8 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/db/cached_recipe.dart';
 import '../../../core/db/isar_service.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/recipe.dart';
@@ -29,29 +29,23 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       _loading = true;
       _error = null;
     });
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isRecipesCacheStale();
-        if (stale) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-        }
-      } else {
-        _isOffline = true;
-        await _loadFromCache();
-      }
-      if (mounted) setState(() => _loading = false);
+      _isOffline = false;
+      await _fetchFromSupabaseAndSave();
     } catch (e) {
+      _isOffline = true;
+      try {
+        await _loadFromCache();
+      } catch (_) {}
       if (mounted) {
-        setState(() {
-          _error = ErrorHandler.friendlyMessage(e);
-          _loading = false;
-        });
+        if (_recipes.isEmpty) {
+          setState(() {
+            _error = ErrorHandler.friendlyMessage(e);
+          });
+        }
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -81,18 +75,8 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
       m['ingredients'] = null;
       return CachedRecipe.fromSupabase(m);
     }).toList();
-    await IsarService.saveRecipes(toSave);
+    unawaited(IsarService.saveRecipes(toSave));
     _recipes = list;
-  }
-
-  void _refreshInBackground() {
-    Future(() async {
-      try {
-        if (!await IsarService.isRecipesCacheStale()) return;
-        await _fetchFromSupabaseAndSave();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    });
   }
 
   @override

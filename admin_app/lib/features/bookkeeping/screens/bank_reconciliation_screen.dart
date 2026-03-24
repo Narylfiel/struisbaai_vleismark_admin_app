@@ -62,11 +62,14 @@ class _BankReconciliationScreenState
       ]);
       if (mounted) {
         setState(() {
-          _transactions =
-              results[0] as List<Map<String, dynamic>>;
-          _summary = results[1] as Map<String, dynamic>;
-          _accounts =
-              results[2] as List<Map<String, dynamic>>;
+          // SYSTEM CONTEXT: Defensive type safety
+          _transactions = (results[0] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .toList() ?? [];
+          _summary = (results[1] as Map<String, dynamic>?) ?? {};
+          _accounts = (results[2] as List?)
+              ?.whereType<Map<String, dynamic>>()
+              .toList() ?? [];
         });
       }
     } catch (e) {

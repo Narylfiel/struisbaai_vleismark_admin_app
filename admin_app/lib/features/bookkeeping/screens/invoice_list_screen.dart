@@ -459,28 +459,65 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       final totalColRes = totalCol >= 0 ? totalCol : totalAlt;
       final notesCol = headersLower.indexOf('notes');
 
+      if (invNumCol < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CSV must include an invoice_number column'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+        }
+        return;
+      }
+      if (supplierCol < 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('CSV must include supplier_name or supplier column'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+        }
+        return;
+      }
+
       final suppliers = await _supplierRepo.getSuppliers(activeOnly: true);
       final supplierByName = {for (var s in suppliers) s.name.toLowerCase(): s.id};
+      final unmatchedSuppliers = <String>{};
 
       for (var i = 1; i < rows.length; i++) {
         if (!mounted) break;
         final row = rows[i];
         if (row.isEmpty) continue;
         String? invoiceNumber;
-        if (invNumCol >= 0 && invNumCol < row.length && row[invNumCol].toString().trim().isNotEmpty) {
+        if (invNumCol < row.length &&
+            row[invNumCol].toString().trim().isNotEmpty) {
           invoiceNumber = row[invNumCol].toString().trim();
-        } else {
-          try {
-            invoiceNumber = await _repo.nextInvoiceNumber();
-          } catch (_) {
-            errors.add('Row ${i + 1}: could not generate invoice number');
-            continue;
-          }
+        }
+        if (invoiceNumber == null || invoiceNumber.isEmpty) {
+          errors.add('Row ${i + 1}: invoice number is required');
+          continue;
+        }
+        if (await _repo.invoiceNumberExists(invoiceNumber)) {
+          errors.add(
+            'Row ${i + 1}: Invoice number already exists. Please verify the document. ($invoiceNumber)',
+          );
+          continue;
         }
         String? supplierId;
-        if (supplierCol >= 0 && supplierCol < row.length) {
-          final name = row[supplierCol].toString().trim();
-          if (name.isNotEmpty) supplierId = supplierByName[name.toLowerCase()];
+        String supplierNameFromRow = '';
+        if (supplierCol < row.length) {
+          supplierNameFromRow = row[supplierCol].toString().trim();
+        }
+        if (supplierNameFromRow.isEmpty) {
+          errors.add('Row ${i + 1}: supplier name is required');
+          continue;
+        }
+        supplierId = supplierByName[supplierNameFromRow.toLowerCase()];
+        if (supplierId == null) {
+          unmatchedSuppliers.add(supplierNameFromRow);
+          continue;
         }
         DateTime invoiceDate = DateTime.now();
         if (dateCol >= 0 && dateCol < row.length) {
@@ -533,16 +570,40 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       }
       await _load();
       if (mounted) {
-        if (errors.isEmpty) {
+        final u = unmatchedSuppliers.length;
+        final parts = <String>[];
+        if (successCount > 0) {
+          parts.add('Imported $successCount invoice(s).');
+        }
+        if (u > 0) {
+          parts.add(
+            '$u supplier${u == 1 ? '' : 's'} could not be matched. '
+            'Please fix names before importing.',
+          );
+        }
+        if (errors.isNotEmpty) {
+          parts.add(
+            '${errors.length} row error(s). ${errors.take(2).join(' ')}',
+          );
+        }
+        if (parts.isEmpty) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Imported $successCount invoice(s)'), backgroundColor: AppColors.success),
+            const SnackBar(
+              content: Text('No rows imported'),
+              backgroundColor: AppColors.warning,
+            ),
           );
         } else {
+          final clean = errors.isEmpty && u == 0 && successCount > 0;
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Imported $successCount; ${errors.length} failed. ${errors.take(2).join(' ')}'),
-              backgroundColor: AppColors.warning,
-              duration: const Duration(seconds: 5),
+              content: Text(parts.join(' ')),
+              backgroundColor: clean
+                  ? AppColors.success
+                  : (u > 0 ? AppColors.error : AppColors.warning),
+              duration: Duration(
+                seconds: u > 0 || errors.length > 2 ? 8 : 5,
+              ),
             ),
           );
         }
@@ -708,6 +769,22 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     final invoiceId = invoice['id']?.toString();
     if (invoiceId == null) return;
 
+    final invNumRaw = invoice['invoice_number']?.toString().trim() ?? '';
+    if (invNumRaw.isEmpty ||
+        invNumRaw.startsWith('PENDING-')) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Set a valid invoice number on the invoice before approving.',
+            ),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+
     try {
       final lineItems = (invoice['line_items'] as List?)
           ?.map((e) => e as Map<String, dynamic>)
@@ -739,27 +816,41 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
         return;
       }
 
+      final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0;
+      final taxAmount =
+          (invoice['tax_amount'] as num?)?.toDouble() ?? 0;
+      final total = (invoice['total'] as num?)?.toDouble() ?? 0;
+      final lineItemsForVerify = lineItems
+          .map((e) => Map<String, dynamic>.from(e))
+          .toList();
+      final calcErrors = _repo.verifyCalculations(
+        lineItems: lineItemsForVerify,
+        subtotal: subtotal,
+        taxAmount: taxAmount,
+        total: total,
+      );
+      if (calcErrors.isNotEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Cannot approve: ${calcErrors.length} calculation issue(s). '
+                'Open the invoice and fix amounts before approving.',
+              ),
+              backgroundColor: AppColors.warning,
+              duration: const Duration(seconds: 6),
+            ),
+          );
+        }
+        return;
+      }
+
       final client = Supabase.instance.client;
 
       // Process each mapped line item
       for (final item in mapped) {
         if (item.mapping == null) continue;
         final m = item.mapping!;
-
-        // Update inventory stock if applicable
-        if (m.updateStock && m.inventoryItemId != null) {
-          final current = await client
-              .from('inventory_items')
-              .select('stock_qty')
-              .eq('id', m.inventoryItemId!)
-              .single();
-          final currentQty =
-              (current['stock_qty'] as num?)?.toDouble() ?? 0;
-          await client
-              .from('inventory_items')
-              .update({'stock_qty': currentQty + item.quantity})
-              .eq('id', m.inventoryItemId!);
-        }
 
         // Post ledger entry
         await client.from('ledger_entries').insert({
@@ -792,8 +883,6 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       });
 
       // Post VAT entry if applicable
-      final taxAmount =
-          (invoice['tax_amount'] as num?)?.toDouble() ?? 0;
       if (taxAmount > 0) {
         await client.from('ledger_entries').insert({
           'account_code': '2100',
@@ -822,7 +911,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Invoice approved — stock and ledger updated'),
+            content: Text('Invoice approved — ledger updated'),
             backgroundColor: Color(0xFF2E7D32),
           ),
         );
@@ -1089,15 +1178,32 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                 label: const Text('Add Manually'),
               ),
               IconButton(
-    onPressed: _driveScanRunning ? null : () async {
-      await _driveService.clearProcessedIds();
-      // Small delay to ensure storage is cleared before scan starts
-      await Future.delayed(const Duration(milliseconds: 200));
-      await _scanDriveFolder();
-    },
+                onPressed: _driveScanRunning ? null : () async {
+                  await _driveService.clearProcessedIds();
+                  // Small delay to ensure storage is cleared before scan starts
+                  await Future.delayed(const Duration(milliseconds: 200));
+                  await _scanDriveFolder();
+                },
                 icon: const Icon(Icons.refresh, size: 18),
                 tooltip: 'Force re-scan Drive folder',
               ),
+              if (AuthService().hasRole('owner'))
+                IconButton(
+                  onPressed: _driveScanRunning ? null : () async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    await _driveService.clearProcessedFileIds();
+                    if (mounted) {
+                      messenger.showSnackBar(
+                        const SnackBar(
+                          content: Text('Ready to re-import invoices'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.restore_from_trash, size: 18),
+                  tooltip: 'Reset processed invoices',
+                ),
               IconButton(
                 onPressed: _driveScanRunning ? null : _scanDriveFolder,
                 icon: const Icon(Icons.cloud_sync_outlined, size: 20),
@@ -1135,7 +1241,11 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
               SizedBox(width: 16),
               SizedBox(width: 100, child: Text('DATE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
               SizedBox(width: 16),
-              SizedBox(width: 100, child: Text('TOTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              SizedBox(width: 88, child: Text('TOTAL', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              SizedBox(width: 16),
+              SizedBox(width: 88, child: Text('PAID', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
+              SizedBox(width: 16),
+              SizedBox(width: 88, child: Text('DUE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
               SizedBox(width: 16),
               SizedBox(width: 120, child: Text('STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary, letterSpacing: 0.5))),
             ],
@@ -1166,7 +1276,11 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                                 const SizedBox(width: 16),
                                 SizedBox(width: 100, child: Text(dateStr)),
                                 const SizedBox(width: 16),
-                                SizedBox(width: 100, child: Text('R ${inv.total.toStringAsFixed(2)}')),
+                                SizedBox(width: 88, child: Text('R ${inv.total.toStringAsFixed(2)}')),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 88, child: Text('R ${inv.amountPaid.toStringAsFixed(2)}')),
+                                const SizedBox(width: 16),
+                                SizedBox(width: 88, child: Text('R ${inv.balanceDue.toStringAsFixed(2)}')),
                                 const SizedBox(width: 16),
                                 SizedBox(width: 120, child: Text(inv.status.displayLabel, style: TextStyle(color: inv.canApprove ? AppColors.warning : (inv.canReceive ? AppColors.info : AppColors.textSecondary)))),
                                 if (inv.canApprove)

@@ -1,1526 +1,2483 @@
--- WARNING: This schema is for context only and is not meant to be run.
--- Table order and constraints may not be valid for execution.
+# Database schema (public)
 
-CREATE TABLE public.account_awol_records (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  account_id uuid NOT NULL,
-  awol_date date NOT NULL,
-  reason text,
-  recorded_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT account_awol_records_pkey PRIMARY KEY (id),
-  CONSTRAINT account_awol_records_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT account_awol_records_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.account_transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  account_id uuid NOT NULL,
-  transaction_type text NOT NULL CHECK (transaction_type = ANY (ARRAY['sale'::text, 'payment'::text])),
-  reference text,
-  description text,
-  amount numeric NOT NULL,
-  running_balance numeric,
-  payment_method text CHECK (payment_method = ANY (ARRAY['EFT'::text, 'Cash'::text, 'Card'::text, 'Other'::text])),
-  proof_url text,
-  recorded_by uuid,
-  transaction_date date NOT NULL DEFAULT CURRENT_DATE,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT account_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT account_transactions_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT account_transactions_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.admin_roles (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  role_name text NOT NULL UNIQUE,
-  display_name text NOT NULL,
-  description text,
-  color_hex text DEFAULT '#607D8B'::text,
-  sort_order integer DEFAULT 0,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT admin_roles_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.announcements (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  content text NOT NULL,
-  announcement_type text NOT NULL DEFAULT 'general'::text CHECK (announcement_type = ANY (ARRAY['general'::text, 'promotion'::text, 'event'::text, 'maintenance'::text])),
-  priority text NOT NULL DEFAULT 'normal'::text CHECK (priority = ANY (ARRAY['low'::text, 'normal'::text, 'high'::text, 'urgent'::text])),
-  is_active boolean DEFAULT true,
-  start_date date NOT NULL DEFAULT CURRENT_DATE,
-  end_date date,
-  target_audience text DEFAULT 'all'::text CHECK (target_audience = ANY (ARRAY['all'::text, 'customers'::text, 'staff'::text])),
-  created_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT announcements_pkey PRIMARY KEY (id),
-  CONSTRAINT announcements_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.audit_log (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  action text NOT NULL,
-  table_name text,
-  record_id text,
-  staff_id uuid,
-  staff_name text,
-  authorised_by uuid,
-  authorised_name text,
-  old_value jsonb,
-  new_value jsonb,
-  details text,
-  severity text DEFAULT 'info'::text CHECK (severity = ANY (ARRAY['info'::text, 'warning'::text, 'critical'::text])),
-  ip_address text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT audit_log_pkey PRIMARY KEY (id),
-  CONSTRAINT audit_log_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id),
-  CONSTRAINT audit_log_authorised_by_fkey FOREIGN KEY (authorised_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.business_accounts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  account_type text,
-  email text,
-  phone text,
-  balance numeric DEFAULT 0,
-  credit_limit numeric,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  contact_person text,
-  whatsapp text,
-  vat_number text,
-  credit_terms_days integer DEFAULT 7,
-  auto_suspend boolean DEFAULT false,
-  auto_suspend_days integer DEFAULT 30,
-  suspended boolean DEFAULT false,
-  suspended_at timestamp with time zone,
-  notes text,
-  address text,
-  active boolean DEFAULT true,
-  suspension_recommended boolean DEFAULT false,
-  CONSTRAINT business_accounts_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.business_settings (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  business_name text DEFAULT 'Struisbaai Vleismark'::text,
-  trading_name text,
-  address text,
-  vat_number text,
-  phone text,
-  email text,
-  logo_url text,
-  working_hours_start time without time zone DEFAULT '07:00:00'::time without time zone,
-  working_hours_end time without time zone DEFAULT '17:00:00'::time without time zone,
-  overtime_after_daily numeric DEFAULT 9.0,
-  overtime_after_weekly numeric DEFAULT 45.0,
-  sunday_pay_multiplier numeric DEFAULT 2.0,
-  public_holiday_multiplier numeric DEFAULT 2.0,
-  blockman_verification boolean DEFAULT false,
-  shrinkage_tolerance_pct numeric DEFAULT 2.0,
-  auto_void_parked_hours integer DEFAULT 4,
-  receipt_footer text DEFAULT 'Thank you for your business!'::text,
-  scale_brand text DEFAULT 'Ishida'::text,
-  scale_weight_prefix integer DEFAULT 20,
-  scale_price_prefix integer DEFAULT 21,
-  scale_plu_digits integer DEFAULT 4,
-  scale_primary_mode text DEFAULT 'price_embedded'::text,
-  vat_standard numeric DEFAULT 15.0,
-  vat_zero_rated numeric DEFAULT 0.0,
-  event_spike_multiplier numeric DEFAULT 2.0,
-  currency_symbol text DEFAULT 'R'::text,
-  country text DEFAULT 'ZA'::text,
-  timezone text DEFAULT 'Africa/Johannesburg'::text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  setting_key text,
-  setting_value jsonb,
-  CONSTRAINT business_settings_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.carcass_breakdown_sessions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  intake_id uuid NOT NULL,
-  carcass_number integer NOT NULL CHECK (carcass_number > 0),
-  actual_weight_kg numeric NOT NULL,
-  template_id uuid,
-  started_at timestamp with time zone DEFAULT now(),
-  completed_at timestamp with time zone,
-  processed_by uuid NOT NULL,
-  status text NOT NULL DEFAULT 'in_progress'::text CHECK (status = ANY (ARRAY['in_progress'::text, 'completed'::text, 'cancelled'::text])),
-  notes text,
-  CONSTRAINT carcass_breakdown_sessions_pkey PRIMARY KEY (id),
-  CONSTRAINT carcass_breakdown_sessions_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.yield_templates(id),
-  CONSTRAINT carcass_breakdown_sessions_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.profiles(id),
-  CONSTRAINT carcass_breakdown_sessions_intake_id_fkey FOREIGN KEY (intake_id) REFERENCES public.carcass_intakes(id)
-);
-CREATE TABLE public.carcass_cuts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  carcass_id uuid NOT NULL,
-  cut_name text NOT NULL,
-  weight numeric,
-  inventory_item_id uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  intake_id uuid,
-  expected_kg numeric,
-  actual_kg numeric,
-  plu_code integer,
-  sellable boolean DEFAULT true,
-  breakdown_date timestamp with time zone,
-  CONSTRAINT carcass_cuts_pkey PRIMARY KEY (id),
-  CONSTRAINT carcass_cuts_carcass_id_fkey FOREIGN KEY (carcass_id) REFERENCES public.carcass_intakes(id),
-  CONSTRAINT carcass_cuts_intake_id_fkey FOREIGN KEY (intake_id) REFERENCES public.carcass_intakes(id)
-);
-CREATE TABLE public.carcass_intakes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  intake_date date NOT NULL,
-  species text NOT NULL,
-  supplier_id uuid,
-  hunter_job_id uuid,
-  weight_in numeric,
-  weight_out numeric,
-  status text NOT NULL CHECK (status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'complete'::text])),
-  job_type text NOT NULL CHECK (job_type = ANY (ARRAY['retail'::text, 'hunter'::text])),
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  remaining_weight numeric,
-  variance_pct numeric,
-  reference_number text,
-  yield_template_id uuid,
-  delivery_date date,
-  carcass_type text,
-  CONSTRAINT carcass_intakes_pkey PRIMARY KEY (id),
-  CONSTRAINT carcass_intakes_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT fk_carcass_intakes_hunter_job FOREIGN KEY (hunter_job_id) REFERENCES public.hunter_jobs(id),
-  CONSTRAINT carcass_intakes_yield_template_id_fkey FOREIGN KEY (yield_template_id) REFERENCES public.yield_templates(id)
-);
-CREATE TABLE public.categories (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  name text NOT NULL UNIQUE,
-  color_code text,
-  sort_order integer DEFAULT 0,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  notes text,
-  updated_at timestamp with time zone DEFAULT now(),
-  is_active boolean DEFAULT true,
-  parent_id uuid,
-  CONSTRAINT categories_pkey PRIMARY KEY (id),
-  CONSTRAINT categories_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.categories(id)
-);
-CREATE TABLE public.chart_of_accounts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  code text NOT NULL UNIQUE,
-  name text NOT NULL,
-  account_type text NOT NULL CHECK (account_type = ANY (ARRAY['asset'::text, 'liability'::text, 'equity'::text, 'income'::text, 'expense'::text])),
-  parent_id uuid,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  account_code text,
-  account_name text,
-  subcategory text,
-  sort_order integer DEFAULT 0,
-  CONSTRAINT chart_of_accounts_pkey PRIMARY KEY (id),
-  CONSTRAINT chart_of_accounts_parent_id_fkey FOREIGN KEY (parent_id) REFERENCES public.chart_of_accounts(id)
-);
-CREATE TABLE public.compliance_records (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  document_type text NOT NULL,
-  expiry_date date,
-  file_url text,
-  is_verified boolean DEFAULT false,
-  verified_by uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT compliance_records_pkey PRIMARY KEY (id),
-  CONSTRAINT compliance_records_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff_profiles(id),
-  CONSTRAINT compliance_records_verified_by_fkey FOREIGN KEY (verified_by) REFERENCES public.staff_profiles(id)
-);
-CREATE TABLE public.customer_announcements (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  body text NOT NULL,
-  channel text NOT NULL CHECK (channel = ANY (ARRAY['whatsapp'::text, 'sms'::text, 'both'::text])),
-  sent_at timestamp with time zone,
-  recipient_count integer,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'sent'::text, 'failed'::text])),
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  image_url text,
-  CONSTRAINT customer_announcements_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.customer_invoices (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  invoice_number text NOT NULL,
-  account_id uuid,
-  invoice_date date NOT NULL DEFAULT CURRENT_DATE,
-  due_date date NOT NULL,
-  line_items jsonb DEFAULT '[]'::jsonb,
-  subtotal numeric NOT NULL DEFAULT 0,
-  tax_rate numeric,
-  tax_amount numeric NOT NULL DEFAULT 0,
-  total numeric NOT NULL DEFAULT 0,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'pending_review'::text, 'approved'::text, 'sent'::text, 'paid'::text, 'overdue'::text, 'cancelled'::text])),
-  payment_date date,
-  notes text,
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT customer_invoices_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_invoices_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT customer_invoices_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.customer_recipe_category_assignments (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  recipe_id uuid NOT NULL,
-  option_id uuid NOT NULL,
-  CONSTRAINT customer_recipe_category_assignments_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipe_category_assignments_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.customer_recipes(id),
-  CONSTRAINT customer_recipe_category_assignments_option_id_fkey FOREIGN KEY (option_id) REFERENCES public.customer_recipe_category_options(id)
-);
-CREATE TABLE public.customer_recipe_category_options (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  type_id uuid NOT NULL,
-  name text NOT NULL,
-  sort_order integer DEFAULT 0,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT customer_recipe_category_options_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipe_category_options_type_id_fkey FOREIGN KEY (type_id) REFERENCES public.customer_recipe_category_types(id)
-);
-CREATE TABLE public.customer_recipe_category_types (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL UNIQUE,
-  sort_order integer DEFAULT 0,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT customer_recipe_category_types_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.customer_recipe_images (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  recipe_id uuid NOT NULL,
-  image_url text NOT NULL,
-  sort_order integer DEFAULT 0,
-  is_primary boolean DEFAULT false,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT customer_recipe_images_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipe_images_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.customer_recipes(id)
-);
-CREATE TABLE public.customer_recipe_ingredients (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  recipe_id uuid NOT NULL,
-  ingredient_text text NOT NULL,
-  is_optional boolean DEFAULT false,
-  sort_order integer DEFAULT 0,
-  CONSTRAINT customer_recipe_ingredients_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipe_ingredients_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.customer_recipes(id)
-);
-CREATE TABLE public.customer_recipe_steps (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  recipe_id uuid NOT NULL,
-  step_number integer NOT NULL,
-  instruction_text text NOT NULL,
-  CONSTRAINT customer_recipe_steps_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipe_steps_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.customer_recipes(id)
-);
-CREATE TABLE public.customer_recipes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  description text,
-  serving_size integer DEFAULT 4,
-  prep_time_minutes integer DEFAULT 0,
-  cook_time_minutes integer DEFAULT 0,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'published'::text])),
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT customer_recipes_pkey PRIMARY KEY (id),
-  CONSTRAINT customer_recipes_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.donations (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  donor_name text NOT NULL,
-  donation_type text NOT NULL CHECK (donation_type = ANY (ARRAY['cash'::text, 'goods'::text, 'services'::text])),
-  donation_value numeric,
-  donation_date date NOT NULL DEFAULT CURRENT_DATE,
-  payment_status text NOT NULL DEFAULT 'received'::text CHECK (payment_status = ANY (ARRAY['received'::text, 'pending'::text, 'cancelled'::text])),
-  contact_details text,
-  purpose text,
-  tax_certificate_issued boolean DEFAULT false,
-  notes text,
-  recorded_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT donations_pkey PRIMARY KEY (id),
-  CONSTRAINT donations_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.dryer_batch_ingredients (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  batch_id uuid NOT NULL,
-  inventory_item_id uuid NOT NULL,
-  quantity_used numeric NOT NULL,
-  added_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT dryer_batch_ingredients_pkey PRIMARY KEY (id),
-  CONSTRAINT dryer_batch_ingredients_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.dryer_batches(id),
-  CONSTRAINT dryer_batch_ingredients_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.dryer_batches (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  start_date date,
-  end_date date,
-  items jsonb,
-  weight_in numeric,
-  weight_out numeric,
-  shrinkage_pct numeric DEFAULT 
-CASE
-    WHEN (weight_in > (0)::numeric) THEN (((weight_in - weight_out) / weight_in) * (100)::numeric)
-    ELSE (0)::numeric
-END,
-  status text NOT NULL CHECK (status = ANY (ARRAY['loading'::text, 'drying'::text, 'complete'::text])),
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  input_product_id uuid,
-  output_product_id uuid,
-  recipe_id uuid,
-  started_at timestamp with time zone DEFAULT now(),
-  batch_number text DEFAULT 'DB-pending'::text,
-  loaded_at timestamp with time zone DEFAULT now(),
-  completed_at timestamp with time zone,
-  drying_hours numeric DEFAULT (EXTRACT(epoch FROM (completed_at - loaded_at)) / (3600)::numeric),
-  kwh_per_hour numeric DEFAULT 2.5,
-  electricity_cost numeric,
-  planned_hours numeric,
-  production_batch_id uuid,
-  CONSTRAINT dryer_batches_pkey PRIMARY KEY (id),
-  CONSTRAINT dryer_batches_production_batch_id_fkey FOREIGN KEY (production_batch_id) REFERENCES public.production_batches(id),
-  CONSTRAINT dryer_batches_input_product_id_fkey FOREIGN KEY (input_product_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT dryer_batches_output_product_id_fkey FOREIGN KEY (output_product_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT dryer_batches_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.recipes(id)
-);
-CREATE TABLE public.equipment_register (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  asset_number text NOT NULL UNIQUE,
-  description text NOT NULL,
-  category text NOT NULL,
-  purchase_date date NOT NULL,
-  purchase_price numeric NOT NULL,
-  supplier_name text,
-  location text,
-  depreciation_method text DEFAULT 'straight_line'::text CHECK (depreciation_method = ANY (ARRAY['straight_line'::text, 'declining_balance'::text, 'diminishing'::text])),
-  useful_life_years integer NOT NULL,
-  salvage_value numeric DEFAULT 0,
-  accumulated_depreciation numeric DEFAULT 0,
-  current_value numeric DEFAULT (purchase_price - accumulated_depreciation),
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_by uuid,
-  service_log jsonb DEFAULT '[]'::jsonb,
-  status text DEFAULT 'active'::text CHECK (status = ANY (ARRAY['active'::text, 'under_repair'::text, 'written_off'::text])),
-  depreciation_rate numeric,
-  CONSTRAINT equipment_register_pkey PRIMARY KEY (id),
-  CONSTRAINT equipment_register_updated_by_fkey FOREIGN KEY (updated_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.event_sales_history (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  event_id uuid NOT NULL,
-  date date NOT NULL,
-  sales_amount numeric NOT NULL DEFAULT 0,
-  transaction_count integer NOT NULL DEFAULT 0,
-  avg_transaction numeric DEFAULT 
-CASE
-    WHEN (transaction_count > 0) THEN (sales_amount / (transaction_count)::numeric)
-    ELSE (0)::numeric
-END,
-  top_products jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT event_sales_history_pkey PRIMARY KEY (id),
-  CONSTRAINT event_sales_history_event_id_fkey FOREIGN KEY (event_id) REFERENCES public.event_tags(id)
-);
-CREATE TABLE public.event_tags (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  event_name text NOT NULL,
-  event_date date NOT NULL,
-  notes text,
-  affected_categories ARRAY,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  event_type text,
-  CONSTRAINT event_tags_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.hunter_job_processes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  job_id uuid NOT NULL,
-  process_type text NOT NULL CHECK (process_type = ANY (ARRAY['skinning'::text, 'quartering'::text, 'aging'::text, 'packaging'::text, 'freezing'::text])),
-  started_at timestamp with time zone DEFAULT now(),
-  completed_at timestamp with time zone,
-  processed_by uuid NOT NULL,
-  weight_before_kg numeric,
-  weight_after_kg numeric,
-  notes text,
-  CONSTRAINT hunter_job_processes_pkey PRIMARY KEY (id),
-  CONSTRAINT hunter_job_processes_job_id_fkey FOREIGN KEY (job_id) REFERENCES public.hunter_jobs(id),
-  CONSTRAINT hunter_job_processes_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.hunter_jobs (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  job_date date NOT NULL,
-  hunter_name text NOT NULL,
-  contact_phone text,
-  species text NOT NULL,
-  weight_in numeric,
-  processing_instructions jsonb,
-  status text NOT NULL DEFAULT 'intake'::text CHECK (status = ANY (ARRAY['intake'::text, 'processing'::text, 'ready'::text, 'completed'::text, 'cancelled'::text])),
-  cuts jsonb DEFAULT '[]'::jsonb,
-  charge_total numeric,
-  paid boolean DEFAULT false,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  customer_name text,
-  customer_phone text,
-  animal_type text,
-  estimated_weight numeric,
-  total_amount numeric,
-  species_list jsonb DEFAULT '[]'::jsonb,
-  services_list jsonb DEFAULT '[]'::jsonb,
-  materials_list jsonb DEFAULT '[]'::jsonb,
-  processing_options jsonb DEFAULT '{}'::jsonb,
-  animal_count integer DEFAULT 1,
-  CONSTRAINT hunter_jobs_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.hunter_process_materials (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  process_id uuid NOT NULL,
-  material_type text NOT NULL CHECK (material_type = ANY (ARRAY['packaging'::text, 'labels'::text, 'supplies'::text])),
-  item_name text NOT NULL,
-  quantity_used numeric NOT NULL,
-  unit text NOT NULL,
-  cost numeric,
-  used_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT hunter_process_materials_pkey PRIMARY KEY (id),
-  CONSTRAINT hunter_process_materials_process_id_fkey FOREIGN KEY (process_id) REFERENCES public.hunter_job_processes(id)
-);
-CREATE TABLE public.hunter_service_config (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  species text NOT NULL UNIQUE,
-  base_rate numeric,
-  per_kg_rate numeric,
-  cut_options jsonb DEFAULT '[]'::jsonb,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT hunter_service_config_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.hunter_services (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL UNIQUE,
-  description text,
-  base_price numeric NOT NULL,
-  price_per_kg numeric,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  cut_options jsonb DEFAULT '[]'::jsonb,
-  inventory_item_id uuid,
-  service_category text CHECK (service_category IS NULL OR (service_category = ANY (ARRAY['processing'::text, 'packaging'::text, 'spice'::text, 'extra'::text, 'casing'::text, 'other'::text]))),
-  CONSTRAINT hunter_services_pkey PRIMARY KEY (id),
-  CONSTRAINT hunter_services_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.hunter_species (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL UNIQUE,
-  description text,
-  typical_weight_min numeric,
-  typical_weight_max numeric,
-  is_active boolean DEFAULT true,
-  sort_order integer DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT hunter_species_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.inventory_items (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  plu_code integer NOT NULL UNIQUE,
-  name text NOT NULL,
-  pos_display_name text,
-  scale_label_name text,
-  sku text,
-  barcode text,
-  barcode_prefix text CHECK (barcode_prefix = ANY (ARRAY['20'::text, '21'::text, 'none'::text])),
-  item_type text CHECK (item_type = ANY (ARRAY['own_cut'::text, 'own_processed'::text, 'third_party_resale'::text, 'service'::text, 'packaging'::text, 'internal'::text])),
-  category text,
-  sub_category text,
-  scale_item boolean DEFAULT false,
-  ishida_sync boolean DEFAULT false,
-  text_lookup_code text,
-  sell_price numeric,
-  cost_price numeric,
-  average_cost_price numeric,
-  target_margin_pct numeric,
-  freezer_markdown_pct numeric,
-  vat_group text DEFAULT 'standard'::text CHECK (vat_group = ANY (ARRAY['standard'::text, 'zero_rated'::text, 'exempt'::text])),
-  price_last_changed timestamp with time zone,
-  stock_control_type text DEFAULT 'use_stock_control'::text CHECK (stock_control_type = ANY (ARRAY['use_stock_control'::text, 'no_stock_control'::text, 'recipe_based'::text, 'carcass_linked'::text, 'hanger_count'::text])),
-  unit_type text DEFAULT 'kg'::text CHECK (unit_type = ANY (ARRAY['kg'::text, 'units'::text, 'packs'::text])),
-  allow_sell_by_fraction boolean DEFAULT true,
-  pack_size numeric DEFAULT 1,
-  stock_on_hand_fresh numeric DEFAULT 0,
-  stock_on_hand_frozen numeric DEFAULT 0,
-  reorder_level numeric DEFAULT 0,
-  slow_moving_trigger_days integer DEFAULT 3,
-  shelf_life_fresh integer,
-  shelf_life_frozen integer,
-  carcass_link text,
-  recipe_link uuid,
-  is_manufactured boolean DEFAULT false,
-  dryer_product boolean DEFAULT false,
-  supplier_id uuid,
-  image_url text,
-  dietary_tags ARRAY,
-  allergen_info ARRAY,
-  internal_notes text,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  supplier_ids jsonb,
-  average_cost numeric,
-  storage_location_ids jsonb,
-  carcass_link_id uuid,
-  dryer_biltong_product boolean DEFAULT false,
-  modifier_group_ids jsonb,
-  recipe_id uuid,
-  dryer_product_type text,
-  manufactured_item boolean DEFAULT false,
-  last_edited_by uuid,
-  last_edited_at timestamp with time zone,
-  category_id uuid,
-  current_stock numeric DEFAULT 0,
-  product_type text DEFAULT 'raw'::text CHECK (product_type IS NULL OR (product_type = ANY (ARRAY['raw'::text, 'portioned'::text, 'manufactured'::text]))),
-  sub_category_id uuid,
-  available_online boolean DEFAULT false,
-  available_pos boolean DEFAULT true,
-  available_loyalty_app boolean DEFAULT false,
-  online_description text,
-  online_image_url text,
-  online_sort_order integer,
-  CONSTRAINT inventory_items_pkey PRIMARY KEY (id),
-  CONSTRAINT inventory_items_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT inventory_items_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id),
-  CONSTRAINT inventory_items_sub_category_id_fkey FOREIGN KEY (sub_category_id) REFERENCES public.categories(id)
-);
-CREATE TABLE public.invoice_line_items (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  invoice_id uuid NOT NULL,
-  description text NOT NULL,
-  quantity numeric NOT NULL DEFAULT 1,
-  unit_price numeric NOT NULL,
-  line_total numeric DEFAULT (quantity * unit_price),
-  sort_order integer DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT invoice_line_items_pkey PRIMARY KEY (id),
-  CONSTRAINT invoice_line_items_invoice_id_fkey FOREIGN KEY (invoice_id) REFERENCES public.invoices(id)
-);
-CREATE TABLE public.invoices (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  invoice_number text NOT NULL UNIQUE,
-  account_id uuid,
-  invoice_date date NOT NULL,
-  due_date date,
-  line_items jsonb DEFAULT '[]'::jsonb,
-  subtotal numeric,
-  tax_rate numeric,
-  tax_amount numeric,
-  total numeric,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'pending_review'::text, 'approved'::text, 'sent'::text, 'paid'::text, 'overdue'::text, 'cancelled'::text])),
-  payment_date date,
-  created_by uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  supplier_id uuid,
-  CONSTRAINT invoices_pkey PRIMARY KEY (id),
-  CONSTRAINT invoices_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT invoices_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.staff_profiles(id),
-  CONSTRAINT invoices_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
-);
-CREATE TABLE public.leave_balances (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  employee_id uuid NOT NULL,
-  annual_leave_balance numeric DEFAULT 0,
-  sick_leave_balance numeric DEFAULT 0,
-  family_leave_balance numeric DEFAULT 3,
-  last_updated timestamp with time zone DEFAULT now(),
-  last_accrual_date date,
-  staff_id uuid,
-  CONSTRAINT leave_balances_pkey PRIMARY KEY (id),
-  CONSTRAINT leave_balances_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.profiles(id),
-  CONSTRAINT leave_balances_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff_profiles(id)
-);
-CREATE TABLE public.leave_requests (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  leave_type text NOT NULL CHECK (leave_type = ANY (ARRAY['annual'::text, 'sick'::text, 'family'::text, 'unpaid'::text])),
-  start_date date NOT NULL,
-  end_date date NOT NULL,
-  days_requested numeric,
-  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text])),
-  approved_by uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  employee_id uuid,
-  review_notes text,
-  reviewed_at timestamp with time zone,
-  CONSTRAINT leave_requests_pkey PRIMARY KEY (id),
-  CONSTRAINT leave_requests_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff_profiles(id),
-  CONSTRAINT leave_requests_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.staff_profiles(id),
-  CONSTRAINT leave_requests_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.ledger_entries (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  account_id uuid,
-  entry_date date NOT NULL,
-  description text,
-  debit numeric DEFAULT 0,
-  credit numeric DEFAULT 0,
-  reference text,
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  source text,
-  metadata jsonb,
-  account_code text,
-  account_name text,
-  reference_type text,
-  reference_id uuid,
-  recorded_by uuid,
-  CONSTRAINT ledger_entries_pkey PRIMARY KEY (id),
-  CONSTRAINT ledger_entries_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT ledger_entries_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.staff_profiles(id),
-  CONSTRAINT ledger_entries_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.loyalty_customers (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  full_name text NOT NULL,
-  email text,
-  phone text,
-  whatsapp text,
-  birthday date,
-  physical_address text,
-  loyalty_tier text DEFAULT 'member'::text CHECK (loyalty_tier = ANY (ARRAY['member'::text, 'elite'::text, 'vip'::text])),
-  points_balance integer DEFAULT 0,
-  total_spend numeric DEFAULT 0,
-  visit_count integer DEFAULT 0,
-  favourite_products ARRAY,
-  notes text,
-  active boolean DEFAULT true,
-  joined_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  tags jsonb DEFAULT '[]'::jsonb,
-  CONSTRAINT loyalty_customers_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.message_logs (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  message_sid text,
-  to_number text NOT NULL,
-  message_content text,
-  status text NOT NULL,
-  error_message text,
-  sent_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT message_logs_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.modifier_groups (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  name text NOT NULL,
-  required boolean DEFAULT false,
-  allow_multiple boolean DEFAULT false,
-  max_selections integer DEFAULT 1,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  is_required boolean DEFAULT false,
-  updated_at timestamp with time zone DEFAULT now(),
-  sort_order integer DEFAULT 0,
-  CONSTRAINT modifier_groups_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.modifier_items (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  modifier_group_id uuid NOT NULL,
-  name text NOT NULL,
-  price_adjustment numeric DEFAULT 0,
-  track_inventory boolean DEFAULT false,
-  linked_item_id uuid,
-  sort_order integer DEFAULT 0,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  inventory_item_id uuid,
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT modifier_items_pkey PRIMARY KEY (id),
-  CONSTRAINT modifier_items_modifier_group_id_fkey FOREIGN KEY (modifier_group_id) REFERENCES public.modifier_groups(id),
-  CONSTRAINT modifier_items_linked_item_id_fkey FOREIGN KEY (linked_item_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT modifier_items_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.parked_sales (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  reference text NOT NULL,
-  source text DEFAULT 'hunter'::text CHECK (source = ANY (ARRAY['hunter'::text, 'manual'::text, 'layby'::text, 'online'::text])),
-  hunter_job_id uuid,
-  customer_name text,
-  customer_phone text,
-  line_items jsonb NOT NULL DEFAULT '[]'::jsonb,
-  subtotal numeric DEFAULT 0,
-  notes text,
-  status text DEFAULT 'parked'::text CHECK (status = ANY (ARRAY['parked'::text, 'in_progress'::text, 'completed'::text, 'cancelled'::text])),
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT parked_sales_pkey PRIMARY KEY (id),
-  CONSTRAINT parked_sales_hunter_job_id_fkey FOREIGN KEY (hunter_job_id) REFERENCES public.hunter_jobs(id)
-);
-CREATE TABLE public.payroll_entries (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  pay_period_start date NOT NULL,
-  pay_period_end date NOT NULL,
-  pay_frequency text NOT NULL CHECK (pay_frequency = ANY (ARRAY['weekly'::text, 'fortnightly'::text, 'monthly'::text])),
-  gross_pay numeric,
-  deductions numeric,
-  net_pay numeric,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'approved'::text, 'paid'::text])),
-  approved_by uuid,
-  paid_at timestamp with time zone,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT payroll_entries_pkey PRIMARY KEY (id),
-  CONSTRAINT payroll_entries_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff_profiles(id),
-  CONSTRAINT payroll_entries_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.staff_profiles(id)
-);
-CREATE TABLE public.payroll_periods (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  period_name text NOT NULL,
-  start_date date NOT NULL,
-  end_date date NOT NULL,
-  status text NOT NULL DEFAULT 'open'::text CHECK (status = ANY (ARRAY['open'::text, 'processing'::text, 'completed'::text, 'closed'::text])),
-  processed_at timestamp with time zone,
-  processed_by uuid,
-  total_gross numeric DEFAULT 0,
-  total_deductions numeric DEFAULT 0,
-  total_net numeric DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT payroll_periods_pkey PRIMARY KEY (id),
-  CONSTRAINT payroll_periods_processed_by_fkey FOREIGN KEY (processed_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.petty_cash_movements (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  till_session_id uuid NOT NULL,
-  direction text NOT NULL CHECK (direction = ANY (ARRAY['in'::text, 'out'::text])),
-  amount numeric NOT NULL,
-  reason text NOT NULL,
-  recorded_by uuid NOT NULL,
-  recorded_at timestamp with time zone NOT NULL DEFAULT now(),
-  terminal_id text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT petty_cash_movements_pkey PRIMARY KEY (id),
-  CONSTRAINT petty_cash_movements_till_session_id_fkey FOREIGN KEY (till_session_id) REFERENCES public.till_sessions(id),
-  CONSTRAINT petty_cash_movements_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.printer_config (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text,
-  ip_address text,
-  port integer DEFAULT 9100,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT printer_config_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.product_suppliers (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  inventory_item_id uuid NOT NULL,
-  supplier_id uuid NOT NULL,
-  supplier_product_code text,
-  supplier_product_name text,
-  unit_price numeric,
-  lead_time_days integer,
-  is_preferred boolean DEFAULT false,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT product_suppliers_pkey PRIMARY KEY (id),
-  CONSTRAINT product_suppliers_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT product_suppliers_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
-);
-CREATE TABLE public.production_batch_ingredients (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  batch_id uuid NOT NULL,
-  ingredient_id uuid NOT NULL,
-  planned_quantity numeric NOT NULL,
-  actual_quantity numeric,
-  used_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT production_batch_ingredients_pkey PRIMARY KEY (id),
-  CONSTRAINT production_batch_ingredients_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.production_batches(id),
-  CONSTRAINT production_batch_ingredients_ingredient_id_fkey FOREIGN KEY (ingredient_id) REFERENCES public.recipe_ingredients(id)
-);
-CREATE TABLE public.production_batch_outputs (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  batch_id uuid NOT NULL,
-  inventory_item_id uuid NOT NULL,
-  qty_produced numeric NOT NULL,
-  unit text NOT NULL,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT production_batch_outputs_pkey PRIMARY KEY (id),
-  CONSTRAINT production_batch_outputs_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.production_batches(id),
-  CONSTRAINT production_batch_outputs_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.production_batches (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  batch_date date NOT NULL,
-  recipe_id uuid,
-  qty_produced numeric,
-  unit text,
-  cost_total numeric,
-  notes text,
-  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'in_progress'::text, 'complete'::text, 'cancelled'::text])),
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  output_product_id uuid,
-  parent_batch_id uuid,
-  split_note text,
-  is_split_parent boolean DEFAULT false,
-  CONSTRAINT production_batches_pkey PRIMARY KEY (id),
-  CONSTRAINT production_batches_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.recipes(id),
-  CONSTRAINT production_batches_output_product_id_fkey FOREIGN KEY (output_product_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT production_batches_parent_batch_id_fkey FOREIGN KEY (parent_batch_id) REFERENCES public.production_batches(id)
-);
-CREATE TABLE public.profiles (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  full_name text NOT NULL,
-  role text NOT NULL,
-  pin_hash text NOT NULL,
-  phone text,
-  email text,
-  id_number text,
-  start_date date,
-  employment_type text CHECK (employment_type = ANY (ARRAY['hourly'::text, 'weekly_salary'::text, 'monthly_salary'::text])),
-  hourly_rate numeric,
-  monthly_salary numeric,
-  payroll_frequency text CHECK (payroll_frequency = ANY (ARRAY['weekly'::text, 'monthly'::text])),
-  max_discount_pct numeric DEFAULT 5.0,
-  bank_name text,
-  bank_account text,
-  bank_branch_code text,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  is_active boolean DEFAULT true,
-  permissions jsonb DEFAULT '{}'::jsonb,
-  CONSTRAINT profiles_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.promotion_products (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  promotion_id uuid,
-  inventory_item_id uuid,
-  role text NOT NULL CHECK (role = ANY (ARRAY['trigger_item'::text, 'reward_item'::text, 'bundle_item'::text])),
-  quantity numeric,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT promotion_products_pkey PRIMARY KEY (id),
-  CONSTRAINT promotion_products_promotion_id_fkey FOREIGN KEY (promotion_id) REFERENCES public.promotions(id),
-  CONSTRAINT promotion_products_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.promotions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  description text,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'active'::text, 'paused'::text, 'expired'::text, 'cancelled'::text])),
-  promotion_type text NOT NULL CHECK (promotion_type = ANY (ARRAY['bogo'::text, 'bundle'::text, 'spend_threshold'::text, 'weight_threshold'::text, 'time_based'::text, 'points_multiplier'::text, 'custom'::text])),
-  trigger_config jsonb NOT NULL DEFAULT '{}'::jsonb,
-  reward_config jsonb NOT NULL DEFAULT '{}'::jsonb,
-  audience ARRAY NOT NULL DEFAULT ARRAY['all'::text],
-  channels ARRAY NOT NULL DEFAULT ARRAY['pos'::text, 'loyalty_app'::text, 'online'::text],
-  start_date date,
-  end_date date,
-  start_time time without time zone,
-  end_time time without time zone,
-  days_of_week ARRAY,
-  usage_limit integer,
-  usage_count integer DEFAULT 0,
-  requires_manual_activation boolean DEFAULT false,
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT promotions_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.purchase_order_lines (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  purchase_order_id uuid NOT NULL,
-  inventory_item_id uuid NOT NULL,
-  quantity numeric NOT NULL DEFAULT 0,
-  unit text DEFAULT 'kg'::text,
-  unit_price numeric,
-  line_total numeric,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT purchase_order_lines_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_order_lines_purchase_order_id_fkey FOREIGN KEY (purchase_order_id) REFERENCES public.purchase_orders(id),
-  CONSTRAINT purchase_order_lines_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.purchase_orders (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  po_number text NOT NULL UNIQUE,
-  supplier_id uuid NOT NULL,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'sent'::text, 'confirmed'::text, 'received'::text, 'cancelled'::text])),
-  order_date date NOT NULL DEFAULT CURRENT_DATE,
-  expected_date date,
-  notes text,
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT purchase_orders_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_orders_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT purchase_orders_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.purchase_sale_agreement (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  agreement_number text NOT NULL UNIQUE,
-  agreement_type text NOT NULL CHECK (agreement_type = ANY (ARRAY['purchase'::text, 'sale'::text])),
-  party_name text NOT NULL,
-  party_contact text,
-  asset_description text NOT NULL,
-  agreed_price numeric NOT NULL,
-  agreement_date date NOT NULL DEFAULT CURRENT_DATE,
-  completion_date date,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'signed'::text, 'completed'::text, 'cancelled'::text])),
-  payment_terms text,
-  special_conditions text,
-  created_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  account_id uuid,
-  CONSTRAINT purchase_sale_agreement_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_sale_agreement_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
-  CONSTRAINT purchase_sale_agreement_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id)
-);
-CREATE TABLE public.purchase_sale_payments (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  agreement_id uuid NOT NULL,
-  payment_date date NOT NULL,
-  amount numeric NOT NULL,
-  payment_method text NOT NULL,
-  reference_number text,
-  notes text,
-  recorded_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT purchase_sale_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT purchase_sale_payments_agreement_id_fkey FOREIGN KEY (agreement_id) REFERENCES public.purchase_sale_agreement(id),
-  CONSTRAINT purchase_sale_payments_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.recipe_ingredients (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  recipe_id uuid NOT NULL,
-  inventory_item_id uuid,
-  ingredient_name text NOT NULL,
-  quantity numeric NOT NULL,
-  unit text NOT NULL,
-  sort_order integer DEFAULT 0,
-  is_optional boolean DEFAULT false,
-  notes text,
-  CONSTRAINT recipe_ingredients_pkey PRIMARY KEY (id),
-  CONSTRAINT recipe_ingredients_recipe_id_fkey FOREIGN KEY (recipe_id) REFERENCES public.recipes(id),
-  CONSTRAINT recipe_ingredients_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.recipes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  category text,
-  ingredients jsonb,
-  instructions text,
-  yield_qty numeric,
-  yield_unit text,
-  cost_per_unit numeric,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  output_product_id uuid,
-  expected_yield_pct numeric DEFAULT 100,
-  batch_size_kg numeric DEFAULT 1,
-  cook_time_minutes bigint,
-  created_by uuid,
-  prep_time_minutes integer DEFAULT 0,
-  required_role text DEFAULT 'butchery_assistant'::text,
-  goes_to_dryer boolean DEFAULT false,
-  dryer_output_product_id uuid,
-  CONSTRAINT recipes_pkey PRIMARY KEY (id),
-  CONSTRAINT recipes_output_product_id_fkey FOREIGN KEY (output_product_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT recipes_dryer_output_product_id_fkey FOREIGN KEY (dryer_output_product_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.reorder_recommendations (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  item_id uuid NOT NULL,
-  days_of_stock numeric,
-  urgency text CHECK (urgency = ANY (ARRAY['urgent'::text, 'soon'::text, 'ok'::text])),
-  recommended_qty numeric,
-  based_on_days integer DEFAULT 7,
-  auto_resolved boolean DEFAULT false,
-  resolved_at timestamp with time zone,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT reorder_recommendations_pkey PRIMARY KEY (id),
-  CONSTRAINT reorder_recommendations_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.role_permissions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  role_name text NOT NULL UNIQUE,
-  permissions jsonb NOT NULL DEFAULT '{}'::jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT role_permissions_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.scale_config (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  primary_mode text DEFAULT 'Price-embedded'::text,
-  plu_digits integer DEFAULT 4,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT scale_config_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.shrinkage_alerts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  item_id uuid NOT NULL,
-  alert_date date NOT NULL,
-  expected_qty numeric,
-  actual_qty numeric,
-  variance_pct numeric,
-  acknowledged boolean DEFAULT false,
-  acknowledged_by uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  resolved boolean DEFAULT false,
-  resolved_by uuid,
-  resolved_at timestamp with time zone,
-  resolution_notes text,
-  product_id uuid,
-  item_name text,
-  status text DEFAULT 'Pending'::text,
-  theoretical_stock numeric,
-  actual_stock numeric,
-  gap_amount numeric,
-  gap_percentage numeric,
-  possible_reasons text,
-  staff_involved text,
-  shrinkage_percentage numeric,
-  alert_type text,
-  batch_id uuid,
-  expected_weight numeric,
-  actual_weight numeric,
-  CONSTRAINT shrinkage_alerts_pkey PRIMARY KEY (id),
-  CONSTRAINT shrinkage_alerts_acknowledged_by_fkey FOREIGN KEY (acknowledged_by) REFERENCES public.staff_profiles(id),
-  CONSTRAINT shrinkage_alerts_resolved_by_fkey FOREIGN KEY (resolved_by) REFERENCES public.profiles(id),
-  CONSTRAINT shrinkage_alerts_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT shrinkage_alerts_batch_id_fkey FOREIGN KEY (batch_id) REFERENCES public.production_batches(id)
-);
-CREATE TABLE public.split_payments (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  transaction_id uuid NOT NULL,
-  payment_method text NOT NULL,
-  amount numeric NOT NULL,
-  amount_tendered numeric,
-  change_given numeric,
-  card_reference text,
-  business_account_id uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT split_payments_pkey PRIMARY KEY (id),
-  CONSTRAINT split_payments_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(id),
-  CONSTRAINT split_payments_business_account_id_fkey FOREIGN KEY (business_account_id) REFERENCES public.business_accounts(id)
-);
-CREATE TABLE public.sponsorships (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  sponsor_name text NOT NULL,
-  event_name text NOT NULL,
-  sponsorship_amount numeric NOT NULL,
-  sponsorship_date date NOT NULL DEFAULT CURRENT_DATE,
-  payment_status text NOT NULL DEFAULT 'pending'::text CHECK (payment_status = ANY (ARRAY['pending'::text, 'paid'::text, 'cancelled'::text])),
-  contact_person text,
-  contact_details text,
-  benefits_provided text,
-  notes text,
-  created_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT sponsorships_pkey PRIMARY KEY (id),
-  CONSTRAINT sponsorships_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.staff_awol_records (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  awol_date date NOT NULL,
-  expected_start_time time without time zone,
-  notified_owner_manager boolean DEFAULT false,
-  notified_who text,
-  resolution text NOT NULL DEFAULT 'pending'::text CHECK (resolution = ANY (ARRAY['returned'::text, 'resigned'::text, 'dismissed'::text, 'warning_issued'::text, 'pending'::text])),
-  written_warning_issued boolean DEFAULT false,
-  warning_document_url text,
-  notes text,
-  recorded_by uuid NOT NULL,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT staff_awol_records_pkey PRIMARY KEY (id),
-  CONSTRAINT staff_awol_records_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id),
-  CONSTRAINT staff_awol_records_recorded_by_fkey FOREIGN KEY (recorded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.staff_credit (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  credit_amount numeric NOT NULL,
-  reason text NOT NULL,
-  granted_date date NOT NULL DEFAULT CURRENT_DATE,
-  due_date date,
-  is_paid boolean DEFAULT false,
-  paid_date date,
-  granted_by uuid NOT NULL,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  credit_type text DEFAULT 'meat_purchase'::text CHECK (credit_type = ANY (ARRAY['meat_purchase'::text, 'salary_advance'::text, 'loan'::text, 'deduction'::text, 'repayment'::text, 'other'::text])),
-  items_purchased text,
-  repayment_plan text,
-  deduct_from text DEFAULT 'next_payroll'::text CHECK (deduct_from = ANY (ARRAY['next_payroll'::text, 'specific_period'::text])),
-  status text NOT NULL DEFAULT 'pending'::text CHECK (status = ANY (ARRAY['pending'::text, 'deducted'::text, 'partial'::text, 'cleared'::text])),
-  CONSTRAINT staff_credit_pkey PRIMARY KEY (id),
-  CONSTRAINT staff_credit_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id),
-  CONSTRAINT staff_credit_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.staff_documents (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  employee_id uuid NOT NULL,
-  doc_type text NOT NULL CHECK (doc_type = ANY (ARRAY['id_copy'::text, 'contract'::text, 'tax_form'::text, 'training_cert'::text, 'disciplinary'::text, 'other'::text])),
-  file_name text NOT NULL,
-  file_url text NOT NULL,
-  uploaded_by uuid,
-  uploaded_at timestamp with time zone DEFAULT now(),
-  notes text,
-  CONSTRAINT staff_documents_pkey PRIMARY KEY (id),
-  CONSTRAINT staff_documents_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.profiles(id),
-  CONSTRAINT staff_documents_uploaded_by_fkey FOREIGN KEY (uploaded_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.staff_loans (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  loan_amount numeric NOT NULL,
-  interest_rate numeric DEFAULT 0,
-  term_months integer,
-  monthly_payment numeric,
-  granted_date date NOT NULL DEFAULT CURRENT_DATE,
-  first_payment_date date,
-  is_active boolean DEFAULT true,
-  granted_by uuid NOT NULL,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT staff_loans_pkey PRIMARY KEY (id),
-  CONSTRAINT staff_loans_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id),
-  CONSTRAINT staff_loans_granted_by_fkey FOREIGN KEY (granted_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.staff_profiles (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  full_name text NOT NULL,
-  role text NOT NULL,
-  pin_hash text,
-  phone text,
-  hire_date date,
-  pay_frequency text NOT NULL CHECK (pay_frequency = ANY (ARRAY['weekly'::text, 'fortnightly'::text, 'monthly'::text])),
-  hourly_rate numeric,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  email text,
-  id_number text,
-  employment_type text,
-  monthly_salary numeric,
-  max_discount_pct numeric DEFAULT 5.0,
-  bank_name text,
-  bank_account text,
-  bank_branch_code text,
-  notes text,
-  max_discount_percent numeric NOT NULL DEFAULT 0,
-  CONSTRAINT staff_profiles_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.stock_locations (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  name text NOT NULL UNIQUE,
-  type text CHECK (type = ANY (ARRAY['display_fridge'::text, 'walk_in_fridge'::text, 'deep_freezer'::text, 'deli_counter'::text, 'dry_store'::text, 'dryer'::text, 'other'::text])),
-  sort_order integer DEFAULT 0,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT stock_locations_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.stock_movements (
-  id uuid NOT NULL DEFAULT uuid_generate_v4(),
-  item_id uuid NOT NULL,
-  movement_type text NOT NULL CHECK (movement_type = ANY (ARRAY['in'::text, 'out'::text, 'adjustment'::text, 'transfer'::text, 'waste'::text, 'production'::text, 'donation'::text, 'sponsorship'::text, 'staff_meal'::text, 'freezer'::text])),
-  quantity numeric NOT NULL,
-  unit_type text DEFAULT 'kg'::text,
-  location_from uuid,
-  location_to uuid,
-  balance_after numeric,
-  reference_id text,
-  reference_type text,
-  reason text,
-  staff_id uuid,
-  photo_url text,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  metadata jsonb,
-  CONSTRAINT stock_movements_pkey PRIMARY KEY (id),
-  CONSTRAINT stock_movements_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT stock_movements_location_from_fkey FOREIGN KEY (location_from) REFERENCES public.stock_locations(id),
-  CONSTRAINT stock_movements_location_to_fkey FOREIGN KEY (location_to) REFERENCES public.stock_locations(id),
-  CONSTRAINT stock_movements_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.stock_take_entries (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  session_id uuid NOT NULL,
-  item_id uuid NOT NULL,
-  location_id uuid,
-  expected_quantity numeric NOT NULL DEFAULT 0,
-  actual_quantity numeric,
-  variance numeric DEFAULT 
-CASE
-    WHEN (actual_quantity IS NOT NULL) THEN (actual_quantity - expected_quantity)
-    ELSE NULL::numeric
-END,
-  counted_by uuid,
-  device_id text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT stock_take_entries_pkey PRIMARY KEY (id),
-  CONSTRAINT stock_take_entries_session_id_fkey FOREIGN KEY (session_id) REFERENCES public.stock_take_sessions(id),
-  CONSTRAINT stock_take_entries_item_id_fkey FOREIGN KEY (item_id) REFERENCES public.inventory_items(id),
-  CONSTRAINT stock_take_entries_location_id_fkey FOREIGN KEY (location_id) REFERENCES public.stock_locations(id),
-  CONSTRAINT stock_take_entries_counted_by_fkey FOREIGN KEY (counted_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.stock_take_sessions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  status text NOT NULL DEFAULT 'open'::text CHECK (status = ANY (ARRAY['open'::text, 'in_progress'::text, 'pending_approval'::text, 'approved'::text, 'cancelled'::text])),
-  started_at timestamp with time zone DEFAULT now(),
-  started_by uuid,
-  approved_at timestamp with time zone,
-  approved_by uuid,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  rejection_note text,
-  CONSTRAINT stock_take_sessions_pkey PRIMARY KEY (id),
-  CONSTRAINT stock_take_sessions_started_by_fkey FOREIGN KEY (started_by) REFERENCES public.profiles(id),
-  CONSTRAINT stock_take_sessions_approved_by_fkey FOREIGN KEY (approved_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.supplier_invoices (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  invoice_number text NOT NULL,
-  supplier_id uuid,
-  invoice_date date NOT NULL DEFAULT CURRENT_DATE,
-  due_date date NOT NULL,
-  line_items jsonb DEFAULT '[]'::jsonb,
-  subtotal numeric NOT NULL DEFAULT 0,
-  tax_rate numeric,
-  tax_amount numeric NOT NULL DEFAULT 0,
-  total numeric NOT NULL DEFAULT 0,
-  status text NOT NULL DEFAULT 'draft'::text CHECK (status = ANY (ARRAY['draft'::text, 'pending_review'::text, 'approved'::text, 'paid'::text, 'overdue'::text, 'cancelled'::text, 'received'::text])),
-  payment_date date,
-  notes text,
-  created_by uuid,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  received_at timestamp with time zone,
-  received_by uuid,
-  CONSTRAINT supplier_invoices_pkey PRIMARY KEY (id),
-  CONSTRAINT supplier_invoices_created_by_fkey FOREIGN KEY (created_by) REFERENCES public.profiles(id),
-  CONSTRAINT supplier_invoices_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id),
-  CONSTRAINT supplier_invoices_received_by_fkey FOREIGN KEY (received_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.supplier_price_changes (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  inventory_item_id uuid,
-  supplier_id uuid,
-  old_price numeric,
-  new_price numeric,
-  percentage_increase numeric,
-  suggested_sell_price numeric,
-  status text DEFAULT 'Pending'::text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT supplier_price_changes_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.suppliers (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  contact_name text,
-  phone text,
-  email text,
-  account_number text,
-  notes text,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  vat_number text,
-  address text,
-  city text,
-  postal_code text,
-  payment_terms text,
-  bank_name text,
-  bank_account text,
-  bank_branch_code text,
-  bbbee_level text,
-  CONSTRAINT suppliers_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.suspended_transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  terminal_id text NOT NULL,
-  cashier_id uuid,
-  cart_json jsonb NOT NULL,
-  customer_note text,
-  customer_id uuid,
-  parked_at timestamp with time zone DEFAULT now(),
-  expected_collection_time timestamp with time zone,
-  carry_over boolean DEFAULT false,
-  carry_over_date date,
-  notification_sent boolean DEFAULT false,
-  active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT suspended_transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT suspended_transactions_cashier_id_fkey FOREIGN KEY (cashier_id) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.system_config (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  key text NOT NULL UNIQUE,
-  description text,
-  value jsonb,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT system_config_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.tax_rules (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  percentage numeric NOT NULL DEFAULT 0.00,
-  is_active boolean DEFAULT true,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT tax_rules_pkey PRIMARY KEY (id)
-);
-CREATE TABLE public.till_sessions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  terminal_id text NOT NULL,
-  opened_by uuid NOT NULL,
-  opened_at timestamp with time zone NOT NULL DEFAULT now(),
-  opening_float numeric NOT NULL DEFAULT 0,
-  closed_by uuid,
-  closed_at timestamp with time zone,
-  expected_closing_cash numeric,
-  actual_closing_cash numeric,
-  variance numeric,
-  status text NOT NULL DEFAULT 'open'::text CHECK (status = ANY (ARRAY['open'::text, 'closed'::text])),
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT till_sessions_pkey PRIMARY KEY (id),
-  CONSTRAINT till_sessions_opened_by_fkey FOREIGN KEY (opened_by) REFERENCES public.profiles(id),
-  CONSTRAINT till_sessions_closed_by_fkey FOREIGN KEY (closed_by) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.timecard_breaks (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  timecard_id uuid NOT NULL,
-  break_start timestamp with time zone,
-  break_end timestamp with time zone,
-  break_duration_minutes numeric,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT timecard_breaks_pkey PRIMARY KEY (id),
-  CONSTRAINT timecard_breaks_timecard_id_fkey FOREIGN KEY (timecard_id) REFERENCES public.timecards(id)
-);
-CREATE TABLE public.timecards (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  staff_id uuid NOT NULL,
-  shift_date date NOT NULL,
-  clock_in timestamp with time zone,
-  clock_out timestamp with time zone,
-  break_minutes integer DEFAULT 0,
-  break_detail jsonb,
-  total_hours numeric DEFAULT 
-CASE
-    WHEN ((clock_in IS NOT NULL) AND (clock_out IS NOT NULL)) THEN round(((EXTRACT(epoch FROM (clock_out - clock_in)) / (3600)::numeric) - ((break_minutes)::numeric / (60)::numeric)), 2)
-    ELSE NULL::numeric
-END,
-  notes text,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  employee_id uuid,
-  CONSTRAINT timecards_pkey PRIMARY KEY (id),
-  CONSTRAINT timecards_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.staff_profiles(id),
-  CONSTRAINT timecards_employee_id_fkey FOREIGN KEY (employee_id) REFERENCES public.profiles(id)
-);
-CREATE TABLE public.transaction_items (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  transaction_id uuid NOT NULL,
-  inventory_item_id uuid,
-  quantity numeric NOT NULL DEFAULT 0,
-  unit_price numeric NOT NULL DEFAULT 0,
-  line_total numeric NOT NULL DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  cost_price numeric,
-  discount_amount numeric DEFAULT 0,
-  is_weighted boolean DEFAULT false,
-  weight_kg numeric,
-  modifier_selections jsonb,
-  product_name text,
-  CONSTRAINT transaction_items_pkey PRIMARY KEY (id),
-  CONSTRAINT transaction_items_transaction_id_fkey FOREIGN KEY (transaction_id) REFERENCES public.transactions(id),
-  CONSTRAINT transaction_items_inventory_item_id_fkey FOREIGN KEY (inventory_item_id) REFERENCES public.inventory_items(id)
-);
-CREATE TABLE public.transactions (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  total_amount numeric NOT NULL DEFAULT 0,
-  cost_amount numeric,
-  payment_method text,
-  till_session_id uuid,
-  staff_id uuid,
-  account_id uuid,
-  notes text,
-  vat_amount numeric DEFAULT 0,
-  receipt_number text,
-  discount_total numeric DEFAULT 0,
-  loyalty_customer_id uuid,
-  refund_of_transaction_id uuid,
-  is_refund boolean DEFAULT false,
-  is_voided boolean DEFAULT false,
-  voided_by uuid,
-  voided_at timestamp with time zone,
-  void_reason text,
-  CONSTRAINT transactions_pkey PRIMARY KEY (id),
-  CONSTRAINT transactions_staff_id_fkey FOREIGN KEY (staff_id) REFERENCES public.profiles(id),
-  CONSTRAINT transactions_account_id_fkey FOREIGN KEY (account_id) REFERENCES public.business_accounts(id),
-  CONSTRAINT transactions_loyalty_customer_id_fkey FOREIGN KEY (loyalty_customer_id) REFERENCES public.loyalty_customers(id),
-  CONSTRAINT transactions_refund_of_transaction_id_fkey FOREIGN KEY (refund_of_transaction_id) REFERENCES public.transactions(id),
-  CONSTRAINT transactions_voided_by_fkey FOREIGN KEY (voided_by) REFERENCES public.profiles(id),
-  CONSTRAINT transactions_till_session_id_fkey FOREIGN KEY (till_session_id) REFERENCES public.till_sessions(id)
-);
-CREATE TABLE public.yield_template_cuts (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  template_id uuid NOT NULL,
-  cut_name text NOT NULL,
-  expected_percentage numeric NOT NULL CHECK (expected_percentage > 0::numeric AND expected_percentage <= 100::numeric),
-  expected_weight_kg numeric,
-  sort_order integer DEFAULT 0,
-  created_at timestamp with time zone DEFAULT now(),
-  CONSTRAINT yield_template_cuts_pkey PRIMARY KEY (id),
-  CONSTRAINT yield_template_cuts_template_id_fkey FOREIGN KEY (template_id) REFERENCES public.yield_templates(id)
-);
-CREATE TABLE public.yield_templates (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  name text NOT NULL,
-  species text NOT NULL,
-  cuts jsonb DEFAULT '[]'::jsonb,
-  created_at timestamp with time zone DEFAULT now(),
-  updated_at timestamp with time zone DEFAULT now(),
-  carcass_type text,
-  template_name text,
-  CONSTRAINT yield_templates_pkey PRIMARY KEY (id)
-);
+**Source:** Live Supabase — `information_schema.columns` (full column list) and `foreign_key_constraints` from Supabase schema metadata export.
+**Generated:** 2026-03-24
+
+## Tables and columns
+
+### account_awol_records
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| account_id | uuid | NO |
+| awol_date | date | NO |
+| reason | text | YES |
+| recorded_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### account_transactions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| account_id | uuid | NO |
+| transaction_type | text | NO |
+| reference | text | YES |
+| description | text | YES |
+| amount | numeric | NO |
+| running_balance | numeric | YES |
+| payment_method | text | YES |
+| proof_url | text | YES |
+| recorded_by | uuid | YES |
+| transaction_date | date | NO |
+| created_at | timestamp with time zone | YES |
+
+### admin_notifications
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| title | text | NO |
+| body | text | YES |
+| type | text | NO |
+| metadata | jsonb | NO |
+| created_at | timestamp with time zone | NO |
+
+### admin_roles
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| role_name | text | NO |
+| display_name | text | NO |
+| description | text | YES |
+| color_hex | text | YES |
+| sort_order | integer | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### announcements
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| title | text | NO |
+| content | text | NO |
+| announcement_type | text | NO |
+| priority | text | NO |
+| is_active | boolean | YES |
+| start_date | date | NO |
+| end_date | date | YES |
+| target_audience | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| image_url | text | YES |
+
+### audit_log
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| action | text | NO |
+| table_name | text | YES |
+| record_id | text | YES |
+| staff_id | uuid | YES |
+| staff_name | text | YES |
+| authorised_by | uuid | YES |
+| authorised_name | text | YES |
+| old_value | jsonb | YES |
+| new_value | jsonb | YES |
+| details | text | YES |
+| severity | text | YES |
+| ip_address | text | YES |
+| created_at | timestamp with time zone | YES |
+| module | text | YES |
+| description | text | YES |
+| entity_type | text | YES |
+| entity_id | text | YES |
+
+### bank_reconciliation_matches
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| bank_transaction_id | uuid | NO |
+| match_type | text | NO |
+| matched_record_id | uuid | YES |
+| matched_amount | numeric | YES |
+| account_code | text | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+
+### bank_transactions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| post_date | date | NO |
+| trans_date | date | NO |
+| description | text | NO |
+| reference | text | YES |
+| fees | numeric | NO |
+| amount | numeric | NO |
+| balance | numeric | YES |
+| status | text | NO |
+| account_code | text | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### business_accounts
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| account_type | text | YES |
+| email | text | YES |
+| phone | text | YES |
+| balance | numeric | YES |
+| credit_limit | numeric | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| contact_person | text | YES |
+| whatsapp | text | YES |
+| vat_number | text | YES |
+| credit_terms_days | integer | YES |
+| auto_suspend | boolean | YES |
+| auto_suspend_days | integer | YES |
+| suspended | boolean | YES |
+| suspended_at | timestamp with time zone | YES |
+| notes | text | YES |
+| address | text | YES |
+| active | boolean | YES |
+| suspension_recommended | boolean | YES |
+
+### business_settings
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| business_name | text | YES |
+| trading_name | text | YES |
+| address | text | YES |
+| vat_number | text | YES |
+| phone | text | YES |
+| email | text | YES |
+| logo_url | text | YES |
+| working_hours_start | time without time zone | YES |
+| working_hours_end | time without time zone | YES |
+| overtime_after_daily | numeric | YES |
+| overtime_after_weekly | numeric | YES |
+| sunday_pay_multiplier | numeric | YES |
+| public_holiday_multiplier | numeric | YES |
+| blockman_verification | boolean | YES |
+| shrinkage_tolerance_pct | numeric | YES |
+| auto_void_parked_hours | integer | YES |
+| receipt_footer | text | YES |
+| scale_brand | text | YES |
+| scale_weight_prefix | integer | YES |
+| scale_price_prefix | integer | YES |
+| scale_plu_digits | integer | YES |
+| scale_primary_mode | text | YES |
+| vat_standard | numeric | YES |
+| vat_zero_rated | numeric | YES |
+| event_spike_multiplier | numeric | YES |
+| currency_symbol | text | YES |
+| country | text | YES |
+| timezone | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| setting_key | text | YES |
+| setting_value | jsonb | YES |
+| scale_output_path | text | YES |
+| scale_ip_address | text | YES |
+| scale_last_sync | timestamp with time zone | YES |
+| closing_time | time without time zone | YES |
+| clock_out_grace_minutes | integer | NO |
+| overnight_alert_email | text | YES |
+| points_per_rand | numeric | YES |
+| tier_member_threshold | numeric | YES |
+| tier_elite_threshold | numeric | YES |
+| tier_vip_threshold | numeric | YES |
+
+### carcass_breakdown_sessions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| intake_id | uuid | NO |
+| carcass_number | integer | NO |
+| actual_weight_kg | numeric | NO |
+| template_id | uuid | YES |
+| started_at | timestamp with time zone | YES |
+| completed_at | timestamp with time zone | YES |
+| processed_by | uuid | NO |
+| status | text | NO |
+| notes | text | YES |
+
+### carcass_cuts
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| carcass_id | uuid | NO |
+| cut_name | text | NO |
+| weight | numeric | YES |
+| inventory_item_id | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| intake_id | uuid | YES |
+| expected_kg | numeric | YES |
+| actual_kg | numeric | YES |
+| plu_code | integer | YES |
+| sellable | boolean | YES |
+| breakdown_date | timestamp with time zone | YES |
+
+### carcass_intakes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| intake_date | date | NO |
+| species | text | NO |
+| supplier_id | uuid | YES |
+| hunter_job_id | uuid | YES |
+| weight_in | numeric | YES |
+| weight_out | numeric | YES |
+| status | text | NO |
+| job_type | text | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| remaining_weight | numeric | YES |
+| variance_pct | numeric | YES |
+| reference_number | text | YES |
+| yield_template_id | uuid | YES |
+| delivery_date | date | YES |
+| carcass_type | text | YES |
+
+### categories
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| color_code | text | YES |
+| sort_order | integer | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| notes | text | YES |
+| updated_at | timestamp with time zone | YES |
+| is_active | boolean | YES |
+| parent_id | uuid | YES |
+| available_online | boolean | YES |
+
+### chart_of_accounts
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| code | text | NO |
+| name | text | NO |
+| account_type | text | NO |
+| parent_id | uuid | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| account_code | text | YES |
+| account_name | text | YES |
+| subcategory | text | YES |
+| sort_order | integer | YES |
+
+### compliance_records
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| document_type | text | NO |
+| expiry_date | date | YES |
+| file_url | text | YES |
+| is_verified | boolean | YES |
+| verified_by | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### custom_reward_campaigns
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| target_tier | text | NO |
+| max_slots | integer | NO |
+| min_kg | numeric | NO |
+| discount_type | text | NO |
+| discount_value | numeric | NO |
+| collection_days_min | integer | NO |
+| collection_days_max | integer | NO |
+| status | text | NO |
+| announcement_id | uuid | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+
+### custom_reward_ingredients
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| campaign_id | uuid | NO |
+| ingredient_type | text | NO |
+| name | text | NO |
+| price_per_kg | numeric | YES |
+| sort_order | integer | YES |
+| active | boolean | YES |
+
+### custom_reward_orders
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| campaign_id | uuid | NO |
+| customer_id | uuid | NO |
+| boerewors_name | text | NO |
+| meat_base_id | uuid | YES |
+| spice_mode | text | NO |
+| spice_profile_id | uuid | YES |
+| spice_addon_ids | ARRAY | YES |
+| customer_vision | text | YES |
+| kg_ordered | numeric | NO |
+| original_price | numeric | NO |
+| discount_applied | numeric | NO |
+| price_total | numeric | NO |
+| ai_recipe | jsonb | YES |
+| ai_recipe_generated_at | timestamp with time zone | YES |
+| owner_recipe | jsonb | YES |
+| recipe_finalised_at | timestamp with time zone | YES |
+| terms_accepted_at | timestamp with time zone | YES |
+| payfast_reference | text | YES |
+| status | text | NO |
+| paid_at | timestamp with time zone | YES |
+| ready_notified_at | timestamp with time zone | YES |
+| fulfilled_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | YES |
+
+### customer_announcements
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| title | text | NO |
+| body | text | NO |
+| channel | text | NO |
+| sent_at | timestamp with time zone | YES |
+| recipient_count | integer | YES |
+| status | text | NO |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| image_url | text | YES |
+
+### customer_invoices
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| invoice_number | text | NO |
+| account_id | uuid | YES |
+| invoice_date | date | NO |
+| due_date | date | NO |
+| line_items | jsonb | YES |
+| subtotal | numeric | NO |
+| tax_rate | numeric | YES |
+| tax_amount | numeric | NO |
+| total | numeric | NO |
+| status | text | NO |
+| payment_date | date | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| transaction_id | uuid | YES |
+| email_sent_at | timestamp with time zone | YES |
+| email_sent_to | text | YES |
+| email_delivery_status | text | YES |
+| source | text | YES |
+
+### customer_recipe_category_assignments
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| recipe_id | uuid | NO |
+| option_id | uuid | NO |
+
+### customer_recipe_category_options
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| type_id | uuid | NO |
+| name | text | NO |
+| sort_order | integer | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### customer_recipe_category_types
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| sort_order | integer | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### customer_recipe_images
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| recipe_id | uuid | NO |
+| image_url | text | NO |
+| sort_order | integer | YES |
+| is_primary | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### customer_recipe_ingredients
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| recipe_id | uuid | NO |
+| ingredient_text | text | NO |
+| is_optional | boolean | YES |
+| sort_order | integer | YES |
+
+### customer_recipe_steps
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| recipe_id | uuid | NO |
+| step_number | integer | NO |
+| instruction_text | text | NO |
+
+### customer_recipes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| title | text | NO |
+| description | text | YES |
+| serving_size | integer | YES |
+| prep_time_minutes | integer | YES |
+| cook_time_minutes | integer | YES |
+| status | text | NO |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| tag | text | NO |
+| image_url | text | YES |
+| ingredients | text | YES |
+| instructions | text | YES |
+
+### donations
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| donor_name | text | NO |
+| donation_type | text | NO |
+| donation_value | numeric | YES |
+| donation_date | date | NO |
+| payment_status | text | NO |
+| contact_details | text | YES |
+| purpose | text | YES |
+| tax_certificate_issued | boolean | YES |
+| notes | text | YES |
+| recorded_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### dryer_batch_ingredients
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| batch_id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| quantity_used | numeric | NO |
+| added_at | timestamp with time zone | YES |
+
+### dryer_batches
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| start_date | date | YES |
+| end_date | date | YES |
+| items | jsonb | YES |
+| weight_in | numeric | YES |
+| weight_out | numeric | YES |
+| shrinkage_pct | numeric | YES |
+| status | text | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| input_product_id | uuid | YES |
+| output_product_id | uuid | YES |
+| recipe_id | uuid | YES |
+| started_at | timestamp with time zone | YES |
+| batch_number | text | YES |
+| loaded_at | timestamp with time zone | YES |
+| completed_at | timestamp with time zone | YES |
+| drying_hours | numeric | YES |
+| kwh_per_hour | numeric | YES |
+| electricity_cost | numeric | YES |
+| planned_hours | numeric | YES |
+| production_batch_id | uuid | YES |
+
+### email_log
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| invoice_id | uuid | YES |
+| recipient_email | text | NO |
+| subject | text | YES |
+| status | text | YES |
+| error_message | text | YES |
+| sent_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | YES |
+
+### equipment_register
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| asset_number | text | NO |
+| description | text | NO |
+| category | text | NO |
+| purchase_date | date | NO |
+| purchase_price | numeric | NO |
+| supplier_name | text | YES |
+| location | text | YES |
+| depreciation_method | text | YES |
+| useful_life_years | integer | NO |
+| salvage_value | numeric | YES |
+| accumulated_depreciation | numeric | YES |
+| current_value | numeric | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_by | uuid | YES |
+| service_log | jsonb | YES |
+| status | text | YES |
+| depreciation_rate | numeric | YES |
+
+### event_sales_history
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| event_id | uuid | NO |
+| date | date | NO |
+| sales_amount | numeric | NO |
+| transaction_count | integer | NO |
+| avg_transaction | numeric | YES |
+| top_products | jsonb | YES |
+| created_at | timestamp with time zone | YES |
+| kg_sold | numeric | YES |
+| baseline_amount | numeric | YES |
+| variance_pct | numeric | YES |
+| week_start | date | YES |
+| year | integer | YES |
+
+### event_tags
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| event_name | text | NO |
+| event_date | date | NO |
+| notes | text | YES |
+| affected_categories | ARRAY | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| event_type | text | YES |
+| start_date | date | YES |
+| end_date | date | YES |
+| recurrence_month | integer | YES |
+| recurrence_week | integer | YES |
+| reminder_days_before | integer | YES |
+| dismissed | boolean | YES |
+| total_revenue | numeric | YES |
+| total_kg_sold | numeric | YES |
+| total_transactions | integer | YES |
+| baseline_revenue | numeric | YES |
+| revenue_variance_pct | numeric | YES |
+| auto_detected | boolean | YES |
+| spike_date | date | YES |
+
+### financial_periods
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| period_name | text | NO |
+| start_date | date | NO |
+| end_date | date | YES |
+| is_locked | boolean | NO |
+| period_type | text | NO |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | NO |
+
+### hunter_job_processes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| job_id | uuid | NO |
+| process_type | text | NO |
+| started_at | timestamp with time zone | YES |
+| completed_at | timestamp with time zone | YES |
+| processed_by | uuid | NO |
+| weight_before_kg | numeric | YES |
+| weight_after_kg | numeric | YES |
+| notes | text | YES |
+
+### hunter_jobs
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| job_date | date | NO |
+| hunter_name | text | NO |
+| contact_phone | text | YES |
+| species | text | NO |
+| weight_in | numeric | YES |
+| processing_instructions | jsonb | YES |
+| status | text | NO |
+| cuts | jsonb | YES |
+| charge_total | numeric | YES |
+| paid | boolean | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| customer_name | text | YES |
+| customer_phone | text | YES |
+| animal_type | text | YES |
+| estimated_weight | numeric | YES |
+| total_amount | numeric | YES |
+| species_list | jsonb | YES |
+| services_list | jsonb | YES |
+| materials_list | jsonb | YES |
+| processing_options | jsonb | YES |
+| animal_count | integer | YES |
+
+### hunter_process_materials
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| process_id | uuid | NO |
+| material_type | text | NO |
+| item_name | text | NO |
+| quantity_used | numeric | NO |
+| unit | text | NO |
+| cost | numeric | YES |
+| used_at | timestamp with time zone | YES |
+
+### hunter_service_config
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| species | text | NO |
+| base_rate | numeric | YES |
+| per_kg_rate | numeric | YES |
+| cut_options | jsonb | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### hunter_services
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| description | text | YES |
+| base_price | numeric | NO |
+| price_per_kg | numeric | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| cut_options | jsonb | YES |
+| inventory_item_id | uuid | YES |
+| service_category | text | YES |
+
+### hunter_species
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| description | text | YES |
+| typical_weight_min | numeric | YES |
+| typical_weight_max | numeric | YES |
+| is_active | boolean | YES |
+| sort_order | integer | YES |
+| created_at | timestamp with time zone | YES |
+
+### inventory_items
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| plu_code | integer | NO |
+| name | text | NO |
+| pos_display_name | text | YES |
+| scale_label_name | text | YES |
+| sku | text | YES |
+| barcode | text | YES |
+| barcode_prefix | text | YES |
+| item_type | text | YES |
+| category | text | YES |
+| sub_category | text | YES |
+| scale_item | boolean | YES |
+| ishida_sync | boolean | YES |
+| text_lookup_code | text | YES |
+| sell_price | numeric | YES |
+| cost_price | numeric | YES |
+| average_cost_price | numeric | YES |
+| target_margin_pct | numeric | YES |
+| freezer_markdown_pct | numeric | YES |
+| vat_group | text | YES |
+| price_last_changed | timestamp with time zone | YES |
+| stock_control_type | text | YES |
+| unit_type | text | YES |
+| allow_sell_by_fraction | boolean | YES |
+| pack_size | numeric | YES |
+| stock_on_hand_fresh | numeric | YES |
+| stock_on_hand_frozen | numeric | YES |
+| reorder_level | numeric | YES |
+| slow_moving_trigger_days | integer | YES |
+| shelf_life_fresh | integer | YES |
+| shelf_life_frozen | integer | YES |
+| carcass_link | text | YES |
+| recipe_link | uuid | YES |
+| is_manufactured | boolean | YES |
+| dryer_product | boolean | YES |
+| supplier_id | uuid | YES |
+| image_url | text | YES |
+| dietary_tags | ARRAY | YES |
+| allergen_info | ARRAY | YES |
+| internal_notes | text | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| supplier_ids | jsonb | YES |
+| average_cost | numeric | YES |
+| storage_location_ids | jsonb | YES |
+| carcass_link_id | uuid | YES |
+| dryer_biltong_product | boolean | YES |
+| modifier_group_ids | jsonb | YES |
+| recipe_id | uuid | YES |
+| dryer_product_type | text | YES |
+| manufactured_item | boolean | YES |
+| last_edited_by | uuid | YES |
+| last_edited_at | timestamp with time zone | YES |
+| category_id | uuid | YES |
+| current_stock | numeric | YES |
+| product_type | text | YES |
+| sub_category_id | uuid | YES |
+| available_online | boolean | YES |
+| available_pos | boolean | YES |
+| available_loyalty_app | boolean | YES |
+| online_description | text | YES |
+| online_image_url | text | YES |
+| online_sort_order | integer | YES |
+| shrinkage_allowance_pct | numeric | YES |
+| is_frozen_variant | boolean | YES |
+| min_stock_alert | numeric | YES |
+| scale_shelf_life | integer | YES |
+| label_format | text | YES |
+| bar_flag | text | YES |
+| department_no | text | YES |
+| best_by | integer | YES |
+| des_li1 | text | YES |
+| des_li2 | text | YES |
+| des_li3 | text | YES |
+| des_li4 | text | YES |
+| font_line1 | integer | YES |
+| font_line2 | integer | YES |
+| font_line3 | integer | YES |
+| font_line4 | integer | YES |
+| has_ingredient | boolean | YES |
+| ingredient_no | text | YES |
+| cdv | integer | YES |
+| weighed | boolean | YES |
+| online_display_name | text | YES |
+| online_min_stock_threshold | numeric | NO |
+| delivery_eligible | boolean | NO |
+| is_best_seller | boolean | YES |
+| is_featured | boolean | YES |
+| online_ingredients | text | YES |
+| online_allergens | text | YES |
+| online_cooking_tips | text | YES |
+| online_weight_description | text | YES |
+| parent_stock_item_id | uuid | YES |
+| stock_deduction_qty | numeric | YES |
+| stock_deduction_unit | text | YES |
+
+### invoice_line_items
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| invoice_id | uuid | NO |
+| description | text | NO |
+| quantity | numeric | NO |
+| unit_price | numeric | NO |
+| line_total | numeric | YES |
+| sort_order | integer | YES |
+| created_at | timestamp with time zone | YES |
+
+### invoices
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| invoice_number | text | NO |
+| account_id | uuid | YES |
+| invoice_date | date | NO |
+| due_date | date | YES |
+| line_items | jsonb | YES |
+| subtotal | numeric | YES |
+| tax_rate | numeric | YES |
+| tax_amount | numeric | YES |
+| total | numeric | YES |
+| status | text | NO |
+| payment_date | date | YES |
+| created_by | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| supplier_id | uuid | YES |
+
+### leave_balances
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| employee_id | uuid | NO |
+| annual_leave_balance | numeric | YES |
+| sick_leave_balance | numeric | YES |
+| family_leave_balance | numeric | YES |
+| last_updated | timestamp with time zone | YES |
+| last_accrual_date | date | YES |
+| staff_id | uuid | YES |
+
+### leave_history
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| leave_type | text | NO |
+| start_date | date | NO |
+| end_date | date | NO |
+| days_taken | numeric | NO |
+| source | text | NO |
+| source_request_id | uuid | YES |
+| notes | text | YES |
+| recorded_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+
+### leave_requests
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| leave_type | text | NO |
+| start_date | date | NO |
+| end_date | date | NO |
+| days_requested | numeric | YES |
+| status | text | NO |
+| approved_by | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| employee_id | uuid | YES |
+| review_notes | text | YES |
+| reviewed_at | timestamp with time zone | YES |
+
+### ledger_entries
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| account_id | uuid | YES |
+| entry_date | date | NO |
+| description | text | YES |
+| debit | numeric | YES |
+| credit | numeric | YES |
+| reference | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| source | text | YES |
+| metadata | jsonb | YES |
+| account_code | text | YES |
+| account_name | text | YES |
+| reference_type | text | YES |
+| reference_id | uuid | YES |
+| recorded_by | uuid | YES |
+
+### loyalty_customers
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| full_name | text | NO |
+| email | text | YES |
+| phone | text | YES |
+| whatsapp | text | YES |
+| birthday | date | YES |
+| physical_address | text | YES |
+| loyalty_tier | text | YES |
+| points_balance | integer | YES |
+| total_spend | numeric | YES |
+| visit_count | integer | YES |
+| favourite_products | ARRAY | YES |
+| notes | text | YES |
+| active | boolean | YES |
+| joined_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| tags | jsonb | YES |
+| membership_number | text | YES |
+| auth_uid | uuid | YES |
+| last_purchase_date | date | YES |
+| points_expiry_date | date | YES |
+| referral_code | text | YES |
+
+### loyalty_notifications
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| customer_id | uuid | NO |
+| notification_type | text | NO |
+| title | text | NO |
+| body | text | NO |
+| scheduled_for | date | NO |
+| sent_at | timestamp with time zone | YES |
+| status | text | YES |
+| metadata | jsonb | YES |
+| created_at | timestamp with time zone | YES |
+
+### loyalty_points_log
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| customer_id | uuid | NO |
+| transaction_id | uuid | YES |
+| points_delta | integer | NO |
+| points_earned | integer | YES |
+| amount | numeric | YES |
+| action_type | text | NO |
+| type | text | YES |
+| notes | text | YES |
+| staff_id | uuid | YES |
+| created_at | timestamp with time zone | YES |
+
+### loyalty_tier_config
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| tier_key | text | NO |
+| tier_label | text | NO |
+| points_required | integer | NO |
+| sort_order | integer | NO |
+| perks | jsonb | NO |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| color_hex | text | YES |
+| icon | text | YES |
+| decay_reset_points | integer | YES |
+
+### message_logs
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| message_sid | text | YES |
+| to_number | text | NO |
+| message_content | text | YES |
+| status | text | NO |
+| error_message | text | YES |
+| sent_at | timestamp with time zone | NO |
+
+### modifier_groups
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| required | boolean | YES |
+| allow_multiple | boolean | YES |
+| max_selections | integer | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| is_required | boolean | YES |
+| updated_at | timestamp with time zone | YES |
+| sort_order | integer | YES |
+
+### modifier_items
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| modifier_group_id | uuid | NO |
+| name | text | NO |
+| price_adjustment | numeric | YES |
+| track_inventory | boolean | YES |
+| linked_item_id | uuid | YES |
+| sort_order | integer | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| inventory_item_id | uuid | YES |
+| updated_at | timestamp with time zone | YES |
+
+### online_order_items
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| order_id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| plu_code | integer | NO |
+| product_name | text | NO |
+| qty | integer | NO |
+| unit_price | numeric | NO |
+| vat_rate | numeric | NO |
+| line_total | numeric | NO |
+| created_at | timestamp with time zone | NO |
+
+### online_order_print_queue
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| order_id | uuid | NO |
+| order_data | jsonb | NO |
+| printed | boolean | NO |
+| printed_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | NO |
+
+### online_orders
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| order_number | text | NO |
+| customer_id | uuid | NO |
+| parked_sale_id | uuid | YES |
+| status | text | NO |
+| payment_method | text | NO |
+| payment_status | text | NO |
+| payfast_payment_id | text | YES |
+| subtotal | numeric | NO |
+| vat_amount | numeric | NO |
+| total | numeric | NO |
+| notes | text | YES |
+| collection_date | date | YES |
+| collection_slot | text | YES |
+| is_delivery | boolean | NO |
+| delivery_address | text | YES |
+| delivery_fee | numeric | NO |
+| created_at | timestamp with time zone | NO |
+| updated_at | timestamp with time zone | NO |
+| confirmed_at | timestamp with time zone | YES |
+| ready_at | timestamp with time zone | YES |
+| collected_at | timestamp with time zone | YES |
+| cancelled_at | timestamp with time zone | YES |
+| cancellation_reason | text | YES |
+| is_test | boolean | NO |
+
+### online_product_categories
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| category_id | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### online_product_recipes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| customer_recipe_id | uuid | NO |
+| display_order | integer | YES |
+| created_at | timestamp with time zone | YES |
+
+### online_product_suggestions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| source_product_id | uuid | NO |
+| suggested_product_id | uuid | NO |
+| suggestion_type | text | NO |
+| display_order | integer | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### opening_balances
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| account_code | text | NO |
+| account_name | text | NO |
+| balance_date | date | NO |
+| debit_balance | numeric | NO |
+| credit_balance | numeric | NO |
+| is_confirmed | boolean | NO |
+| notes | text | YES |
+| recorded_by | uuid | YES |
+| created_at | timestamp with time zone | NO |
+
+### parked_sales
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| reference | text | NO |
+| source | text | YES |
+| hunter_job_id | uuid | YES |
+| customer_name | text | YES |
+| customer_phone | text | YES |
+| line_items | jsonb | NO |
+| subtotal | numeric | YES |
+| notes | text | YES |
+| status | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| online_order_id | uuid | YES |
+| customer_id | uuid | YES |
+| payment_status | text | NO |
+
+### payroll_entries
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| pay_period_start | date | NO |
+| pay_period_end | date | NO |
+| pay_frequency | text | NO |
+| gross_pay | numeric | YES |
+| deductions | numeric | YES |
+| net_pay | numeric | YES |
+| status | text | NO |
+| approved_by | uuid | YES |
+| paid_at | timestamp with time zone | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| period_id | uuid | YES |
+| regular_hours | numeric | YES |
+| overtime_hours | numeric | YES |
+| sunday_hours | numeric | YES |
+| public_holiday_hours | numeric | YES |
+| regular_pay | numeric | YES |
+| overtime_pay | numeric | YES |
+| sunday_pay | numeric | YES |
+| public_holiday_pay | numeric | YES |
+| uif_employee | numeric | YES |
+| uif_employer | numeric | YES |
+| advance_deduction | numeric | YES |
+| meat_purchase_deduction | numeric | YES |
+| other_deductions | numeric | YES |
+
+### payroll_periods
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| period_name | text | NO |
+| start_date | date | NO |
+| end_date | date | NO |
+| status | text | NO |
+| processed_at | timestamp with time zone | YES |
+| processed_by | uuid | YES |
+| total_gross | numeric | YES |
+| total_deductions | numeric | YES |
+| total_net | numeric | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### petty_cash_movements
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| till_session_id | uuid | NO |
+| direction | text | NO |
+| amount | numeric | NO |
+| reason | text | NO |
+| recorded_by | uuid | NO |
+| recorded_at | timestamp with time zone | NO |
+| terminal_id | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### printer_config
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | YES |
+| ip_address | text | YES |
+| port | integer | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### product_suppliers
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| supplier_id | uuid | NO |
+| supplier_product_code | text | YES |
+| supplier_product_name | text | YES |
+| unit_price | numeric | YES |
+| lead_time_days | integer | YES |
+| is_preferred | boolean | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### production_batch_ingredients
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| batch_id | uuid | NO |
+| ingredient_id | uuid | NO |
+| planned_quantity | numeric | NO |
+| actual_quantity | numeric | YES |
+| used_at | timestamp with time zone | YES |
+
+### production_batch_outputs
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| batch_id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| qty_produced | numeric | NO |
+| unit | text | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### production_batches
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| batch_date | date | NO |
+| recipe_id | uuid | YES |
+| qty_produced | numeric | YES |
+| unit | text | YES |
+| cost_total | numeric | YES |
+| notes | text | YES |
+| status | text | NO |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| output_product_id | uuid | YES |
+| parent_batch_id | uuid | YES |
+| split_note | text | YES |
+| is_split_parent | boolean | YES |
+
+### profiles
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| full_name | text | NO |
+| role | text | NO |
+| pin_hash | text | NO |
+| phone | text | YES |
+| email | text | YES |
+| id_number | text | YES |
+| start_date | date | YES |
+| employment_type | text | YES |
+| hourly_rate | numeric | YES |
+| monthly_salary | numeric | YES |
+| payroll_frequency | text | YES |
+| max_discount_pct | numeric | YES |
+| bank_name | text | YES |
+| bank_account | text | YES |
+| bank_branch_code | text | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| is_active | boolean | YES |
+| permissions | jsonb | YES |
+
+### promotion_products
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| promotion_id | uuid | YES |
+| inventory_item_id | uuid | YES |
+| role | text | NO |
+| quantity | numeric | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### promotion_suggestions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| suggestion_type | text | NO |
+| product_id | uuid | YES |
+| title | text | NO |
+| description | text | NO |
+| suggested_action | text | NO |
+| points_multiplier | numeric | YES |
+| estimated_margin | numeric | YES |
+| status | text | YES |
+| created_at | timestamp with time zone | YES |
+| reviewed_at | timestamp with time zone | YES |
+| reviewed_by | uuid | YES |
+
+### promotions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| description | text | YES |
+| status | text | NO |
+| promotion_type | text | NO |
+| trigger_config | jsonb | NO |
+| reward_config | jsonb | NO |
+| audience | ARRAY | NO |
+| channels | ARRAY | NO |
+| start_date | date | YES |
+| end_date | date | YES |
+| start_time | time without time zone | YES |
+| end_time | time without time zone | YES |
+| days_of_week | ARRAY | YES |
+| usage_limit | integer | YES |
+| usage_count | integer | YES |
+| requires_manual_activation | boolean | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| terms_and_conditions | text | YES |
+
+### public_holidays
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| holiday_date | date | NO |
+| holiday_name | text | NO |
+| is_active | boolean | NO |
+| created_at | timestamp with time zone | YES |
+
+### purchase_order_lines
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| purchase_order_id | uuid | NO |
+| inventory_item_id | uuid | NO |
+| quantity | numeric | NO |
+| unit | text | YES |
+| unit_price | numeric | YES |
+| line_total | numeric | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### purchase_orders
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| po_number | text | NO |
+| supplier_id | uuid | NO |
+| status | text | NO |
+| order_date | date | NO |
+| expected_date | date | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### purchase_sale_agreement
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| agreement_number | text | NO |
+| agreement_type | text | NO |
+| party_name | text | NO |
+| party_contact | text | YES |
+| asset_description | text | NO |
+| agreed_price | numeric | NO |
+| agreement_date | date | NO |
+| completion_date | date | YES |
+| status | text | NO |
+| payment_terms | text | YES |
+| special_conditions | text | YES |
+| created_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+| account_id | uuid | YES |
+
+### purchase_sale_payments
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| agreement_id | uuid | NO |
+| payment_date | date | NO |
+| amount | numeric | NO |
+| payment_method | text | NO |
+| reference_number | text | YES |
+| notes | text | YES |
+| recorded_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### recipe_ingredients
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| recipe_id | uuid | NO |
+| inventory_item_id | uuid | YES |
+| ingredient_name | text | NO |
+| quantity | numeric | NO |
+| unit | text | NO |
+| sort_order | integer | YES |
+| is_optional | boolean | YES |
+| notes | text | YES |
+
+### recipes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| category | text | YES |
+| ingredients | jsonb | YES |
+| instructions | text | YES |
+| yield_qty | numeric | YES |
+| yield_unit | text | YES |
+| cost_per_unit | numeric | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| output_product_id | uuid | YES |
+| expected_yield_pct | numeric | YES |
+| batch_size_kg | numeric | YES |
+| cook_time_minutes | bigint | YES |
+| created_by | uuid | YES |
+| prep_time_minutes | integer | YES |
+| required_role | text | YES |
+| goes_to_dryer | boolean | YES |
+| dryer_output_product_id | uuid | YES |
+
+### referrals
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| referrer_id | uuid | NO |
+| referred_id | uuid | YES |
+| referral_code | text | NO |
+| app_opened_at | timestamp with time zone | YES |
+| registered_at | timestamp with time zone | YES |
+| first_purchase_at | timestamp with time zone | YES |
+| status | text | NO |
+| created_at | timestamp with time zone | YES |
+
+### reorder_recommendations
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| item_id | uuid | NO |
+| days_of_stock | numeric | YES |
+| urgency | text | YES |
+| recommended_qty | numeric | YES |
+| based_on_days | integer | YES |
+| auto_resolved | boolean | YES |
+| resolved_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | YES |
+
+### report_schedules
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| report_key | text | NO |
+| label | text | NO |
+| schedule_type | text | NO |
+| time_of_day | text | NO |
+| day_of_week | integer | YES |
+| day_of_month | integer | YES |
+| delivery | ARRAY | NO |
+| email_to | text | YES |
+| format | text | NO |
+| date_range | text | NO |
+| is_active | boolean | NO |
+| last_run_at | timestamp with time zone | YES |
+| next_run_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | NO |
+| updated_at | timestamp with time zone | NO |
+
+### role_permissions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| role_name | text | NO |
+| permissions | jsonb | NO |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### scale_config
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| primary_mode | text | YES |
+| plu_digits | integer | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### scheduled_report_runs
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| schedule_id | uuid | NO |
+| report_key | text | NO |
+| status | text | NO |
+| row_count | integer | YES |
+| delivery_log | jsonb | YES |
+| error_message | text | YES |
+| run_at | timestamp with time zone | NO |
+
+### shrinkage_alerts
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| item_id | uuid | NO |
+| alert_date | date | NO |
+| expected_qty | numeric | YES |
+| actual_qty | numeric | YES |
+| variance_pct | numeric | YES |
+| acknowledged | boolean | YES |
+| acknowledged_by | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| resolved | boolean | YES |
+| resolved_by | uuid | YES |
+| resolved_at | timestamp with time zone | YES |
+| resolution_notes | text | YES |
+| product_id | uuid | YES |
+| item_name | text | YES |
+| status | text | YES |
+| theoretical_stock | numeric | YES |
+| actual_stock | numeric | YES |
+| gap_amount | numeric | YES |
+| gap_percentage | numeric | YES |
+| possible_reasons | text | YES |
+| staff_involved | text | YES |
+| shrinkage_percentage | numeric | YES |
+| alert_type | text | YES |
+| batch_id | uuid | YES |
+| expected_weight | numeric | YES |
+| actual_weight | numeric | YES |
+
+### smtp_settings
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| host | text | NO |
+| port | integer | NO |
+| username | text | NO |
+| use_ssl | boolean | YES |
+| from_name | text | YES |
+| from_email | text | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### split_payments
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| transaction_id | uuid | NO |
+| payment_method | text | NO |
+| amount | numeric | NO |
+| amount_tendered | numeric | YES |
+| change_given | numeric | YES |
+| card_reference | text | YES |
+| business_account_id | uuid | YES |
+| created_at | timestamp with time zone | YES |
+
+### sponsorships
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| sponsor_name | text | NO |
+| event_name | text | NO |
+| sponsorship_amount | numeric | NO |
+| sponsorship_date | date | NO |
+| payment_status | text | NO |
+| contact_person | text | YES |
+| contact_details | text | YES |
+| benefits_provided | text | YES |
+| notes | text | YES |
+| created_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### staff_awol_records
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| awol_date | date | NO |
+| expected_start_time | time without time zone | YES |
+| notified_owner_manager | boolean | YES |
+| notified_who | text | YES |
+| resolution | text | NO |
+| written_warning_issued | boolean | YES |
+| warning_document_url | text | YES |
+| notes | text | YES |
+| recorded_by | uuid | NO |
+| created_at | timestamp with time zone | YES |
+
+### staff_credit
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| credit_amount | numeric | NO |
+| reason | text | NO |
+| granted_date | date | NO |
+| due_date | date | YES |
+| is_paid | boolean | YES |
+| paid_date | date | YES |
+| granted_by | uuid | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| credit_type | text | YES |
+| items_purchased | text | YES |
+| repayment_plan | text | YES |
+| deduct_from | text | YES |
+| status | text | NO |
+
+### staff_documents
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| employee_id | uuid | NO |
+| doc_type | text | NO |
+| file_name | text | NO |
+| file_url | text | NO |
+| uploaded_by | uuid | YES |
+| uploaded_at | timestamp with time zone | YES |
+| notes | text | YES |
+
+### staff_loans
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| loan_amount | numeric | NO |
+| interest_rate | numeric | YES |
+| term_months | integer | YES |
+| monthly_payment | numeric | YES |
+| granted_date | date | NO |
+| first_payment_date | date | YES |
+| is_active | boolean | YES |
+| granted_by | uuid | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### staff_profiles
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| full_name | text | NO |
+| role | text | NO |
+| pin_hash | text | YES |
+| phone | text | YES |
+| hire_date | date | YES |
+| pay_frequency | text | NO |
+| hourly_rate | numeric | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| email | text | YES |
+| id_number | text | YES |
+| employment_type | text | YES |
+| monthly_salary | numeric | YES |
+| max_discount_pct | numeric | YES |
+| bank_name | text | YES |
+| bank_account | text | YES |
+| bank_branch_code | text | YES |
+| notes | text | YES |
+| max_discount_percent | numeric | NO |
+| can_clock_in | boolean | NO |
+| uif_exempt | boolean | NO |
+| working_days_per_week | integer | NO |
+
+### staff_requests
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| request_type | text | NO |
+| status | text | NO |
+| amount_requested | numeric | YES |
+| amount_approved | numeric | YES |
+| advance_reason | text | YES |
+| decline_reason | text | YES |
+| leave_type | text | YES |
+| leave_start_date | date | YES |
+| leave_end_date | date | YES |
+| days_requested | numeric | YES |
+| leave_notes | text | YES |
+| leave_decline_reason | text | YES |
+| reviewed_by | uuid | YES |
+| reviewed_at | timestamp with time zone | YES |
+| created_at | timestamp with time zone | YES |
+
+### stock_locations
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| type | text | YES |
+| sort_order | integer | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### stock_movements
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| item_id | uuid | NO |
+| movement_type | text | NO |
+| quantity | numeric | NO |
+| unit_type | text | YES |
+| location_from | uuid | YES |
+| location_to | uuid | YES |
+| balance_after | numeric | YES |
+| reference_id | text | YES |
+| reference_type | text | YES |
+| reason | text | YES |
+| staff_id | uuid | YES |
+| photo_url | text | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| metadata | jsonb | YES |
+
+### stock_take_entries
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| session_id | uuid | NO |
+| item_id | uuid | NO |
+| location_id | uuid | YES |
+| expected_quantity | numeric | NO |
+| actual_quantity | numeric | YES |
+| variance | numeric | YES |
+| counted_by | uuid | YES |
+| device_id | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### stock_take_sessions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| status | text | NO |
+| started_at | timestamp with time zone | YES |
+| started_by | uuid | YES |
+| approved_at | timestamp with time zone | YES |
+| approved_by | uuid | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| rejection_note | text | YES |
+
+### supplier_invoices
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| invoice_number | text | NO |
+| supplier_id | uuid | YES |
+| invoice_date | date | NO |
+| due_date | date | NO |
+| line_items | jsonb | YES |
+| subtotal | numeric | NO |
+| tax_rate | numeric | YES |
+| tax_amount | numeric | NO |
+| total | numeric | NO |
+| status | text | NO |
+| payment_date | date | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| received_at | timestamp with time zone | YES |
+| received_by | uuid | YES |
+| calculation_verified | boolean | YES |
+| calculation_errors | jsonb | YES |
+| ocr_confidence | numeric | YES |
+| ocr_raw_text | text | YES |
+| source | text | YES |
+| pending_mappings | jsonb | YES |
+| mappings_complete | boolean | YES |
+| is_opening_balance | boolean | NO |
+| amount_paid | numeric | NO |
+| balance_due | numeric | YES |
+
+### supplier_item_mappings
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| supplier_id | uuid | YES |
+| supplier_description | text | NO |
+| description_normalized | text | YES |
+| account_code | text | NO |
+| inventory_item_id | uuid | YES |
+| update_stock | boolean | YES |
+| unit_of_measure | text | YES |
+| notes | text | YES |
+| created_by | uuid | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### supplier_payments
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| supplier_id | uuid | YES |
+| invoice_id | uuid | YES |
+| payment_date | date | NO |
+| amount | numeric | NO |
+| payment_method | text | NO |
+| bank_reference | text | YES |
+| ledger_entry_id | uuid | YES |
+| notes | text | YES |
+| recorded_by | uuid | YES |
+| created_at | timestamp with time zone | NO |
+
+### supplier_price_changes
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| inventory_item_id | uuid | YES |
+| supplier_id | uuid | YES |
+| old_price | numeric | YES |
+| new_price | numeric | YES |
+| percentage_increase | numeric | YES |
+| suggested_sell_price | numeric | YES |
+| status | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### suppliers
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| contact_name | text | YES |
+| phone | text | YES |
+| email | text | YES |
+| account_number | text | YES |
+| notes | text | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| vat_number | text | YES |
+| address | text | YES |
+| city | text | YES |
+| postal_code | text | YES |
+| payment_terms | text | YES |
+| bank_name | text | YES |
+| bank_account | text | YES |
+| bank_branch_code | text | YES |
+| bbbee_level | text | YES |
+
+### suspended_transactions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| terminal_id | text | NO |
+| cashier_id | uuid | YES |
+| cart_json | jsonb | NO |
+| customer_note | text | YES |
+| customer_id | uuid | YES |
+| parked_at | timestamp with time zone | YES |
+| expected_collection_time | timestamp with time zone | YES |
+| carry_over | boolean | YES |
+| carry_over_date | date | YES |
+| notification_sent | boolean | YES |
+| active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+
+### system_config
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| key | text | NO |
+| description | text | YES |
+| value | jsonb | YES |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### tax_rules
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| percentage | numeric | NO |
+| is_active | boolean | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+
+### till_sessions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| terminal_id | text | NO |
+| opened_by | uuid | NO |
+| opened_at | timestamp with time zone | NO |
+| opening_float | numeric | NO |
+| closed_by | uuid | YES |
+| closed_at | timestamp with time zone | YES |
+| expected_closing_cash | numeric | YES |
+| actual_closing_cash | numeric | YES |
+| variance | numeric | YES |
+| status | text | NO |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+
+### timecard_breaks
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| timecard_id | uuid | NO |
+| break_start | timestamp with time zone | YES |
+| break_end | timestamp with time zone | YES |
+| break_duration_minutes | numeric | YES |
+| created_at | timestamp with time zone | YES |
+| break_type | text | NO |
+
+### timecards
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| staff_id | uuid | NO |
+| shift_date | date | NO |
+| clock_in | timestamp with time zone | YES |
+| clock_out | timestamp with time zone | YES |
+| break_minutes | integer | YES |
+| break_detail | jsonb | YES |
+| total_hours | numeric | YES |
+| notes | text | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| employee_id | uuid | YES |
+| status | text | NO |
+| regular_hours | numeric | YES |
+| overtime_hours | numeric | YES |
+| sunday_hours | numeric | YES |
+| public_holiday_hours | numeric | YES |
+
+### transaction_items
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| transaction_id | uuid | NO |
+| inventory_item_id | uuid | YES |
+| quantity | numeric | NO |
+| unit_price | numeric | NO |
+| line_total | numeric | NO |
+| created_at | timestamp with time zone | YES |
+| cost_price | numeric | YES |
+| discount_amount | numeric | YES |
+| is_weighted | boolean | YES |
+| weight_kg | numeric | YES |
+| modifier_selections | jsonb | YES |
+| product_name | text | YES |
+
+### transactions
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| created_at | timestamp with time zone | NO |
+| total_amount | numeric | NO |
+| cost_amount | numeric | YES |
+| payment_method | text | YES |
+| till_session_id | uuid | YES |
+| staff_id | uuid | YES |
+| account_id | uuid | YES |
+| notes | text | YES |
+| vat_amount | numeric | YES |
+| receipt_number | text | YES |
+| discount_total | numeric | YES |
+| loyalty_customer_id | uuid | YES |
+| refund_of_transaction_id | uuid | YES |
+| is_refund | boolean | YES |
+| is_voided | boolean | YES |
+| voided_by | uuid | YES |
+| voided_at | timestamp with time zone | YES |
+| void_reason | text | YES |
+
+### yield_template_cuts
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| template_id | uuid | NO |
+| cut_name | text | NO |
+| expected_percentage | numeric | NO |
+| expected_weight_kg | numeric | YES |
+| sort_order | integer | YES |
+| created_at | timestamp with time zone | YES |
+
+### yield_templates
+
+| Column | Type | Nullable |
+|--------|------|----------|
+| id | uuid | NO |
+| name | text | NO |
+| species | text | NO |
+| cuts | jsonb | YES |
+| created_at | timestamp with time zone | YES |
+| updated_at | timestamp with time zone | YES |
+| carcass_type | text | YES |
+| template_name | text | YES |
+
+## Foreign keys (public)
+
+| Table | Column | References |
+|-------|--------|------------|
+| account_awol_records | account_id | business_accounts.id |
+| account_awol_records | account_id | business_accounts.id |
+| account_awol_records | recorded_by | profiles.id |
+| account_awol_records | recorded_by | profiles.id |
+| account_transactions | account_id | business_accounts.id |
+| account_transactions | account_id | business_accounts.id |
+| account_transactions | recorded_by | profiles.id |
+| account_transactions | recorded_by | profiles.id |
+| announcements | created_by | profiles.id |
+| announcements | created_by | profiles.id |
+| audit_log | authorised_by | profiles.id |
+| audit_log | authorised_by | profiles.id |
+| audit_log | staff_id | profiles.id |
+| audit_log | staff_id | profiles.id |
+| bank_reconciliation_matches | bank_transaction_id | bank_transactions.id |
+| bank_reconciliation_matches | bank_transaction_id | bank_transactions.id |
+| bank_reconciliation_matches | created_by | profiles.id |
+| bank_reconciliation_matches | created_by | profiles.id |
+| bank_transactions | created_by | profiles.id |
+| bank_transactions | created_by | profiles.id |
+| carcass_breakdown_sessions | intake_id | carcass_intakes.id |
+| carcass_breakdown_sessions | intake_id | carcass_intakes.id |
+| carcass_breakdown_sessions | processed_by | profiles.id |
+| carcass_breakdown_sessions | processed_by | profiles.id |
+| carcass_breakdown_sessions | template_id | yield_templates.id |
+| carcass_breakdown_sessions | template_id | yield_templates.id |
+| carcass_cuts | carcass_id | carcass_intakes.id |
+| carcass_cuts | carcass_id | carcass_intakes.id |
+| carcass_cuts | intake_id | carcass_intakes.id |
+| carcass_cuts | intake_id | carcass_intakes.id |
+| carcass_intakes | hunter_job_id | hunter_jobs.id |
+| carcass_intakes | hunter_job_id | hunter_jobs.id |
+| carcass_intakes | supplier_id | suppliers.id |
+| carcass_intakes | supplier_id | suppliers.id |
+| carcass_intakes | yield_template_id | yield_templates.id |
+| carcass_intakes | yield_template_id | yield_templates.id |
+| categories | parent_id | categories.id |
+| chart_of_accounts | parent_id | chart_of_accounts.id |
+| compliance_records | staff_id | staff_profiles.id |
+| compliance_records | staff_id | staff_profiles.id |
+| compliance_records | verified_by | staff_profiles.id |
+| compliance_records | verified_by | staff_profiles.id |
+| custom_reward_campaigns | announcement_id | announcements.id |
+| custom_reward_campaigns | announcement_id | announcements.id |
+| custom_reward_campaigns | created_by | profiles.id |
+| custom_reward_campaigns | created_by | profiles.id |
+| custom_reward_ingredients | campaign_id | custom_reward_campaigns.id |
+| custom_reward_ingredients | campaign_id | custom_reward_campaigns.id |
+| custom_reward_orders | campaign_id | custom_reward_campaigns.id |
+| custom_reward_orders | campaign_id | custom_reward_campaigns.id |
+| custom_reward_orders | customer_id | loyalty_customers.id |
+| custom_reward_orders | customer_id | loyalty_customers.id |
+| custom_reward_orders | meat_base_id | custom_reward_ingredients.id |
+| custom_reward_orders | meat_base_id | custom_reward_ingredients.id |
+| custom_reward_orders | spice_profile_id | custom_reward_ingredients.id |
+| custom_reward_orders | spice_profile_id | custom_reward_ingredients.id |
+| customer_invoices | account_id | business_accounts.id |
+| customer_invoices | account_id | business_accounts.id |
+| customer_invoices | created_by | profiles.id |
+| customer_invoices | created_by | profiles.id |
+| customer_invoices | transaction_id | transactions.id |
+| customer_invoices | transaction_id | transactions.id |
+| customer_recipe_category_assignments | option_id | customer_recipe_category_options.id |
+| customer_recipe_category_assignments | option_id | customer_recipe_category_options.id |
+| customer_recipe_category_assignments | recipe_id | customer_recipes.id |
+| customer_recipe_category_assignments | recipe_id | customer_recipes.id |
+| customer_recipe_category_options | type_id | customer_recipe_category_types.id |
+| customer_recipe_category_options | type_id | customer_recipe_category_types.id |
+| customer_recipe_images | recipe_id | customer_recipes.id |
+| customer_recipe_images | recipe_id | customer_recipes.id |
+| customer_recipe_ingredients | recipe_id | customer_recipes.id |
+| customer_recipe_ingredients | recipe_id | customer_recipes.id |
+| customer_recipe_steps | recipe_id | customer_recipes.id |
+| customer_recipe_steps | recipe_id | customer_recipes.id |
+| customer_recipes | created_by | profiles.id |
+| customer_recipes | created_by | profiles.id |
+| donations | recorded_by | profiles.id |
+| donations | recorded_by | profiles.id |
+| dryer_batch_ingredients | batch_id | dryer_batches.id |
+| dryer_batch_ingredients | batch_id | dryer_batches.id |
+| dryer_batch_ingredients | inventory_item_id | inventory_items.id |
+| dryer_batch_ingredients | inventory_item_id | inventory_items.id |
+| dryer_batches | input_product_id | inventory_items.id |
+| dryer_batches | input_product_id | inventory_items.id |
+| dryer_batches | output_product_id | inventory_items.id |
+| dryer_batches | output_product_id | inventory_items.id |
+| dryer_batches | production_batch_id | production_batches.id |
+| dryer_batches | production_batch_id | production_batches.id |
+| dryer_batches | recipe_id | recipes.id |
+| dryer_batches | recipe_id | recipes.id |
+| email_log | invoice_id | customer_invoices.id |
+| email_log | invoice_id | customer_invoices.id |
+| equipment_register | updated_by | profiles.id |
+| equipment_register | updated_by | profiles.id |
+| event_sales_history | event_id | event_tags.id |
+| event_sales_history | event_id | event_tags.id |
+| financial_periods | created_by | profiles.id |
+| financial_periods | created_by | profiles.id |
+| hunter_job_processes | job_id | hunter_jobs.id |
+| hunter_job_processes | job_id | hunter_jobs.id |
+| hunter_job_processes | processed_by | profiles.id |
+| hunter_job_processes | processed_by | profiles.id |
+| hunter_process_materials | process_id | hunter_job_processes.id |
+| hunter_process_materials | process_id | hunter_job_processes.id |
+| hunter_services | inventory_item_id | inventory_items.id |
+| hunter_services | inventory_item_id | inventory_items.id |
+| inventory_items | category_id | categories.id |
+| inventory_items | category_id | categories.id |
+| inventory_items | parent_stock_item_id | inventory_items.id |
+| inventory_items | sub_category_id | categories.id |
+| inventory_items | sub_category_id | categories.id |
+| inventory_items | supplier_id | suppliers.id |
+| inventory_items | supplier_id | suppliers.id |
+| invoice_line_items | invoice_id | invoices.id |
+| invoice_line_items | invoice_id | invoices.id |
+| invoices | account_id | business_accounts.id |
+| invoices | account_id | business_accounts.id |
+| invoices | created_by | staff_profiles.id |
+| invoices | created_by | staff_profiles.id |
+| invoices | supplier_id | suppliers.id |
+| invoices | supplier_id | suppliers.id |
+| leave_balances | employee_id | profiles.id |
+| leave_balances | employee_id | profiles.id |
+| leave_balances | staff_id | staff_profiles.id |
+| leave_balances | staff_id | staff_profiles.id |
+| leave_history | recorded_by | profiles.id |
+| leave_history | recorded_by | profiles.id |
+| leave_history | staff_id | staff_profiles.id |
+| leave_history | staff_id | staff_profiles.id |
+| leave_requests | approved_by | staff_profiles.id |
+| leave_requests | approved_by | staff_profiles.id |
+| leave_requests | employee_id | profiles.id |
+| leave_requests | employee_id | profiles.id |
+| leave_requests | staff_id | staff_profiles.id |
+| leave_requests | staff_id | staff_profiles.id |
+| ledger_entries | account_id | business_accounts.id |
+| ledger_entries | account_id | business_accounts.id |
+| ledger_entries | created_by | staff_profiles.id |
+| ledger_entries | created_by | staff_profiles.id |
+| ledger_entries | recorded_by | profiles.id |
+| ledger_entries | recorded_by | profiles.id |
+| loyalty_customers | auth_uid | auth.users |
+| loyalty_notifications | customer_id | loyalty_customers.id |
+| loyalty_notifications | customer_id | loyalty_customers.id |
+| loyalty_points_log | customer_id | loyalty_customers.id |
+| loyalty_points_log | customer_id | loyalty_customers.id |
+| loyalty_points_log | staff_id | profiles.id |
+| loyalty_points_log | staff_id | profiles.id |
+| loyalty_points_log | transaction_id | transactions.id |
+| loyalty_points_log | transaction_id | transactions.id |
+| modifier_items | inventory_item_id | inventory_items.id |
+| modifier_items | inventory_item_id | inventory_items.id |
+| modifier_items | linked_item_id | inventory_items.id |
+| modifier_items | linked_item_id | inventory_items.id |
+| modifier_items | modifier_group_id | modifier_groups.id |
+| modifier_items | modifier_group_id | modifier_groups.id |
+| online_order_items | inventory_item_id | inventory_items.id |
+| online_order_items | inventory_item_id | inventory_items.id |
+| online_order_items | order_id | online_orders.id |
+| online_order_items | order_id | online_orders.id |
+| online_order_print_queue | order_id | online_orders.id |
+| online_order_print_queue | order_id | online_orders.id |
+| online_orders | customer_id | loyalty_customers.id |
+| online_orders | customer_id | loyalty_customers.id |
+| online_orders | parked_sale_id | parked_sales.id |
+| online_orders | parked_sale_id | parked_sales.id |
+| online_product_categories | category_id | categories.id |
+| online_product_categories | category_id | categories.id |
+| online_product_categories | inventory_item_id | inventory_items.id |
+| online_product_categories | inventory_item_id | inventory_items.id |
+| online_product_recipes | customer_recipe_id | customer_recipes.id |
+| online_product_recipes | customer_recipe_id | customer_recipes.id |
+| online_product_recipes | inventory_item_id | inventory_items.id |
+| online_product_recipes | inventory_item_id | inventory_items.id |
+| online_product_suggestions | source_product_id | inventory_items.id |
+| online_product_suggestions | source_product_id | inventory_items.id |
+| online_product_suggestions | suggested_product_id | inventory_items.id |
+| online_product_suggestions | suggested_product_id | inventory_items.id |
+| opening_balances | account_code | chart_of_accounts.code |
+| opening_balances | account_code | chart_of_accounts.code |
+| opening_balances | recorded_by | profiles.id |
+| opening_balances | recorded_by | profiles.id |
+| parked_sales | customer_id | loyalty_customers.id |
+| parked_sales | customer_id | loyalty_customers.id |
+| parked_sales | hunter_job_id | hunter_jobs.id |
+| parked_sales | hunter_job_id | hunter_jobs.id |
+| payroll_entries | approved_by | staff_profiles.id |
+| payroll_entries | approved_by | staff_profiles.id |
+| payroll_entries | period_id | payroll_periods.id |
+| payroll_entries | period_id | payroll_periods.id |
+| payroll_entries | staff_id | staff_profiles.id |
+| payroll_entries | staff_id | staff_profiles.id |
+| payroll_periods | processed_by | profiles.id |
+| payroll_periods | processed_by | profiles.id |
+| petty_cash_movements | recorded_by | profiles.id |
+| petty_cash_movements | recorded_by | profiles.id |
+| petty_cash_movements | till_session_id | till_sessions.id |
+| petty_cash_movements | till_session_id | till_sessions.id |
+| product_suppliers | inventory_item_id | inventory_items.id |
+| product_suppliers | inventory_item_id | inventory_items.id |
+| product_suppliers | supplier_id | suppliers.id |
+| product_suppliers | supplier_id | suppliers.id |
+| production_batch_ingredients | batch_id | production_batches.id |
+| production_batch_ingredients | batch_id | production_batches.id |
+| production_batch_ingredients | ingredient_id | recipe_ingredients.id |
+| production_batch_ingredients | ingredient_id | recipe_ingredients.id |
+| production_batch_outputs | batch_id | production_batches.id |
+| production_batch_outputs | batch_id | production_batches.id |
+| production_batch_outputs | inventory_item_id | inventory_items.id |
+| production_batch_outputs | inventory_item_id | inventory_items.id |
+| production_batches | output_product_id | inventory_items.id |
+| production_batches | output_product_id | inventory_items.id |
+| production_batches | parent_batch_id | production_batches.id |
+| production_batches | recipe_id | recipes.id |
+| production_batches | recipe_id | recipes.id |
+| promotion_products | inventory_item_id | inventory_items.id |
+| promotion_products | inventory_item_id | inventory_items.id |
+| promotion_products | promotion_id | promotions.id |
+| promotion_products | promotion_id | promotions.id |
+| promotion_suggestions | product_id | inventory_items.id |
+| promotion_suggestions | product_id | inventory_items.id |
+| purchase_order_lines | inventory_item_id | inventory_items.id |
+| purchase_order_lines | inventory_item_id | inventory_items.id |
+| purchase_order_lines | purchase_order_id | purchase_orders.id |
+| purchase_order_lines | purchase_order_id | purchase_orders.id |
+| purchase_orders | created_by | profiles.id |
+| purchase_orders | created_by | profiles.id |
+| purchase_orders | supplier_id | suppliers.id |
+| purchase_orders | supplier_id | suppliers.id |
+| purchase_sale_agreement | account_id | business_accounts.id |
+| purchase_sale_agreement | account_id | business_accounts.id |
+| purchase_sale_agreement | created_by | profiles.id |
+| purchase_sale_agreement | created_by | profiles.id |
+| purchase_sale_payments | agreement_id | purchase_sale_agreement.id |
+| purchase_sale_payments | agreement_id | purchase_sale_agreement.id |
+| purchase_sale_payments | recorded_by | profiles.id |
+| purchase_sale_payments | recorded_by | profiles.id |
+| recipe_ingredients | inventory_item_id | inventory_items.id |
+| recipe_ingredients | inventory_item_id | inventory_items.id |
+| recipe_ingredients | recipe_id | recipes.id |
+| recipe_ingredients | recipe_id | recipes.id |
+| recipes | dryer_output_product_id | inventory_items.id |
+| recipes | dryer_output_product_id | inventory_items.id |
+| recipes | output_product_id | inventory_items.id |
+| recipes | output_product_id | inventory_items.id |
+| referrals | referred_id | loyalty_customers.id |
+| referrals | referred_id | loyalty_customers.id |
+| referrals | referrer_id | loyalty_customers.id |
+| referrals | referrer_id | loyalty_customers.id |
+| reorder_recommendations | item_id | inventory_items.id |
+| reorder_recommendations | item_id | inventory_items.id |
+| scheduled_report_runs | schedule_id | report_schedules.id |
+| scheduled_report_runs | schedule_id | report_schedules.id |
+| shrinkage_alerts | acknowledged_by | staff_profiles.id |
+| shrinkage_alerts | acknowledged_by | staff_profiles.id |
+| shrinkage_alerts | batch_id | production_batches.id |
+| shrinkage_alerts | batch_id | production_batches.id |
+| shrinkage_alerts | product_id | inventory_items.id |
+| shrinkage_alerts | product_id | inventory_items.id |
+| shrinkage_alerts | resolved_by | profiles.id |
+| shrinkage_alerts | resolved_by | profiles.id |
+| split_payments | business_account_id | business_accounts.id |
+| split_payments | business_account_id | business_accounts.id |
+| split_payments | transaction_id | transactions.id |
+| split_payments | transaction_id | transactions.id |
+| sponsorships | created_by | profiles.id |
+| sponsorships | created_by | profiles.id |
+| staff_awol_records | recorded_by | profiles.id |
+| staff_awol_records | recorded_by | profiles.id |
+| staff_awol_records | staff_id | profiles.id |
+| staff_awol_records | staff_id | profiles.id |
+| staff_credit | granted_by | profiles.id |
+| staff_credit | granted_by | profiles.id |
+| staff_credit | staff_id | profiles.id |
+| staff_credit | staff_id | profiles.id |
+| staff_documents | employee_id | profiles.id |
+| staff_documents | employee_id | profiles.id |
+| staff_documents | uploaded_by | profiles.id |
+| staff_documents | uploaded_by | profiles.id |
+| staff_loans | granted_by | profiles.id |
+| staff_loans | granted_by | profiles.id |
+| staff_loans | staff_id | profiles.id |
+| staff_loans | staff_id | profiles.id |
+| staff_requests | reviewed_by | profiles.id |
+| staff_requests | reviewed_by | profiles.id |
+| staff_requests | staff_id | staff_profiles.id |
+| staff_requests | staff_id | staff_profiles.id |
+| stock_movements | item_id | inventory_items.id |
+| stock_movements | item_id | inventory_items.id |
+| stock_movements | location_from | stock_locations.id |
+| stock_movements | location_from | stock_locations.id |
+| stock_movements | location_to | stock_locations.id |
+| stock_movements | location_to | stock_locations.id |
+| stock_movements | staff_id | profiles.id |
+| stock_movements | staff_id | profiles.id |
+| stock_take_entries | counted_by | profiles.id |
+| stock_take_entries | counted_by | profiles.id |
+| stock_take_entries | item_id | inventory_items.id |
+| stock_take_entries | item_id | inventory_items.id |
+| stock_take_entries | location_id | stock_locations.id |
+| stock_take_entries | location_id | stock_locations.id |
+| stock_take_entries | session_id | stock_take_sessions.id |
+| stock_take_entries | session_id | stock_take_sessions.id |
+| stock_take_sessions | approved_by | profiles.id |
+| stock_take_sessions | approved_by | profiles.id |
+| stock_take_sessions | started_by | profiles.id |
+| stock_take_sessions | started_by | profiles.id |
+| supplier_invoices | created_by | profiles.id |
+| supplier_invoices | created_by | profiles.id |
+| supplier_invoices | received_by | profiles.id |
+| supplier_invoices | received_by | profiles.id |
+| supplier_invoices | supplier_id | suppliers.id |
+| supplier_invoices | supplier_id | suppliers.id |
+| supplier_item_mappings | account_code | chart_of_accounts.code |
+| supplier_item_mappings | account_code | chart_of_accounts.code |
+| supplier_item_mappings | created_by | staff_profiles.id |
+| supplier_item_mappings | created_by | staff_profiles.id |
+| supplier_item_mappings | inventory_item_id | inventory_items.id |
+| supplier_item_mappings | inventory_item_id | inventory_items.id |
+| supplier_item_mappings | supplier_id | suppliers.id |
+| supplier_item_mappings | supplier_id | suppliers.id |
+| supplier_payments | invoice_id | supplier_invoices.id |
+| supplier_payments | invoice_id | supplier_invoices.id |
+| supplier_payments | ledger_entry_id | ledger_entries.id |
+| supplier_payments | ledger_entry_id | ledger_entries.id |
+| supplier_payments | recorded_by | profiles.id |
+| supplier_payments | recorded_by | profiles.id |
+| supplier_payments | supplier_id | suppliers.id |
+| supplier_payments | supplier_id | suppliers.id |
+| suspended_transactions | cashier_id | profiles.id |
+| suspended_transactions | cashier_id | profiles.id |
+| till_sessions | closed_by | profiles.id |
+| till_sessions | closed_by | profiles.id |
+| till_sessions | opened_by | profiles.id |
+| till_sessions | opened_by | profiles.id |
+| timecard_breaks | timecard_id | timecards.id |
+| timecard_breaks | timecard_id | timecards.id |
+| timecards | employee_id | profiles.id |
+| timecards | employee_id | profiles.id |
+| timecards | staff_id | staff_profiles.id |
+| timecards | staff_id | staff_profiles.id |
+| transaction_items | inventory_item_id | inventory_items.id |
+| transaction_items | inventory_item_id | inventory_items.id |
+| transaction_items | transaction_id | transactions.id |
+| transaction_items | transaction_id | transactions.id |
+| transactions | account_id | business_accounts.id |
+| transactions | account_id | business_accounts.id |
+| transactions | loyalty_customer_id | loyalty_customers.id |
+| transactions | loyalty_customer_id | loyalty_customers.id |
+| transactions | refund_of_transaction_id | transactions.id |
+| transactions | staff_id | profiles.id |
+| transactions | staff_id | profiles.id |
+| transactions | till_session_id | till_sessions.id |
+| transactions | till_session_id | till_sessions.id |
+| transactions | voided_by | profiles.id |
+| transactions | voided_by | profiles.id |
+| yield_template_cuts | template_id | yield_templates.id |
+| yield_template_cuts | template_id | yield_templates.id |

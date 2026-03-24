@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/connectivity_service.dart';
-import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/db/isar_service.dart';
+import 'package:admin_app/core/db/cached_staff_profile.dart';
+import 'package:admin_app/core/db/cached_timecard.dart';
+import 'package:admin_app/core/db/cached_leave_request.dart';
+import 'package:admin_app/core/db/cached_awol_record.dart';
+import 'package:admin_app/core/db/cached_compliance_record.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'dart:convert';
@@ -110,7 +115,24 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
   Future<void> _load() async {
     setState(() => _isLoading = true);
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST (always fresh data)
+      try {
+        _isOffline = false;
+        var query = _supabase.from('staff_profiles').select(
+            'id, full_name, role, phone, email, employment_type, hourly_rate, '
+            'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
+        if (!_showInactive) query = query.eq('is_active', true);
+        final data = await query.order('full_name');
+        setState(() => _staff = List<Map<String, dynamic>>.from(data));
+        
+        // Update cache in background (non-blocking)
+        final staffProfiles = (data as List).map((item) {
+          final m = Map<String, dynamic>.from(item as Map);
+          return CachedStaffProfile.fromSupabase(m);
+        }).toList();
+        IsarService.saveStaffProfiles(staffProfiles);
+      } catch (e) {
+        // Fallback to cache if database fails (safety net)
         _isOffline = true;
         final cached = await IsarService.getAllStaffProfiles();
         var list = cached.map((c) {
@@ -127,16 +149,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
         }).toList();
         if (!_showInactive) list = list.where((m) => m['is_active'] == true).toList();
         setState(() => _staff = list);
-        setState(() => _isLoading = false);
-        return;
       }
-      _isOffline = false;
-      var query = _supabase.from('staff_profiles').select(
-          'id, full_name, role, phone, email, employment_type, hourly_rate, '
-          'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
-      if (!_showInactive) query = query.eq('is_active', true);
-      final data = await query.order('full_name');
-      setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Staff load: $e');
     }
@@ -408,17 +421,19 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
   Future<void> _loadStaff() async {
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        final data = await _supabase
+            .from('staff_profiles')
+            .select('id, full_name')
+            .eq('is_active', true)
+            .order('full_name');
+        setState(() => _staff = List<Map<String, dynamic>>.from(data));
+      } catch (e) {
+        // Fallback to cache if database fails
         final cached = await IsarService.getAllStaffProfiles();
         setState(() => _staff = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
-        return;
       }
-      final data = await _supabase
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .order('full_name');
-      setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (e) {
       debugPrint('Staff: $e');
     }
@@ -445,7 +460,47 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             .substring(0, 10);
       }
 
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        _isOffline = false;
+        var q = _supabase
+            .from('timecards')
+            .select('*, staff_profiles!timecards_staff_id_fkey(full_name, role, hourly_rate)')
+            .gte('clock_in', '${rangeStart}T00:00:00')
+            .lte('clock_in', '${rangeEnd}T23:59:59');
+        if (_selectedStaffId != null) q = q.eq('staff_id', _selectedStaffId!);
+        final cards =
+            List<Map<String, dynamic>>.from(await q.order('clock_in'));
+
+        if (cards.isNotEmpty) {
+          final ids = cards.map((t) => t['id'] as String).toList();
+          final breaks = List<Map<String, dynamic>>.from(
+            await _supabase
+                .from('timecard_breaks')
+                .select('*')
+                .inFilter('timecard_id', ids)
+                .order('break_start'),
+          );
+          for (final c in cards) {
+            c['breaks'] = breaks
+                .where((b) => b['timecard_id'] == c['id'])
+                .toList();
+          }
+        } else {
+          for (final c in cards) {
+            c['breaks'] = <Map<String, dynamic>>[];
+          }
+        }
+
+        setState(() => _timecards = cards);
+        
+        // Update cache in background
+        final cachedTimecards = cards.map((item) {
+          return CachedTimecard.fromSupabase(item);
+        }).toList();
+        unawaited(IsarService.saveTimecards(cachedTimecards));
+      } catch (e) {
+        // Fallback to cache if database fails
         _isOffline = true;
         final cached = await IsarService.getAllTimecards();
         final rangeStartDt = DateTime.parse('${rangeStart}T00:00:00');
@@ -468,41 +523,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
         }).toList();
         cards.sort((a, b) => (a['clock_in'] as String? ?? '').compareTo(b['clock_in'] as String? ?? ''));
         setState(() => _timecards = cards);
-        setState(() => _isLoading = false);
-        return;
       }
-      _isOffline = false;
-
-      var q = _supabase
-          .from('timecards')
-          .select('*, staff_profiles!timecards_staff_id_fkey(full_name, role, hourly_rate)')
-          .gte('clock_in', '${rangeStart}T00:00:00')
-          .lte('clock_in', '${rangeEnd}T23:59:59');
-      if (_selectedStaffId != null) q = q.eq('staff_id', _selectedStaffId!);
-      final cards =
-          List<Map<String, dynamic>>.from(await q.order('clock_in'));
-
-      if (cards.isNotEmpty) {
-        final ids = cards.map((t) => t['id'] as String).toList();
-        final breaks = List<Map<String, dynamic>>.from(
-          await _supabase
-              .from('timecard_breaks')
-              .select('*')
-              .inFilter('timecard_id', ids)
-              .order('break_start'),
-        );
-        for (final c in cards) {
-          c['breaks'] = breaks
-              .where((b) => b['timecard_id'] == c['id'])
-              .toList();
-        }
-      } else {
-        for (final c in cards) {
-          c['breaks'] = <Map<String, dynamic>>[];
-        }
-      }
-
-      setState(() => _timecards = cards);
     } catch (e) {
       debugPrint('Timecards load: $e');
     }
@@ -947,109 +968,254 @@ class _LeaveTab extends StatefulWidget {
 
 class _LeaveTabState extends State<_LeaveTab> {
   final _supabase = SupabaseService.client;
-  List<Map<String, dynamic>> _requests = [];
-  List<Map<String, dynamic>> _balances = [];
+  
+  // Combined leave records (history + pending/rejected requests)
+  List<Map<String, dynamic>> _allLeaveRecords = [];
   bool _isLoading = true;
   bool _isOffline = false;
-  String _filter = 'Pending';
+  
+  // Filters
+  String _statusFilter = 'All'; // All, Pending, Approved, Rejected, Admin entries
+  String? _selectedStaffFilter; // null = all staff
+  String? _selectedTypeFilter; // null = all types
+  
+  // Staff list for filters and record leave
+  List<Map<String, dynamic>> _allStaff = [];
+  
+  // Record leave card state
+  String? _recordLeaveStaffId;
+  Map<String, dynamic>? _selectedStaffBalance;
+  bool _loadingBalance = false;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadAllStaff();
+    _loadAllLeaveRecords();
   }
 
-  Future<void> _load() async {
+  Future<void> _loadAllStaff() async {
+    try {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        final staff = await _supabase
+            .from('staff_profiles')
+            .select('id, full_name')
+            .eq('is_active', true)
+            .order('full_name');
+        
+        if (mounted) {
+          setState(() {
+            _allStaff = List<Map<String, dynamic>>.from(staff);
+          });
+        }
+      } catch (e) {
+        // Fallback to cache if database fails
+        final cached = await IsarService.getAllStaffProfiles();
+        if (mounted) {
+          setState(() {
+            _allStaff = cached.map((c) => {
+              'id': c.staffId,
+              'full_name': c.fullName,
+            }).toList();
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('Failed to load staff: $e');
+    }
+  }
+
+  Future<void> _loadAllLeaveRecords() async {
     setState(() => _isLoading = true);
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        _isOffline = false;
+        
+        // Load leave_history (all approved + admin entries)
+        final history = await _supabase
+            .from('leave_history')
+            .select('*, staff_profiles!staff_id(full_name)')
+            .order('start_date', ascending: false);
+        
+        // Load staff_requests (pending + rejected only)
+        final requests = await _supabase
+            .from('staff_requests')
+            .select('*, staff_profiles!staff_id(full_name)')
+            .eq('request_type', 'leave')
+            .inFilter('status', ['pending', 'rejected'])
+            .order('created_at', ascending: false);
+        
+        // Tag records with type
+        final taggedHistory = (history as List).map((r) {
+          final record = r as Map<String, dynamic>;
+          return {
+            ...record,
+            'record_type': 'leave_history',
+            'display_status': record['source'] == 'admin_entry' ? 'Admin entry' : 'Approved',
+          };
+        }).toList();
+        
+        final taggedRequests = (requests as List).map((r) {
+          final record = r as Map<String, dynamic>;
+          return {
+            ...record,
+            'record_type': 'staff_request',
+            'display_status': record['status'] == 'pending' ? 'Pending' : 'Rejected',
+            // Map staff_request fields to match leave_history format for display
+            'leave_type': record['leave_type'],
+            'start_date': record['leave_start_date'],
+            'end_date': record['leave_end_date'],
+            'days_taken': record['days_requested'],
+            'notes': record['leave_notes'],
+          };
+        }).toList();
+        
+        setState(() {
+          _allLeaveRecords = [...taggedHistory, ...taggedRequests];
+        });
+        
+        // Update cache in background
+        final cachedRequests = (requests as List).map((item) {
+          return CachedLeaveRequest.fromSupabase(Map<String, dynamic>.from(item as Map));
+        }).toList();
+        unawaited(IsarService.saveLeaveRequests(cachedRequests));
+      } catch (e) {
+        // Fallback to cache if database fails
         _isOffline = true;
         final cached = await IsarService.getAllLeaveRequests();
-        final statusLower = _filter.toLowerCase();
-        final list = cached
-            .where((c) => (c.status ?? '').toLowerCase() == statusLower)
-            .map((c) {
+        final list = cached.map((c) {
           final m = c.toMap();
-          m['staff_profiles'] = {'full_name': c.staffName, 'role': null};
+          m['staff_profiles'] = {'full_name': c.staffName};
+          m['record_type'] = 'staff_request';
           return m;
         }).toList();
-        list.sort((a, b) => (b['start_date'] ?? '').compareTo(a['start_date'] ?? ''));
         setState(() {
-          _requests = list;
-          _balances = [];
+          _allLeaveRecords = list;
         });
-        setState(() => _isLoading = false);
-        return;
       }
-      _isOffline = false;
-      final requests = await _supabase
-          .from('leave_requests')
-          .select('*, staff_profiles!staff_id(full_name, role)')
-          .eq('status', _filter.toLowerCase())
-          .order('created_at', ascending: false);
-      final balances = await _supabase
-          .from('leave_balances')
-          .select('*, staff_profiles!staff_id(full_name)')
-          .order('staff_id');
-      setState(() {
-        _requests = List<Map<String, dynamic>>.from(requests);
-        _balances = List<Map<String, dynamic>>.from(balances);
-      });
     } catch (e) {
-      debugPrint('Leave: $e');
+      debugPrint('Leave load error: $e');
     }
     setState(() => _isLoading = false);
   }
 
-  Future<void> _updateStatus(String id, String status, String? notes) async {
-    // DB CHECK expects lowercase: 'pending', 'approved', 'rejected'
-    final statusLower = status.toLowerCase();
-    if (!ConnectivityService().isConnected) {
-      await OfflineQueueService().addToQueue('approve_leave', {
-        'id': id,
-        'status': statusLower,
-        'review_notes': notes,
-        'reviewedBy': AuthService().getCurrentStaffId(),
+  Future<void> _loadStaffBalance(String staffId) async {
+    setState(() => _loadingBalance = true);
+    try {
+      if (!ConnectivityService().isConnected) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Cannot load balance while offline'), backgroundColor: AppColors.warning),
+          );
+        }
+        return;
+      }
+
+      final balance = await _supabase
+          .from('leave_balances')
+          .select('*')
+          .eq('staff_id', staffId)
+          .maybeSingle();
+      
+      if (mounted) {
+        setState(() {
+          _selectedStaffBalance = balance;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to load staff balance: $e');
+    }
+    setState(() => _loadingBalance = false);
+  }
+
+  List<Map<String, dynamic>> get _filteredRecords {
+    var filtered = _allLeaveRecords;
+    
+    // Status filter
+    if (_statusFilter != 'All') {
+      filtered = filtered.where((r) {
+        final status = r['display_status'] as String?;
+        return status == _statusFilter;
+      }).toList();
+    }
+    
+    // Staff filter
+    if (_selectedStaffFilter != null) {
+      filtered = filtered.where((r) => r['staff_id'] == _selectedStaffFilter).toList();
+    }
+    
+    // Type filter
+    if (_selectedTypeFilter != null) {
+      filtered = filtered.where((r) => r['leave_type'] == _selectedTypeFilter).toList();
+    }
+    
+    // Sort by date (most recent first)
+    filtered.sort((a, b) {
+      final aDate = a['start_date'] as String? ?? '';
+      final bDate = b['start_date'] as String? ?? '';
+      return bDate.compareTo(aDate);
+    });
+    
+    return filtered;
+  }
+
+  Future<void> _handleApprove(Map<String, dynamic> r) async {
+    final staffId = r['staff_id'] as String;
+    final leaveType = r['leave_type'] as String;
+    final startDate = r['start_date'] as String;
+    final endDate = r['end_date'] as String;
+    final days = r['days_taken'] as num;
+    final notes = r['notes'] as String?;
+    final requestId = r['id'] as String;
+    
+    try {
+      // Update staff_requests status
+      await _supabase.from('staff_requests').update({
+        'status': 'approved',
+        'reviewed_by': AuthService().getCurrentStaffId(),
+        'reviewed_at': DateTime.now().toIso8601String(),
+      }).eq('id', requestId);
+      
+      // Insert to leave_history
+      await _supabase.from('leave_history').insert({
+        'staff_id': staffId,
+        'leave_type': leaveType,
+        'start_date': startDate,
+        'end_date': endDate,
+        'days_taken': days,
+        'source': 'staff_request',
+        'source_request_id': requestId,
+        'recorded_by': AuthService().getCurrentStaffId(),
+        'notes': notes,
       });
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved — will sync when back online.'), backgroundColor: AppColors.success),
+          const SnackBar(content: Text('Leave approved'), backgroundColor: AppColors.success),
         );
       }
-      _load();
-      return;
+      
+      _loadAllLeaveRecords();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to approve: $e'), backgroundColor: AppColors.error),
+        );
+      }
     }
-    await _supabase.from('leave_requests').update({
-      'status': statusLower,
-      'review_notes': notes,
-      'reviewed_at': DateTime.now().toIso8601String(),
-    }).eq('id', id);
-    _load();
   }
 
-  void _handleApprove(Map<String, dynamic> r) async {
-    await _updateStatus(r['id'], 'Approved', null);
-    if (!ConnectivityService().isConnected) return;
-    try {
-      await _supabase.from('staff_requests').update({
-        'status': 'approved'
-      }).eq('staff_id', r['staff_id'])
-        .eq('leave_start_date', r['start_date'])
-        .eq('leave_end_date', r['end_date'])
-        .eq('request_type', 'leave')
-        .eq('status', 'pending');
-    } catch (_) {}
-  }
-
-  void _handleDecline(Map<String, dynamic> r) async {
+  Future<void> _handleReject(Map<String, dynamic> r) async {
     final staffName = r['staff_profiles']?['full_name'] ?? 'Staff';
     final dateStr = '${r['start_date']} → ${r['end_date']}';
     final notesController = TextEditingController();
 
-    final saved = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Decline Leave Request'),
+        title: const Text('Reject Leave Request'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1068,240 +1234,588 @@ class _LeaveTabState extends State<_LeaveTab> {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: AppColors.error),
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Decline'),
+            child: const Text('Reject'),
           ),
         ],
       ),
     );
 
-    if (saved != true) return;
+    if (confirmed != true) return;
 
     final reason = notesController.text.trim();
     if (reason.isEmpty) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('A reason is required to decline'), backgroundColor: AppColors.error));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('A reason is required'), backgroundColor: AppColors.error),
+        );
+      }
       return;
     }
 
-    await _updateStatus(r['id'], 'Rejected', reason);
-
-    if (!ConnectivityService().isConnected) return;
     try {
       await _supabase.from('staff_requests').update({
-        'status': 'declined',
-        'leave_decline_reason': reason
-      }).eq('staff_id', r['staff_id'])
-        .eq('leave_start_date', r['start_date'])
-        .eq('leave_end_date', r['end_date'])
-        .eq('request_type', 'leave')
-        .eq('status', 'pending');
-    } catch (_) {}
+        'status': 'rejected',
+        'leave_decline_reason': reason,
+        'reviewed_by': AuthService().getCurrentStaffId(),
+        'reviewed_at': DateTime.now().toIso8601String(),
+      }).eq('id', r['id']);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leave rejected'), backgroundColor: AppColors.warning),
+        );
+      }
+      
+      _loadAllLeaveRecords();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to reject: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleDelete(Map<String, dynamic> r) async {
+    final staffName = r['staff_profiles']?['full_name'] ?? 'Staff';
+    final leaveType = _formatLeaveType(r['leave_type'] as String? ?? '');
+    final dateStr = '${r['start_date']} → ${r['end_date']}';
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Leave Entry'),
+        content: Text('Delete $leaveType for $staffName ($dateStr)?\n\nThis will restore their leave balance.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await _supabase.from('leave_history').delete().eq('id', r['id']);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Leave entry deleted'), backgroundColor: AppColors.success),
+        );
+      }
+      
+      _loadAllLeaveRecords();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _showRecordLeaveDialog(String leaveType) {
+    if (_recordLeaveStaffId == null) return;
+    
+    final startDateController = TextEditingController();
+    final endDateController = TextEditingController();
+    final daysController = TextEditingController();
+    final notesController = TextEditingController();
+    bool isSaving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Text(leaveType == 'sick' ? 'Record Sick Leave' : 'Record Family Responsibility Leave'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FormWidgets.dateFormField(
+                  label: 'Start Date',
+                  controller: startDateController,
+                  context: ctx,
+                  firstDate: DateTime(2020),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.dateFormField(
+                  label: 'End Date',
+                  controller: endDateController,
+                  context: ctx,
+                  firstDate: DateTime(2020),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Days',
+                  controller: daysController,
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Notes (optional)',
+                  controller: notesController,
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isSaving ? null : () async {
+                setDialogState(() => isSaving = true);
+                
+                try {
+                  // Parse dates from DD/MM/YYYY format
+                  final startDateText = startDateController.text.trim();
+                  final endDateText = endDateController.text.trim();
+
+                  DateTime? startDate;
+                  DateTime? endDate;
+
+                  if (startDateText.isNotEmpty) {
+                    final parts = startDateText.split('/');
+                    if (parts.length == 3) {
+                      startDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                    }
+                  }
+
+                  if (endDateText.isNotEmpty) {
+                    final parts = endDateText.split('/');
+                    if (parts.length == 3) {
+                      endDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                    }
+                  }
+
+                  if (startDate == null || endDate == null) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Invalid date format'), backgroundColor: AppColors.error),
+                      );
+                    }
+                    return;
+                  }
+
+                  final days = int.tryParse(daysController.text);
+                  if (days == null || days <= 0) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Invalid days'), backgroundColor: AppColors.error),
+                      );
+                    }
+                    return;
+                  }
+
+                  // Convert dates to YYYY-MM-DD format
+                  final startDateStr = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
+                  final endDateStr = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
+
+                  // Insert to leave_history
+                  await _supabase.from('leave_history').insert({
+                    'staff_id': _recordLeaveStaffId,
+                    'leave_type': leaveType,
+                    'start_date': startDateStr,
+                    'end_date': endDateStr,
+                    'days_taken': days,
+                    'source': 'admin_entry',
+                    'source_request_id': null,
+                    'recorded_by': AuthService().getCurrentStaffId(),
+                    'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                  });
+
+                  if (mounted) {
+                    Navigator.pop(ctx);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Leave recorded'), backgroundColor: AppColors.success),
+                    );
+                  }
+                  
+                  _loadAllLeaveRecords();
+                  if (_recordLeaveStaffId != null) {
+                    _loadStaffBalance(_recordLeaveStaffId!);
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to record leave: $e'), backgroundColor: AppColors.error),
+                    );
+                  }
+                } finally {
+                  setDialogState(() => isSaving = false);
+                }
+              },
+              child: isSaving ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ) : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
-      // Left: requests
-      Expanded(
-        flex: 3,
-        child: Column(children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-            color: AppColors.cardBg,
-            child: Row(children: [
-              const Text('Leave Requests',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary)),
-              const Spacer(),
-              ...['Pending', 'Approved', 'Rejected'].map((s) => Padding(
-                padding: const EdgeInsets.only(left: 8),
-                child: ChoiceChip(
-                  label: Text(s),
-                  selected: _filter == s,
-                  onSelected: (_) { setState(() => _filter = s); _load(); },
-                  selectedColor: AppColors.primary,
-                  labelStyle: TextStyle(
-                      color: _filter == s ? Colors.white : AppColors.textSecondary,
-                      fontSize: 12),
-                ),
-              )),
-            ]),
-          ),
-          const Divider(height: 1, color: AppColors.border),
-          Expanded(
-            child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                : _requests.isEmpty
-                    ? Center(
-                        child: Text(
-                          _isOffline ? 'No cached data available. Connect to the internet to load data.' : 'No $_filter requests',
-                          style: const TextStyle(color: AppColors.textSecondary),
-                          textAlign: TextAlign.center,
-                        ),
-                      )
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _requests.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 10),
-                        itemBuilder: (_, i) {
-                          final r = _requests[i];
-                          final isPending = r['status'] == 'pending';
-                          return Container(
-                            padding: const EdgeInsets.all(16),
-                            decoration: BoxDecoration(
-                              color: AppColors.cardBg,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: isPending
-                                    ? AppColors.warning.withValues(alpha: 0.4)
-                                    : AppColors.border,
-                              ),
-                            ),
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Row(children: [
-                                Text(
-                                  r['staff_profiles']?['full_name'] ?? '—',
-                                  style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary),
-                                ),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: AppColors.info.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(r['leave_type'] ?? '—',
-                                      style: const TextStyle(
-                                          fontSize: 11, color: AppColors.info)),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '${r['total_days']} day${(r['total_days'] as num?) == 1 ? '' : 's'}',
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.textPrimary),
-                                ),
-                              ]),
-                              const SizedBox(height: 6),
-                              Text(
-                                '${r['start_date']} → ${r['end_date']}',
-                                style: const TextStyle(
-                                    fontSize: 13, color: AppColors.textSecondary),
-                              ),
-                              if (r['reason'] != null) ...[
-                                const SizedBox(height: 4),
-                                Text(r['reason'],
-                                    style: const TextStyle(
-                                        fontSize: 12, color: AppColors.textSecondary)),
-                              ],
-                              if (isPending) ...[
-                                const SizedBox(height: 12),
-                                Row(children: [
-                                  ElevatedButton(
-                                    onPressed: () => _handleApprove(r),
-                                    style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppColors.success,
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 16, vertical: 8)),
-                                    child: const Text('Approve'),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  OutlinedButton(
-                                    onPressed: () => _handleDecline(r),
-                                    child: const Text('Decline'),
-                                  ),
-                                ]),
-                              ],
-                            ]),
-                          );
-                        },
-                      ),
-          ),
-        ]),
-      ),
-      const VerticalDivider(width: 1, color: AppColors.border),
-      // Right: balances
-      SizedBox(
-        width: 280,
-        child: Column(children: [
-          Container(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-            color: AppColors.cardBg,
-            child: const Row(children: [
-              Text('Leave Balances',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary)),
-            ]),
-          ),
-          const Divider(height: 1, color: AppColors.border),
-          Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.all(16),
-              itemCount: _balances.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 8),
-              itemBuilder: (_, i) {
-                final b = _balances[i];
-                final annual = (b['annual_leave_balance'] as num?)?.toDouble() ?? 0;
-                final sick = (b['sick_leave_balance'] as num?)?.toDouble() ?? 0;
-                return Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBg,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+    return Row(
+      children: [
+        // Main area: full-width table
+        Expanded(
+          child: Column(
+            children: [
+              // Header with filters
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                color: AppColors.cardBg,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text('Leave Management',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
+                    // Filter dropdowns row
+                    Row(
                       children: [
-                    Text(b['staff_profiles']?['full_name'] ?? '—',
-                        style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary)),
-                    const SizedBox(height: 8),
-                    _balanceRow('Annual', annual, 21, AppColors.info),
-                    const SizedBox(height: 4),
-                    _balanceRow('Sick', sick, 30, AppColors.warning),
-                    const SizedBox(height: 4),
-                    _balanceRow('Family', 3, 3, AppColors.success),
-                  ]),
-                );
-              },
-            ),
-          ),
-        ]),
-      ),
-    ]);
-  }
-
-  Widget _balanceRow(String label, double current, double max, Color color) {
-    return Row(children: [
-      SizedBox(
-          width: 50,
-          child: Text(label,
-              style: const TextStyle(fontSize: 11, color: AppColors.textSecondary))),
-      Expanded(
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(3),
-          child: LinearProgressIndicator(
-            value: (current / max).clamp(0, 1),
-            backgroundColor: AppColors.border,
-            valueColor: AlwaysStoppedAnimation(color),
-            minHeight: 6,
+                        // Staff filter
+                        SizedBox(
+                          width: 200,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _selectedStaffFilter,
+                            decoration: const InputDecoration(
+                              labelText: 'Staff',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            items: [
+                              const DropdownMenuItem(value: null, child: Text('All Staff')),
+                              ..._allStaff.map((s) => DropdownMenuItem(
+                                value: s['id'],
+                                child: Text(s['full_name'], style: const TextStyle(fontSize: 13)),
+                              )),
+                            ],
+                            onChanged: (v) => setState(() => _selectedStaffFilter = v),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        // Type filter
+                        SizedBox(
+                          width: 180,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _selectedTypeFilter,
+                            decoration: const InputDecoration(
+                              labelText: 'Type',
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            ),
+                            items: const [
+                              DropdownMenuItem(value: null, child: Text('All Types')),
+                              DropdownMenuItem(value: 'annual', child: Text('Annual')),
+                              DropdownMenuItem(value: 'sick', child: Text('Sick')),
+                              DropdownMenuItem(value: 'family_responsibility', child: Text('Family')),
+                              DropdownMenuItem(value: 'unpaid', child: Text('Unpaid')),
+                            ],
+                            onChanged: (v) => setState(() => _selectedTypeFilter = v),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              // Table
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                    : _filteredRecords.isEmpty
+                        ? Center(
+                            child: Text(
+                              _isOffline ? 'No cached data available' : 'No leave records found',
+                              style: const TextStyle(color: AppColors.textSecondary),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filteredRecords.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (_, i) {
+                              final r = _filteredRecords[i];
+                              final status = r['display_status'] as String? ?? '';
+                              final isPending = status == 'Pending';
+                              final isAdminEntry = r['record_type'] == 'leave_history' && r['source'] == 'admin_entry';
+                              
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBg,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isPending
+                                        ? AppColors.warning.withValues(alpha: 0.4)
+                                        : AppColors.border,
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        r['staff_profiles']?['full_name'] ?? '—',
+                                        style: const TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.textPrimary),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      child: Text(
+                                        _formatLeaveType(r['leave_type'] as String? ?? ''),
+                                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                      ),
+                                    ),
+                                    Expanded(
+                                      flex: 2,
+                                      child: Text(
+                                        '${r['start_date']} → ${r['end_date']}',
+                                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 60,
+                                      child: Text(
+                                        '${r['days_taken']} day${(r['days_taken'] as num?) == 1 ? '' : 's'}',
+                                        style: const TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.textPrimary),
+                                      ),
+                                    ),
+                                    SizedBox(
+                                      width: 100,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                        decoration: BoxDecoration(
+                                          color: _getStatusColor(status).withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          status,
+                                          style: TextStyle(fontSize: 11, color: _getStatusColor(status)),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    if (isPending) ...[
+                                      ElevatedButton(
+                                        onPressed: () => _handleApprove(r),
+                                        style: ElevatedButton.styleFrom(
+                                            backgroundColor: AppColors.success,
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                        child: const Text('Approve', style: TextStyle(fontSize: 12)),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      OutlinedButton(
+                                        onPressed: () => _handleReject(r),
+                                        style: OutlinedButton.styleFrom(
+                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                        child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                                      ),
+                                    ] else if (isAdminEntry) ...[
+                                      IconButton(
+                                        icon: const Icon(Icons.delete_outline, size: 20),
+                                        color: AppColors.error,
+                                        onPressed: () => _handleDelete(r),
+                                        tooltip: 'Delete',
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+              ),
+            ],
           ),
         ),
-      ),
-      const SizedBox(width: 6),
-      Text('${current.toStringAsFixed(1)}d',
-          style: TextStyle(
-              fontSize: 11, fontWeight: FontWeight.bold, color: color)),
-    ]);
+        const VerticalDivider(width: 1, color: AppColors.border),
+        // Right sidebar
+        SizedBox(
+          width: 220,
+          child: Column(
+            children: [
+              // Status filter card
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: AppColors.cardBg,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Status Filter',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary)),
+                    const SizedBox(height: 12),
+                    ...['All', 'Pending', 'Approved', 'Rejected', 'Admin entry'].map((s) => Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          onPressed: () => setState(() => _statusFilter = s),
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: _statusFilter == s ? AppColors.primary.withValues(alpha: 0.1) : null,
+                            side: BorderSide(
+                              color: _statusFilter == s ? AppColors.primary : AppColors.border,
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                          ),
+                          child: Text(s, style: TextStyle(
+                            fontSize: 11,
+                            color: _statusFilter == s ? AppColors.primary : AppColors.textSecondary,
+                          )),
+                        ),
+                      ),
+                    )),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              // Record leave card
+              Container(
+                padding: const EdgeInsets.all(16),
+                color: AppColors.cardBg,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Record Leave',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary)),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _recordLeaveStaffId,
+                      decoration: const InputDecoration(
+                        hintText: 'Select staff...',
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      ),
+                      items: _allStaff.map((s) => DropdownMenuItem<String>(
+                        value: s['id'] as String,
+                        child: Text(s['full_name'] as String, style: const TextStyle(fontSize: 12)),
+                      )).toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          _recordLeaveStaffId = v;
+                          _selectedStaffBalance = null;
+                        });
+                        if (v != null) _loadStaffBalance(v);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _recordLeaveStaffId == null ? null : () => _showRecordLeaveDialog('sick'),
+                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
+                        child: const Text('Record Sick Leave', style: TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton(
+                        onPressed: _recordLeaveStaffId == null ? null : () => _showRecordLeaveDialog('family_responsibility'),
+                        style: OutlinedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 8)),
+                        child: const Text('Record Family Leave', style: TextStyle(fontSize: 11)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              // Balances card
+              if (_recordLeaveStaffId != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  color: AppColors.cardBg,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Leave Balances',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary)),
+                      const SizedBox(height: 12),
+                      if (_loadingBalance)
+                        const Center(child: CircularProgressIndicator())
+                      else if (_selectedStaffBalance != null) ...[
+                        _balanceRow('Annual', (_selectedStaffBalance!['annual_leave_balance'] as num?)?.toDouble() ?? 0),
+                        const SizedBox(height: 8),
+                        _balanceRow('Sick', (_selectedStaffBalance!['sick_leave_balance'] as num?)?.toDouble() ?? 0),
+                        const SizedBox(height: 8),
+                        _balanceRow('Family', (_selectedStaffBalance!['family_leave_balance'] as num?)?.toDouble() ?? 0),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _balanceRow(String label, double days) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+        Text('${days.toStringAsFixed(1)}d',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textPrimary)),
+      ],
+    );
+  }
+
+  String _formatLeaveType(String type) {
+    switch (type) {
+      case 'annual':
+        return 'Annual Leave';
+      case 'sick':
+        return 'Sick Leave';
+      case 'family_responsibility':
+        return 'Family Responsibility';
+      case 'unpaid':
+        return 'Unpaid Leave';
+      default:
+        return type;
+    }
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'Pending':
+        return AppColors.warning;
+      case 'Approved':
+        return AppColors.success;
+      case 'Rejected':
+        return AppColors.error;
+      case 'Admin entry':
+        return AppColors.info;
+      default:
+        return AppColors.textSecondary;
+    }
   }
 }
 
@@ -1333,24 +1847,38 @@ class _AwolTabState extends State<_AwolTab> {
 
   Future<void> _loadStaff() async {
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        final data = await SupabaseService.client
+            .from('staff_profiles')
+            .select('id, full_name')
+            .eq('is_active', true)
+            .order('full_name');
+        if (mounted) setState(() => _staff = List<Map<String, dynamic>>.from(data));
+      } catch (e) {
+        // Fallback to cache if database fails
         final cached = await IsarService.getAllStaffProfiles();
         if (mounted) setState(() => _staff = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
-        return;
       }
-      final data = await SupabaseService.client
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .order('full_name');
-      if (mounted) setState(() => _staff = List<Map<String, dynamic>>.from(data));
     } catch (_) {}
   }
 
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        _isOffline = false;
+        final list = await _repo.getRecords();
+        if (mounted) setState(() => _records = list);
+        
+        // Update cache in background
+        final cachedRecords = list.map((record) {
+          return CachedAwolRecord.fromSupabase(record.toJson());
+        }).toList();
+        IsarService.saveAwolRecords(cachedRecords);
+      } catch (e) {
+        // Fallback to cache if database fails
         _isOffline = true;
         final cached = await IsarService.getAllAwolRecords();
         final list = cached
@@ -1369,12 +1897,7 @@ class _AwolTabState extends State<_AwolTab> {
             .toList();
         list.sort((a, b) => b.awolDate.compareTo(a.awolDate));
         if (mounted) setState(() => _records = list);
-        setState(() => _loading = false);
-        return;
       }
-      _isOffline = false;
-      final list = await _repo.getRecords();
-      if (mounted) setState(() => _records = list);
     } catch (e) {
       debugPrint('AWOL load: $e');
     }
@@ -1485,6 +2008,196 @@ class _AwolTabState extends State<_AwolTab> {
     }
   }
 
+  void _openEditAwol(AwolRecord record) async {
+    final ctx = context;
+    DateTime awolDate = record.awolDate;
+    final notesController = TextEditingController(text: record.notes ?? '');
+    final notifiedWhoController = TextEditingController(text: record.notifiedWho ?? '');
+    bool notified = record.notifiedOwnerManager;
+    AwolResolution resolution = record.resolution;
+    bool writtenWarning = record.writtenWarningIssued;
+
+    final result = await showDialog<bool>(
+      context: ctx,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Edit AWOL Record'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Staff: ${record.staffName ?? record.staffId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 16),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    final d = await showDatePicker(
+                      context: ctx,
+                      initialDate: awolDate,
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (d != null) setDialog(() => awolDate = d);
+                  },
+                  icon: const Icon(Icons.calendar_today, size: 18),
+                  label: Text('Date: ${awolDate.day}/${awolDate.month}/${awolDate.year}'),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<AwolResolution>(
+                  value: resolution,
+                  decoration: const InputDecoration(labelText: 'Resolution'),
+                  items: AwolResolution.values.map((r) => DropdownMenuItem(
+                    value: r,
+                    child: Text(r.dbValue),
+                  )).toList(),
+                  onChanged: (v) => setDialog(() => resolution = v ?? AwolResolution.pending),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Notes',
+                  controller: notesController,
+                  maxLines: 2,
+                ),
+                SwitchListTile(
+                  title: const Text('Notified owner/manager'),
+                  value: notified,
+                  onChanged: (v) => setDialog(() => notified = v),
+                ),
+                if (notified)
+                  FormWidgets.textFormField(
+                    label: 'Who was notified',
+                    controller: notifiedWhoController,
+                  ),
+                SwitchListTile(
+                  title: const Text('Written warning issued'),
+                  value: writtenWarning,
+                  onChanged: (v) => setDialog(() => writtenWarning = v),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != true) return;
+
+    try {
+      await _repo.update(
+        id: record.id,
+        awolDate: awolDate,
+        resolution: resolution,
+        notifiedOwnerManager: notified,
+        notifiedWho: notifiedWhoController.text.trim().isEmpty ? null : notifiedWhoController.text.trim(),
+        writtenWarningIssued: writtenWarning,
+        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AWOL record updated'), backgroundColor: AppColors.success),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
+  void _openResolveAwol(AwolRecord record) async {
+    final ctx = context;
+    AwolResolution resolution = AwolResolution.returned;
+    final notesController = TextEditingController(text: record.notes ?? '');
+    bool writtenWarning = record.writtenWarningIssued;
+
+    final result = await showDialog<bool>(
+      context: ctx,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialog) => AlertDialog(
+          title: const Text('Resolve AWOL'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Staff: ${record.staffName ?? record.staffId}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text('Date: ${record.awolDate.day}/${record.awolDate.month}/${record.awolDate.year}'),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<AwolResolution>(
+                  value: resolution,
+                  decoration: const InputDecoration(labelText: 'Resolution'),
+                  items: [
+                    AwolResolution.returned,
+                    AwolResolution.resigned,
+                    AwolResolution.dismissed,
+                  ].map((r) => DropdownMenuItem(
+                    value: r,
+                    child: Text(r.dbValue),
+                  )).toList(),
+                  onChanged: (v) => setDialog(() => resolution = v ?? AwolResolution.returned),
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile(
+                  title: const Text('Written warning issued'),
+                  value: writtenWarning,
+                  onChanged: (v) => setDialog(() => writtenWarning = v),
+                ),
+                const SizedBox(height: 12),
+                FormWidgets.textFormField(
+                  label: 'Resolution notes',
+                  controller: notesController,
+                  maxLines: 3,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Resolve'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result != true) return;
+
+    try {
+      await _repo.update(
+        id: record.id,
+        resolution: resolution,
+        writtenWarningIssued: writtenWarning,
+        notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AWOL record resolved'), backgroundColor: AppColors.success),
+        );
+        _load();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -1514,6 +2227,7 @@ class _AwolTabState extends State<_AwolTab> {
             SizedBox(width: 100, child: Text('RESOLUTION', style: _awolH)),
             SizedBox(width: 80, child: Text('NOTIFIED', style: _awolH)),
             Expanded(child: Text('NOTES', style: _awolH)),
+            SizedBox(width: 100, child: Text('ACTIONS', style: _awolH)),
           ]),
         ),
         const Divider(height: 1, color: AppColors.border),
@@ -1544,6 +2258,30 @@ class _AwolTabState extends State<_AwolTab> {
                               SizedBox(width: 100, child: Text(r.resolution.dbValue)),
                               SizedBox(width: 80, child: Text(r.notifiedOwnerManager ? 'Yes' : 'No')),
                               Expanded(child: Text(r.notes ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                              SizedBox(
+                                width: 100,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 18),
+                                      tooltip: 'Edit',
+                                      onPressed: () => _openEditAwol(r),
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      icon: const Icon(Icons.check_circle, size: 18),
+                                      tooltip: 'Resolve',
+                                      onPressed: r.resolution == AwolResolution.pending ? () => _openResolveAwol(r) : null,
+                                      padding: EdgeInsets.zero,
+                                      constraints: const BoxConstraints(),
+                                      color: r.resolution == AwolResolution.pending ? AppColors.success : AppColors.textSecondary,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         );
@@ -1596,7 +2334,26 @@ class _ComplianceTabState extends State<_ComplianceTab> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      if (!ConnectivityService().isConnected) {
+      // DATABASE-FIRST: Fetch from Supabase FIRST
+      try {
+        _isOffline = false;
+        final list = await _service.getBceaCompliance(_month);
+        if (mounted) setState(() => _items = list);
+        
+        // Update cache in background
+        final cachedRecords = list.map((item) {
+          return CachedComplianceRecord.fromSupabase({
+            'id': item.id,
+            'document_type': item.title,
+            'notes': item.detail,
+            'staff_id': item.staffId,
+            'staff_name': item.staffName,
+            'expiry_date': null,
+          });
+        }).toList();
+        IsarService.saveComplianceRecords(cachedRecords);
+      } catch (e) {
+        // Fallback to cache if database fails
         _isOffline = true;
         final cached = await IsarService.getAllComplianceRecords();
         final list = cached
@@ -1610,12 +2367,7 @@ class _ComplianceTabState extends State<_ComplianceTab> {
                 ))
             .toList();
         if (mounted) setState(() => _items = list);
-        setState(() => _loading = false);
-        return;
       }
-      _isOffline = false;
-      final list = await _service.getBceaCompliance(_month);
-      if (mounted) setState(() => _items = list);
     } catch (e) {
       debugPrint('Compliance load: $e');
     }
@@ -1765,8 +2517,328 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    if (widget.staff != null) _populate(widget.staff!);
+    _tabController = TabController(length: 4, vsync: this);
+    if (widget.staff != null) {
+      _populate(widget.staff!);
+      _loadLeaveData();
+    }
+  }
+
+  // Leave data
+  Map<String, dynamic>? _leaveBalance;
+  List<Map<String, dynamic>> _leaveHistory = [];
+  bool _isLoadingLeave = false;
+
+  Future<void> _loadLeaveData() async {
+    if (widget.staff == null) return;
+    final staffId = widget.staff!['id'];
+
+    setState(() => _isLoadingLeave = true);
+    try {
+      // Load balance
+      final balance = await _supabase
+          .from('leave_balances')
+          .select('*')
+          .eq('staff_id', staffId)
+          .maybeSingle();
+
+      // Load history
+      final history = await _supabase
+          .from('leave_history')
+          .select('*')
+          .eq('staff_id', staffId)
+          .order('start_date', ascending: false);
+
+      setState(() {
+        _leaveBalance = balance;
+        _leaveHistory = List<Map<String, dynamic>>.from(history ?? []);
+      });
+    } catch (e) {
+      debugPrint('Failed to load leave data: $e');
+    } finally {
+      setState(() => _isLoadingLeave = false);
+    }
+  }
+
+  void _showRecordLeaveDialog(String leaveType) {
+    final startDateController = TextEditingController();
+    final endDateController = TextEditingController();
+    final daysController = TextEditingController();
+    final notesController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text(leaveType == 'sick' ? 'Record Sick Leave' : 'Record Family Responsibility Leave'),
+          content: SizedBox(
+            width: 400,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FormWidgets.dateFormField(
+                  label: 'Start Date',
+                  controller: startDateController,
+                  context: ctx,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                ),
+                const SizedBox(height: 16),
+                FormWidgets.dateFormField(
+                  label: 'End Date',
+                  controller: endDateController,
+                  context: ctx,
+                  firstDate: DateTime(2020),
+                  lastDate: DateTime.now().add(const Duration(days: 365)),
+                ),
+                const SizedBox(height: 16),
+                FormWidgets.textFormField(
+                  label: 'Days',
+                  controller: daysController,
+                  keyboardType: TextInputType.number,
+                  hint: 'Auto-calculated',
+                ),
+                const SizedBox(height: 16),
+                FormWidgets.textFormField(
+                  label: 'Notes (optional)',
+                  controller: notesController,
+                  maxLines: 2,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                // Parse dates from DD/MM/YYYY format
+                final startDateText = startDateController.text.trim();
+                final endDateText = endDateController.text.trim();
+
+                DateTime? startDate;
+                DateTime? endDate;
+
+                if (startDateText.isNotEmpty) {
+                  final parts = startDateText.split('/');
+                  if (parts.length == 3) {
+                    startDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                  }
+                }
+
+                if (endDateText.isNotEmpty) {
+                  final parts = endDateText.split('/');
+                  if (parts.length == 3) {
+                    endDate = DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+                  }
+                }
+
+                final days = int.tryParse(daysController.text);
+
+                if (startDate == null || endDate == null || days == null || days <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please fill all required fields'), backgroundColor: AppColors.error),
+                  );
+                  return;
+                }
+
+                try {
+                  await _supabase.from('leave_history').insert({
+                    'staff_id': widget.staff!['id'],
+                    'leave_type': leaveType,
+                    'start_date': startDate!.toIso8601String().substring(0, 10),
+                    'end_date': endDate!.toIso8601String().substring(0, 10),
+                    'days_taken': days,
+                    'source': 'admin_entry',
+                    'source_request_id': null,
+                    'recorded_by': AuthService().getCurrentStaffId(),
+                    'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+                  });
+
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Leave recorded successfully'), backgroundColor: AppColors.success),
+                    );
+                    Navigator.pop(ctx);
+                    _loadLeaveData(); // Reload balances
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to record leave: $e'), backgroundColor: AppColors.error),
+                    );
+                  }
+                }
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatLeaveType(String? type) {
+    switch (type) {
+      case 'annual':
+        return 'Annual Leave';
+      case 'sick':
+        return 'Sick Leave';
+      case 'family_responsibility':
+        return 'Family Responsibility';
+      case 'unpaid':
+        return 'Unpaid';
+      default:
+        return type ?? 'Unknown';
+    }
+  }
+
+  Widget _buildLeaveTab() {
+    if (widget.staff == null) {
+      return const Center(child: Text('Save staff member first to view leave data'));
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // SECTION A - Leave Balances
+          const Text('Leave Balances', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.cardBg,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: _isLoadingLeave
+                ? const Center(child: CircularProgressIndicator())
+                : _leaveBalance == null
+                    ? const Text('No balance data yet', style: TextStyle(color: AppColors.textSecondary))
+                    : Column(
+                        children: [
+                          _balanceRow('Annual Leave', _leaveBalance!['annual_leave_balance']),
+                          const SizedBox(height: 8),
+                          _balanceRow('Sick Leave', _leaveBalance!['sick_leave_balance']),
+                          const SizedBox(height: 8),
+                          _balanceRow('Family Responsibility', _leaveBalance!['family_leave_balance']),
+                        ],
+                      ),
+          ),
+          const SizedBox(height: 24),
+
+          // SECTION B - Record Leave
+          const Text('Record Leave', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: () => _showRecordLeaveDialog('sick'),
+                icon: const Icon(Icons.sick, size: 18),
+                label: const Text('Record Sick Leave'),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: () => _showRecordLeaveDialog('family_responsibility'),
+                icon: const Icon(Icons.family_restroom, size: 18),
+                label: const Text('Record Family Responsibility Leave'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // SECTION C - Leave History
+          const Text('Leave History', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          _isLoadingLeave
+              ? const Center(child: CircularProgressIndicator())
+              : _leaveHistory.isEmpty
+                  ? const Text('No leave history yet', style: TextStyle(color: AppColors.textSecondary))
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: _leaveHistory.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (_, i) {
+                        final record = _leaveHistory[i];
+                        return Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: AppColors.cardBg,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    _formatLeaveType(record['leave_type']),
+                                    style: const TextStyle(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: record['source'] == 'admin_entry'
+                                          ? Colors.grey.withValues(alpha: 0.2)
+                                          : AppColors.primary.withValues(alpha: 0.2),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      record['source'] == 'admin_entry' ? 'Admin entry' : 'Staff request',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: record['source'] == 'admin_entry'
+                                            ? Colors.grey[700]
+                                            : AppColors.primary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${record['start_date']} to ${record['end_date']}',
+                                style: const TextStyle(color: AppColors.textSecondary),
+                              ),
+                              if (record['notes'] != null && record['notes'].toString().isNotEmpty) ...[
+                                const SizedBox(height: 4),
+                                Text(
+                                  record['notes'].toString(),
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                ),
+                              ],
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+        ],
+      ),
+    );
+  }
+
+  Widget _balanceRow(String label, dynamic days) {
+    final daysNum = (days as num?)?.toDouble() ?? 0.0;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(label, style: const TextStyle(color: AppColors.textSecondary)),
+        Text(
+          '${daysNum.toStringAsFixed(1)} days remaining',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: daysNum > 0 ? AppColors.textPrimary : AppColors.error,
+          ),
+        ),
+      ],
+    );
   }
 
   void _populate(Map<String, dynamic> s) {
@@ -1817,7 +2889,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
           .from('staff_profiles')
           .update({'is_active': false, 'updated_at': DateTime.now().toIso8601String()})
           .eq('id', staff['id']);
-      
+
       // Audit log - staff deactivation
       await AuditService.log(
         action: 'DELETE',
@@ -1826,7 +2898,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
         entityType: 'Staff',
         entityId: staffId,
       );
-      
+
       widget.onSaved();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
@@ -2001,6 +3073,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
               Tab(text: 'Personal'),
               Tab(text: 'Employment & Pay'),
               Tab(text: 'Banking'),
+              Tab(text: 'Leave'),
             ],
           ),
           const Divider(height: 1, color: AppColors.border),
@@ -2011,6 +3084,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 _buildPersonalTab(),
                 _buildEmploymentTab(),
                 _buildBankingTab(),
+                _buildLeaveTab(),
               ],
             ),
           ),

@@ -357,3 +357,298 @@ not by FK join to chart_of_accounts.
 7. **Cross-app changes need both sides read first.**
    If fixing how Clock-In writes data, read how Admin reads it first.
    If fixing how POS reads products, read how Admin writes them first.
+
+---
+
+## HR LEAVE SYSTEM — IMPLEMENTED 2026-03-19
+
+### How it works
+
+Four leave types exist. Two are staff-initiated, two are admin-recorded.
+
+| Type | Applied by | Approved/Set by | Staff sees |
+|---|---|---|---|
+| annual | Staff via Clock-In | Admin approves | Balance + history |
+| unpaid | Staff via Clock-In | Admin approves | History |
+| sick | Nobody | Admin records directly | History (read only) |
+| family_responsibility | Nobody | Admin records directly | History (read only) |
+
+### Leave Rules (South African Butchery - Accrual Based)
+
+**Annual Leave:**
+- Accrues at 1 day per 17 actual working days
+- "Actual working day" = a day with a timecard clock_in record
+- Leave days taken do NOT count toward the 17-day accrual
+- Sick days taken do NOT count toward the 17-day accrual
+- Unpaid days do NOT count toward the 17-day accrual
+- Public holidays do NOT count toward the 17-day accrual
+- Only clock-in records in timecards table count
+- Balance = (days_worked ÷ 17) - days_taken (annual only)
+- Balance floors at 0 — never goes negative in display
+
+**Sick Leave:**
+- 10 days per calendar year
+- 30 days per 36-month rolling cycle (BCEA minimum)
+- NOT accrual-based — full entitlement per cycle
+- Balance = entitlement - sick days taken in period
+
+**Family Responsibility Leave:**
+- 3 days per calendar year
+- NOT accrual-based — full entitlement per year
+- Balance = 3 - family days taken in calendar year
+
+**Unpaid Leave:**
+- No balance tracking — just recorded in leave_history
+- Does not affect any balance
+
+### Data flow — staff-initiated leave (annual/unpaid)
+1. Staff submits request → staff_requests (request_type='leave')
+2. Admin sees it in Admin app → HR → Leave tab (reads BOTH 
+   leave_requests AND staff_requests)
+3. Admin approves → UPDATE staff_requests status='approved'
+   + INSERT leave_history (source='staff_request')
+4. DB trigger fires → leave_balances auto-updated
+5. Staff sees updated balance in Clock-In
+
+### Data flow — admin-recorded leave (sick/family_responsibility)
+1. Admin opens staff profile → Leave tab
+2. Clicks "Record Sick Leave" or "Record Family Responsibility"
+3. Enters dates + days + notes → INSERT leave_history 
+   (source='admin_entry')
+4. DB trigger fires → leave_balances auto-updated
+5. Staff sees entry in Clock-In leave history
+
+### Tables used
+- staff_requests — Clock-In writes leave requests here
+  staff_id → staff_profiles.id
+  request_type = 'leave' for all leave requests
+  leave_type = 'annual' or 'unpaid'
+  
+- leave_requests — Admin-created leave records
+  staff_id → staff_profiles.id
+  approved_by → staff_profiles.id
+
+- leave_history — Permanent immutable record of all leave taken
+  staff_id → staff_profiles.id (the staff member)
+  recorded_by → profiles.id (the admin who acted)
+  source = 'staff_request' or 'admin_entry'
+  NEVER filtered or hidden — permanent record
+
+- leave_balances — Current balance per staff member
+  staff_id → staff_profiles.id
+  employee_id → profiles.id
+  Flat columns: annual_leave_balance, sick_leave_balance, 
+  family_leave_balance
+  Updated AUTOMATICALLY by trigger on leave_history changes
+  DO NOT update manually — trigger handles it
+
+### DB trigger
+Name: trg_update_balances_from_history
+Table: leave_history
+Events: AFTER INSERT OR UPDATE OR DELETE
+Function: update_leave_balances_from_history()
+Recalculates: annual (calendar year), sick (36-month rolling),
+              family (calendar year)
+
+### BCEA South Africa entitlements
+- Annual: 21 days/year, accrues 1.75 days/month
+- Sick: 30 days per 36-month rolling cycle
+- Family responsibility: 3 days per calendar year
+- Unpaid: no entitlement — recorded for transparency only
+
+### Files changed
+Admin app:
+  struisbaai_vleismark_admin_app/admin_app/lib/features/hr/
+  screens/staff_list_screen.dart
+  
+  _LeaveTabState class (lines 948–1740 replaced 2026-03-19):
+  - Unified leave management screen replacing two-column layout
+  - Main area: full-width table showing ALL leave records across 
+    ALL staff — leave_history + staff_requests combined
+  - Staff filter dropdown + type filter dropdown at top of table
+  - Each row shows: staff name, leave type badge, date range, 
+    days, source badge, status badge, inline actions
+  - Approve button: UPDATE staff_requests + INSERT leave_history
+  - Reject button: UPDATE staff_requests only, no history insert
+  - Delete button: only on leave_history rows where 
+    source='admin_entry', shows confirmation dialog
+  - Right sidebar (220px): status filter card, record leave card 
+    with staff dropdown + sick/family buttons, balances card
+  - Double-submission protection on Record Leave save button
+  - DB trigger handles leave_balances automatically on all 
+    leave_history INSERT/DELETE — never update balances manually
+  - leave_history has NO status column — admin_entry = "Recorded",
+    staff_request in history = "Approved"
+  - staff_requests status IN ('pending','rejected') loaded for display
+
+  _StaffFormDialog: Leave tab retained (unchanged) —
+    staff-level balances, record buttons, and history still 
+    accessible from individual staff profile
+
+Clock-In app:
+  clock_in_app/lib/features/hr/screens/hr_home_screen.dart
+  - Added _buildLeaveHistorySection() reading leave_history
+  clock_in_app/lib/features/hr/services/hr_repository.dart
+  - Added getLeaveHistory() method
+
+### Known working state (updated 2026-03-19)
+- Duplicate Leon Strauss sick leave entry deleted (SQL)
+  Deleted id: f18bd559-447e-4326-a984-bf54a28c32b0
+  Kept id: bf997c8e-ebfd-4687-a95b-21be5ee170df
+- Leon Strauss sick_leave_balance confirmed 29.00 after delete
+- Unified leave table live and showing all staff records
+- Delete confirmation dialog prevents accidental removal
+- Double-submission protection prevents duplicate entries
+
+### timecards.total_hours — GENERATED COLUMN
+- total_hours is a GENERATED ALWAYS column in Supabase
+- Formula: ROUND((clock_out - clock_in in hours) - (break_minutes/60), 2)
+- Cannot be manually updated — DB calculates it automatically
+- Clock-In app sends total_hours in clockOut payload — harmless,
+  DB ignores it and uses the generated expression
+- Any attempt to UPDATE total_hours directly will fail with an error
+- This is correct behaviour — do not try to fix it
+- The validate_timecard_trigger also runs on timecards — 
+  do not remove it
+
+---
+
+## OFFLINE IMPROVEMENTS — IMPLEMENTED 2026-03-19
+
+### POS App — sync_service.dart
+After syncing each offline transaction, SyncService now also:
+1. Writes stock_movements (idempotent — checks before inserting)
+2. Calls increment_loyalty RPC (idempotent — checks loyalty_points_log first)
+Both are non-fatal — transaction marked synced regardless.
+File: pos_app/lib/core/services/sync_service.dart
+
+### Loyalty App — supabase_service.dart
+All 5 fetch methods now use cache-then-network pattern:
+- fetchCustomer(), fetchHistory(), fetchDeals(), 
+  fetchAnnouncements(), fetchNotifications()
+- On success: saves to SharedPreferences with timestamp
+- On failure: returns cached data instead of empty array
+- Cache keys: cache_customer_$uid, cache_history_$uid,
+  cache_deals_$tier, cache_announcements, cache_notifications_$uid
+- getCacheTimestamp(key) returns when data was last cached
+File: loyalty_app_sbvm/struisbaai_loyalty_app/lib/core/services/supabase_service.dart
+
+### Loyalty App — main_shell.dart
+Offline banner shown when serving cached data.
+"Showing saved data — reconnect to refresh"
+Uses cache-based detection (no connectivity_plus dependency).
+File: loyalty_app_sbvm/struisbaai_loyalty_app/lib/shared/widgets/main_shell.dart
+
+### Clock-In App — idle_screen.dart
+Sync status indicator at top of idle screen.
+ValueListenableBuilder on SyncService.instance.pendingCount.
+Shows amber banner "⏳ X action(s) pending sync" when count > 0.
+Invisible (SizedBox.shrink) when all synced.
+File: clock_in_app/lib/features/idle/screens/idle_screen.dart
+---
+
+## PROMOTIONS, ANNOUNCEMENTS & NOTIFICATIONS — FIXED 2026-03-19
+
+### Critical Fixes Applied:
+
+**1. Loyalty App Promotion Model** — COMPLETE REWRITE
+- File: loyalty_app/lib/core/models/promotion.dart
+- Fixed field mismatch: `promo_type` → `promotion_type` (matches DB)
+- Fixed field mismatch: `discount_value` → `rewardConfig` JSONB
+- Added missing fields: `status`, `channels`, `triggerConfig`
+- Added computed property `discountValue` extracted from `rewardConfig`
+- Deals screen now correctly parses and displays promotions
+
+**2. Loyalty App Deals Display** — DYNAMIC REWARD TEXT
+- File: loyalty_app/lib/features/deals/screens/deals_screen.dart
+- Added `_getRewardText()` helper to extract display text from reward types
+- Supports: discount_pct, free_item, early_access, points_multiplier, custom
+- No longer assumes all promotions have discount percentages
+
+**3. Admin App Announcement Creation** — REQUIRED FIELDS ADDED
+- File: admin_app/lib/features/customers/screens/announcement_screen.dart
+- INSERT now includes: `announcement_type`, `priority`, `start_date`
+- Prevents DB constraint violations when creating announcements
+
+**4. Loyalty App Notification Badge** — NEW FEATURE
+- File: loyalty_app/lib/shared/widgets/main_shell.dart
+- Red badge on Profile nav item shows unread notification count
+- Queries: `SELECT COUNT(*) FROM loyalty_notifications WHERE status='pending'`
+- Refreshes on app resume via WidgetsBindingObserver
+- Badge hidden when count = 0
+
+**5. Loyalty App Mark Notifications as Read** — AUTO-UPDATE
+- File: loyalty_app/lib/features/notifications/screens/notifications_screen.dart
+- When notifications screen opens: `UPDATE status='read' WHERE status='pending'`
+- Badge count updates automatically after marking as read
+
+**6. Admin App Notification Management** — NEW SCREEN
+- File: admin_app/lib/features/customers/screens/notification_management_screen.dart
+- Send notifications to customers by tier or individually
+- 6 notification type templates with auto-fill title/body
+- Batch send: creates one notification per customer in selected tier
+- History tab shows all sent notifications with status indicators
+- **NOTE:** Navigation to this screen must be added to admin app main shell
+
+### Database Schema Used:
+- `promotions`: promotion_type, reward_config (JSONB), trigger_config (JSONB), channels[], audience[]
+- `announcements`: announcement_type, priority, start_date (all NOT NULL with defaults)
+- `loyalty_notifications`: customer_id, notification_type, title, body, scheduled_for, status
+
+### End-to-End Flow:
+1. **Promotions:** Admin creates → DB stores → Loyalty app Deals screen displays
+2. **Announcements:** Admin creates → DB stores → Loyalty app News screen displays
+3. **Notifications:** Admin sends → DB stores → Loyalty app badge shows → User reads → Status updates
+
+All systems verified working with live database queries on 2026-03-19.
+
+---
+
+## PROMOTIONS & NOTIFICATIONS — IMPLEMENTED 2026-03-19
+
+### Storage Buckets:
+- **announcements**: Created for announcement image uploads (public bucket)
+- **recipe-images**: Existing bucket for recipe images
+
+### Promotion System Architecture:
+- **POS App**: Loads all active promotions at start, caches in `cachedPromotions`
+- **Auto-apply**: When customer linked, `_evaluatePromotions()` runs automatically
+- **Channel filtering**: POS-only vs loyalty_app promotions enforced at query level
+- **Tier filtering**: Exact tier match + 'all' audience (no cascading)
+- **No stacking**: Only best discount applies (confirmed working)
+- **Early Access**: Shows "VIP Early Access" badge for VIP customers (no discount)
+
+### Loyalty App Deals Screen:
+- **Automatic filtering**: Customer sees only their tier + 'all' audience promotions
+- **Manual tier chips removed**: No Bronze+, Silver+, etc. selectors
+- **Channel filter**: Only promotions with 'loyalty_app' in channels array
+- **Enhanced cards**: Show dates, times, days, and terms conditions
+- **Terms display**: Custom terms if set, else default stacking disclaimer
+
+### Notification Badge System:
+- **Real-time updates**: Badge count refreshes after viewing notifications
+- **Auto-refresh**: On app resume and after returning from notifications screen
+- **Source**: Queries `loyalty_notifications` table for 'pending' status
+
+### Admin App Enhancements:
+- **Announcement publishing**: Fixed storage bucket to 'announcements'
+- **Created by tracking**: Added staff ID to announcement records
+- **Promotion terms**: New `terms_and_conditions` field (500 chars max)
+- **Form validation**: Terms field optional with hint text
+
+### Database Schema Updates:
+```sql
+-- Storage bucket
+INSERT INTO storage.buckets (id, name, public) VALUES ('announcements', 'announcements', true);
+
+-- Promotions table
+ALTER TABLE promotions ADD COLUMN terms_and_conditions text;
+```
+
+### Key Implementation Details:
+- **POS promotion evaluation**: Handles spend_threshold, time_based, bundle, early_access types
+- **Loyalty app filtering**: Server-side channel filter + client-side tier filter
+- **Terms integration**: Added to both admin and loyalty app Promotion models
+- **Badge refresh pattern**: `.then((_) => loadUnreadCount())` after navigation
+
+All changes verified with flutter analyze (info-level suggestions only) and live database testing.

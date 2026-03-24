@@ -226,73 +226,122 @@ class _PricingTabState extends State<_PricingTab> {
     _load();
   }
 
+  Widget _dynamicPricingDisclaimer() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Prices are calculated from cost and target markup. This view suggests updates based on current costs, not actual sales performance.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Use Pricing Intelligence to see actual margins based on real sales.',
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.grey.shade500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     if (_suggestions.isEmpty) {
-      return const Center(child: Text('No supplier price hikes detected needing markdown corrections.'));
-    }
-
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _suggestions.length,
-      itemBuilder: (_, i) {
-        final sug = _suggestions[i];
-        final id = sug['id']?.toString() ?? '';
-        return Card(
-          margin: const EdgeInsets.only(bottom: 16),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.trending_up, color: AppColors.error),
-                    const SizedBox(width: 8),
-                    Text('Supplier: ${sug['supplier_name'] ?? 'Unknown'} - ${sug['product_name'] ?? 'Unknown'} (+${sug['percentage_increase'] ?? '0'}%)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                  ],
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _dynamicPricingDisclaimer(),
+          const Expanded(
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  'No supplier price hikes detected needing markdown corrections.',
                 ),
-                const Divider(height: 32),
-                const Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: Text('Product', style: TextStyle(fontWeight: FontWeight.bold))),
-                    Expanded(child: Text('Current Price', style: TextStyle(fontWeight: FontWeight.bold))),
-                    Expanded(child: Text('Suggested Price', style: TextStyle(fontWeight: FontWeight.bold))),
-                    Expanded(child: Text('Margin Impact', style: TextStyle(fontWeight: FontWeight.bold))),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(child: Text(sug['product_name'] ?? 'Unknown')),
-                    Expanded(child: Text('R ${sug['current_sell_price'] ?? '0.00'}/kg')),
-                    Expanded(child: Text('R ${sug['suggested_sell_price'] ?? '0.00'}/kg', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.success))),
-                    Expanded(child: Text(sug['margin_impact'] ?? 'Check Margin', style: const TextStyle(color: AppColors.error))),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    ElevatedButton(
-                      onPressed: () {
-                        final newPrice = double.tryParse(
-                            sug['suggested_sell_price']?.toString() ?? '');
-                        _handleAction(id, 'Applied', suggestedPrice: newPrice);
-                      },
-                      child: const Text('Accept & Update Price'),
-                    ),
-                    const SizedBox(width: 8),
-                    TextButton(onPressed: () => _handleAction(id, 'Ignored'), child: const Text('Ignore')),
-                  ],
-                )
-              ],
+              ),
             ),
           ),
-        );
-      },
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _dynamicPricingDisclaimer(),
+        Expanded(
+          child: ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            itemCount: _suggestions.length,
+            itemBuilder: (_, i) {
+              final sug = _suggestions[i];
+              final id = sug['id']?.toString() ?? '';
+              return Card(
+                margin: const EdgeInsets.only(bottom: 16),
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.trending_up, color: AppColors.error),
+                          const SizedBox(width: 8),
+                          Text('Supplier: ${sug['supplier_name'] ?? 'Unknown'} - ${sug['product_name'] ?? 'Unknown'} (+${sug['percentage_increase'] ?? '0'}%)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        ],
+                      ),
+                      const Divider(height: 32),
+                      const Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text('Product', style: TextStyle(fontWeight: FontWeight.bold))),
+                          Expanded(child: Text('Current Price', style: TextStyle(fontWeight: FontWeight.bold))),
+                          Expanded(child: Text('Suggested Price', style: TextStyle(fontWeight: FontWeight.bold))),
+                          Expanded(child: Text('Margin Impact', style: TextStyle(fontWeight: FontWeight.bold))),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Expanded(child: Text(sug['product_name'] ?? 'Unknown')),
+                          Expanded(child: Text('R ${sug['current_sell_price'] ?? '0.00'}/kg')),
+                          Expanded(child: Text('R ${sug['suggested_sell_price'] ?? '0.00'}/kg', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.success))),
+                          Expanded(child: Text(sug['margin_impact'] ?? 'Check Margin', style: const TextStyle(color: AppColors.error))),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          ElevatedButton(
+                            onPressed: () {
+                              final newPrice = double.tryParse(
+                                  sug['suggested_sell_price']?.toString() ?? '');
+                              _handleAction(id, 'Applied', suggestedPrice: newPrice);
+                            },
+                            child: const Text('Accept & Update Price'),
+                          ),
+                          const SizedBox(width: 8),
+                          TextButton(onPressed: () => _handleAction(id, 'Ignored'), child: const Text('Ignore')),
+                        ],
+                      )
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -468,6 +517,7 @@ class _EventTabState extends State<_EventTab> {
   bool _isLoading = true;
   String? _selectedEventForYoY;
   List<Map<String, dynamic>> _yoyData = [];
+  List<Map<String, dynamic>> _forecastSummary = [];
   bool _yoyLoading = false;
 
   // Tag form state per spike
@@ -487,6 +537,8 @@ class _EventTabState extends State<_EventTab> {
   static String _eventTypeLabel(String t) =>
       t.replaceAll('_', ' ').split(' ').map((w) =>
           w.isEmpty ? '' : '${w[0].toUpperCase()}${w.substring(1)}').join(' ');
+
+  String _normalizeEventName(String name) => name.trim().toLowerCase();
 
   @override
   void initState() {
@@ -545,12 +597,26 @@ class _EventTabState extends State<_EventTab> {
 
   Future<void> _loadYoY(String eventName) async {
     setState(() => _yoyLoading = true);
-    final data = await _repo.getEventYearOnYear(eventName);
-    if (mounted) {
+    try {
+      final results = await Future.wait([
+        _repo.getEventYearOnYear(eventName),
+        _repo.getForecastForEvent(_normalizeEventName(eventName)),
+      ]);
+      if (!mounted) return;
       setState(() {
-        _yoyData = data;
+        _yoyData = List<Map<String, dynamic>>.from(results[0] as List);
+        _forecastSummary = List<Map<String, dynamic>>.from(results[1] as List);
         _yoyLoading = false;
       });
+    } catch (e) {
+      debugPrint('Analytics error: $e');
+      if (mounted) {
+        setState(() {
+          _yoyData = [];
+          _forecastSummary = [];
+          _yoyLoading = false;
+        });
+      }
     }
   }
 
@@ -884,6 +950,41 @@ class _EventTabState extends State<_EventTab> {
               ),
             ),
           ),
+          if (_forecastSummary.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Forecast summary (from recorded instances)',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Avg revenue: R ${_forecastSummary.first['avg_revenue']}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      'Avg vs normal: +${_forecastSummary.first['avg_variance_pct']}%',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      'Avg transactions: ${_forecastSummary.first['avg_transactions']}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                    Text(
+                      'Instances used: ${_forecastSummary.first['years_recorded']}',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
 
         const SizedBox(height: 32),

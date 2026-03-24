@@ -77,4 +77,28 @@ class AwolRepository {
     if (notes != null) payload['notes'] = notes;
     await _client.from('staff_awol_records').update(payload).eq('id', id);
   }
+
+  Future<void> update({
+    required String id,
+    DateTime? awolDate,
+    AwolResolution? resolution,
+    bool? notifiedOwnerManager,
+    String? notifiedWho,
+    bool? writtenWarningIssued,
+    String? warningDocumentUrl,
+    String? notes,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (awolDate != null) payload['awol_date'] = awolDate.toIso8601String().substring(0, 10);
+    if (resolution != null) payload['resolution'] = resolution.dbValue;
+    if (notifiedOwnerManager != null) payload['notified_owner_manager'] = notifiedOwnerManager;
+    if (notifiedWho != null) payload['notified_who'] = notifiedWho;
+    if (writtenWarningIssued != null) payload['written_warning_issued'] = writtenWarningIssued;
+    if (warningDocumentUrl != null) payload['warning_document_url'] = warningDocumentUrl;
+    if (notes != null) payload['notes'] = notes;
+    
+    if (payload.isEmpty) return;
+    
+    await _client.from('staff_awol_records').update(payload).eq('id', id);
+  }
 }

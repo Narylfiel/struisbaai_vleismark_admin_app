@@ -1,3 +1,5 @@
+import 'dart:math' show Random;
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -10,6 +12,70 @@ import 'ledger_repository.dart';
 class ReceiveResult {
   final int itemsReceived;
   ReceiveResult({required this.itemsReceived});
+}
+
+/// AP totals for one supplier (`getSupplierBalance`).
+class SupplierBalanceSummary {
+  final double totalOutstanding;
+  final double totalInvoiced;
+  final double totalPaid;
+
+  const SupplierBalanceSummary({
+    required this.totalOutstanding,
+    required this.totalInvoiced,
+    required this.totalPaid,
+  });
+}
+
+double _money(double x) => (x * 100).roundToDouble() / 100;
+
+/// Enforces 0 <= amount_paid <= total and balance_due = total - amount_paid (>= 0).
+Map<String, double> _amountPaidAndBalanceDue({
+  required double total,
+  required double amountPaid,
+}) {
+  var paid = amountPaid;
+  if (paid < 0) paid = 0;
+  if (paid > total) paid = total;
+  var due = total - paid;
+  if (due < 0) due = 0;
+  return {
+    'amount_paid': _money(paid),
+    'balance_due': _money(due),
+  };
+}
+
+/// Aligns with [InventoryRepository] stock columns: `current_stock` OR fresh+frozen total.
+double _stockBasisForWac(Map<String, dynamic> item) {
+  final hasCurrentStock = item.containsKey('current_stock');
+  final hasFreshFrozen = item.containsKey('stock_on_hand_fresh') &&
+      item.containsKey('stock_on_hand_frozen');
+  if (hasCurrentStock) {
+    return (item['current_stock'] as num?)?.toDouble() ?? 0;
+  }
+  if (hasFreshFrozen) {
+    final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
+    final frozen = (item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
+    return fresh + frozen;
+  }
+  return 0;
+}
+
+/// Weighted average cost after a receipt (2 decimal places).
+double _weightedAverageCost({
+  required double stockBefore,
+  required double currentAvgCost,
+  required double incomingQty,
+  required double incomingUnitCost,
+}) {
+  final newStock = stockBefore + incomingQty;
+  if (newStock <= 0) {
+    return _money(incomingUnitCost);
+  }
+  final raw =
+      ((stockBefore * currentAvgCost) + (incomingQty * incomingUnitCost)) /
+          newStock;
+  return _money(raw);
 }
 
 /// Supplier invoices — table supplier_invoices only.
@@ -30,6 +96,15 @@ class SupplierInvoiceRepository {
   })  : _client = client ?? SupabaseService.client,
         _ledgerRepo = ledgerRepo ?? LedgerRepository(client: client),
         _inventoryRepo = inventoryRepo ?? InventoryRepository(client: client);
+
+  /// Statuses included in supplier balance aggregation (excludes draft/cancelled).
+  static const List<String> _supplierBalanceStatuses = [
+    'pending_review',
+    'approved',
+    'paid',
+    'overdue',
+    'received',
+  ];
 
   Future<List<SupplierInvoice>> getAll({String? status}) async {
     var q = _client.from('supplier_invoices').select('*, suppliers(id, name)');
@@ -70,12 +145,48 @@ class SupplierInvoiceRepository {
     return '$prefix${(numPart + 1).toString().padLeft(3, '0')}';
   }
 
+  /// Returns true if another row already uses this [invoiceNumber].
+  Future<bool> invoiceNumberExists(
+    String invoiceNumber, {
+    String? excludeInvoiceId,
+  }) async {
+    final trimmed = invoiceNumber.trim();
+    if (trimmed.isEmpty) return false;
+    final row = await _client
+        .from('supplier_invoices')
+        .select('id')
+        .eq('invoice_number', trimmed)
+        .maybeSingle();
+    if (row == null) return false;
+    if (excludeInvoiceId != null &&
+        row['id']?.toString() == excludeInvoiceId) {
+      return false;
+    }
+    return true;
+  }
+
   Future<SupplierInvoice> create(SupplierInvoice invoice) async {
+    final invoiceNum = invoice.invoiceNumber.trim();
+    if (invoiceNum.isEmpty) {
+      throw StateError('Invoice number is required');
+    }
+    if (await invoiceNumberExists(invoiceNum)) {
+      throw StateError(
+        'Invoice number already exists. Please verify the document.',
+      );
+    }
     final data = Map<String, dynamic>.from(invoice.toJson())
       ..remove('id')
       ..remove('created_at')
       ..remove('updated_at')
       ..remove('supplier_name');
+    data['invoice_number'] = invoiceNum;
+    data.remove('amount_paid');
+    data.remove('balance_due');
+    final totalVal = _money((data['total'] as num?)?.toDouble() ?? 0);
+    data['total'] = totalVal;
+    data['amount_paid'] = 0;
+    data['balance_due'] = totalVal;
     final row = await _client
         .from('supplier_invoices')
         .insert(data)
@@ -99,17 +210,56 @@ class SupplierInvoiceRepository {
 
   /// Create from raw payload (for direct column control)
   Future<Map<String, dynamic>> createFromRawPayload(Map<String, dynamic> payload) async {
+    final invoiceNum = (payload['invoice_number'] as String?)?.trim() ?? '';
+    if (invoiceNum.isEmpty) {
+      throw StateError('Invoice number is required');
+    }
+    if (await invoiceNumberExists(invoiceNum)) {
+      throw StateError(
+        'Invoice number already exists. Please verify the document.',
+      );
+    }
+    final payloadCopy = Map<String, dynamic>.from(payload);
+    payloadCopy.remove('amount_paid');
+    payloadCopy.remove('balance_due');
+    final totalVal = _money((payloadCopy['total'] as num?)?.toDouble() ?? 0);
+    payloadCopy['total'] = totalVal;
+    payloadCopy['amount_paid'] = 0;
+    payloadCopy['balance_due'] = totalVal;
     final row = await _client
         .from('supplier_invoices')
-        .insert(payload)
+        .insert(payloadCopy)
         .select()
         .single();
     return row as Map<String, dynamic>;
   }
 
   Future<SupplierInvoice> update(SupplierInvoice invoice) async {
+    final invoiceNum = invoice.invoiceNumber.trim();
+    if (invoiceNum.isEmpty) {
+      throw StateError('Invoice number is required');
+    }
+    final existing = await getById(invoice.id);
+    if (existing == null) throw ArgumentError('Invoice not found');
+    if (invoiceNum != existing.invoiceNumber.trim() &&
+        await invoiceNumberExists(invoiceNum, excludeInvoiceId: invoice.id)) {
+      throw StateError(
+        'Invoice number already exists. Please verify the document.',
+      );
+    }
+    final newTotal = _money(invoice.total);
+    final preservedPaid = _money(existing.amountPaid);
+    final balances = _amountPaidAndBalanceDue(
+      total: newTotal,
+      amountPaid: preservedPaid,
+    );
+
     final data = Map<String, dynamic>.from(invoice.toJson())
       ..remove('supplier_name');
+    data['invoice_number'] = invoiceNum;
+    data['total'] = newTotal;
+    data['amount_paid'] = balances['amount_paid']!;
+    data['balance_due'] = balances['balance_due']!;
     final row = await _client
         .from('supplier_invoices')
         .update(data)
@@ -201,11 +351,39 @@ class SupplierInvoiceRepository {
     final extractedInvoiceNumber =
         ocrResult['invoice_number']?.toString();
 
-    // Use extracted invoice number if available
-    final invoiceNumber = (extractedInvoiceNumber != null &&
-            extractedInvoiceNumber.isNotEmpty)
-        ? extractedInvoiceNumber
-        : await nextInvoiceNumber();
+    // Invoice number: never silently auto-generate. If missing → draft + placeholder.
+    final String invoiceNumber;
+    final SupplierInvoiceStatus status;
+    final String? extraNotes;
+    final trimmedExtracted = extractedInvoiceNumber?.trim();
+    if (trimmedExtracted != null && trimmedExtracted.isNotEmpty) {
+      if (await invoiceNumberExists(trimmedExtracted)) {
+        throw StateError(
+          'Invoice number already exists. Please verify the document.',
+        );
+      }
+      invoiceNumber = trimmedExtracted;
+      status = SupplierInvoiceStatus.pendingReview;
+      extraNotes = null;
+    } else {
+      var placeholder =
+          'PENDING-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(0x7fffffff)}';
+      while (await invoiceNumberExists(placeholder)) {
+        placeholder =
+            'PENDING-${DateTime.now().millisecondsSinceEpoch}-${Random().nextInt(0x7fffffff)}';
+      }
+      invoiceNumber = placeholder;
+      status = SupplierInvoiceStatus.draft;
+      extraNotes =
+          'Invoice number missing — enter the correct invoice number before approval.';
+    }
+
+    final noteParts = <String>[];
+    if (extractedSupplierName != null && supplierId == null) {
+      noteParts.add('Supplier from invoice: $extractedSupplierName');
+    }
+    if (extraNotes != null) noteParts.add(extraNotes);
+    final combinedNotes = noteParts.isEmpty ? null : noteParts.join('\n');
 
     final invoice = SupplierInvoice(
       id: '',
@@ -218,16 +396,23 @@ class SupplierInvoiceRepository {
       taxRate: taxRate,
       taxAmount: taxAmount,
       total: total,
-      status: SupplierInvoiceStatus.pendingReview,
-      notes: extractedSupplierName != null && supplierId == null
-          ? 'Supplier from invoice: $extractedSupplierName'
-          : null,
+      status: status,
+      notes: combinedNotes,
       createdBy: createdBy,
     );
     return create(invoice);
   }
 
+  /// WARNING:
+  /// This method is deprecated.
+  /// Approval must be handled via invoice_list_screen to ensure
+  /// correct multi-line ledger entries.
+  /// Do NOT use this method.
+  ///
   /// Approve and post to ledger (Debit 5000, Credit 2000 AP).
+  @Deprecated(
+    'Use invoice_list_screen approval flow for multi-line ledger entries',
+  )
   Future<void> approve(String invoiceId, String approvedBy) async {
     final invoice = await getById(invoiceId);
     if (invoice == null) throw ArgumentError('Invoice not found');
@@ -271,12 +456,42 @@ class SupplierInvoiceRepository {
       throw StateError('Invoice cannot be received (status: ${invoice.status.dbValue}). Only approved invoices can be marked received.');
     }
     int itemsReceived = 0;
+    final runningStock = <String, double>{};
+    final runningAvgCost = <String, double>{};
+    /// When false, no `inventory_items` row was found on first touch — WAC runs in-memory only.
+    final inventoryRowExists = <String, bool>{};
+
     for (final line in invoice.lineItems) {
       final itemId = line['inventory_item_id']?.toString();
       if (itemId == null || itemId.isEmpty) continue;
       final quantity = (line['quantity'] as num?)?.toDouble() ?? 0;
       if (quantity <= 0) continue;
       final unitPrice = (line['unit_price'] as num?)?.toDouble();
+      final incomingUnitCost = unitPrice ?? 0.0;
+
+      if (!runningStock.containsKey(itemId)) {
+        final invRow = await _client
+            .from('inventory_items')
+            .select(
+              'current_stock, stock_on_hand_fresh, stock_on_hand_frozen, average_cost, cost_price',
+            )
+            .eq('id', itemId)
+            .maybeSingle();
+        if (invRow != null) {
+          final rowMap = Map<String, dynamic>.from(invRow);
+          runningStock[itemId] = _stockBasisForWac(rowMap);
+          runningAvgCost[itemId] =
+              (rowMap['average_cost'] as num?)?.toDouble() ??
+                  (rowMap['cost_price'] as num?)?.toDouble() ??
+                  0.0;
+          inventoryRowExists[itemId] = true;
+        } else {
+          runningStock[itemId] = 0;
+          runningAvgCost[itemId] = incomingUnitCost;
+          inventoryRowExists[itemId] = false;
+        }
+      }
+
       await _inventoryRepo.recordMovement(
         itemId: itemId,
         movementType: MovementType.in_,
@@ -288,7 +503,28 @@ class SupplierInvoiceRepository {
         notes: 'Supplier invoice ${invoice.invoiceNumber}',
         metadata: {'invoice_number': invoice.invoiceNumber},
       );
+
       itemsReceived++;
+
+      final stockBefore = runningStock[itemId]!;
+      final avgBefore = runningAvgCost[itemId]!;
+
+      final newAvg = _weightedAverageCost(
+        stockBefore: stockBefore,
+        currentAvgCost: avgBefore,
+        incomingQty: quantity,
+        incomingUnitCost: incomingUnitCost,
+      );
+      final newStock = stockBefore + quantity;
+      runningStock[itemId] = newStock;
+      runningAvgCost[itemId] = newAvg;
+
+      if (inventoryRowExists[itemId] == true) {
+        await _client.from('inventory_items').update({
+          'average_cost': newAvg,
+          'cost_price': newAvg,
+        }).eq('id', itemId);
+      }
     }
     final now = DateTime.now().toUtc().toIso8601String();
     await _client
@@ -308,6 +544,121 @@ class SupplierInvoiceRepository {
       entityId: invoiceId,
     );
     return ReceiveResult(itemsReceived: itemsReceived);
+  }
+
+  /// Records a supplier payment against [invoiceId]. Updates `amount_paid`,
+  /// `balance_due`, and sets status to `paid` when fully settled.
+  /// Does not post ledger entries.
+  Future<void> recordPayment({
+    required String invoiceId,
+    required double amount,
+    required String paymentMethod,
+    required String recordedBy,
+  }) async {
+    final a = _money(amount);
+    if (a <= 0) throw StateError('Payment amount must be positive');
+    if (recordedBy.isEmpty) throw StateError('recordedBy is required');
+    final method = paymentMethod.trim();
+    if (method.isEmpty) throw StateError('paymentMethod is required');
+
+    final invoice = await getById(invoiceId);
+    if (invoice == null) throw ArgumentError('Invoice not found');
+    if (invoice.status == SupplierInvoiceStatus.draft ||
+        invoice.status == SupplierInvoiceStatus.cancelled) {
+      throw StateError(
+        'Cannot record payment for invoice in status ${invoice.status.dbValue}',
+      );
+    }
+
+    final total = _money(invoice.total);
+    var paid = _money(invoice.amountPaid);
+    if (paid > total) paid = total;
+    final remaining = _money(total - paid);
+    if (a > remaining + 1e-9) {
+      throw StateError(
+        'Payment exceeds balance due (R${remaining.toStringAsFixed(2)} remaining)',
+      );
+    }
+
+    final supplierId = invoice.supplierId;
+    await _client.from('supplier_payments').insert({
+      'invoice_id': invoiceId,
+      'supplier_id': supplierId,
+      'amount': a,
+      'payment_method': method,
+      'recorded_by': recordedBy,
+      'payment_date': DateTime.now().toIso8601String(),
+    });
+
+    final newPaidMap = _amountPaidAndBalanceDue(
+      total: total,
+      amountPaid: paid + a,
+    );
+    final newDue = newPaidMap['balance_due']!;
+    final newPaidStored = newPaidMap['amount_paid']!;
+
+    final now = DateTime.now().toUtc().toIso8601String();
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    final updates = <String, dynamic>{
+      'amount_paid': newPaidStored,
+      'balance_due': newDue,
+      'updated_at': now,
+    };
+    if (newDue <= 0.005) {
+      updates['status'] = SupplierInvoiceStatus.paid.dbValue;
+      updates['payment_date'] = today;
+    }
+
+    await _client.from('supplier_invoices').update(updates).eq('id', invoiceId);
+
+    await AuditService.log(
+      action: 'CREATE',
+      module: 'Bookkeeping',
+      description:
+          'Supplier payment R${a.toStringAsFixed(2)} ($method) for invoice ${invoice.invoiceNumber}',
+      entityType: 'SupplierPayment',
+      entityId: invoiceId,
+    );
+  }
+
+  /// Outstanding and lifetime invoiced/paid amounts for [supplierId]
+  /// (non-draft, non-cancelled rows only; requires non-null `supplier_id`).
+  Future<SupplierBalanceSummary> getSupplierBalance(String supplierId) async {
+    if (supplierId.isEmpty) {
+      return const SupplierBalanceSummary(
+        totalOutstanding: 0,
+        totalInvoiced: 0,
+        totalPaid: 0,
+      );
+    }
+
+    final list = await _client
+        .from('supplier_invoices')
+        .select('total, amount_paid, balance_due')
+        .eq('supplier_id', supplierId)
+        .inFilter('status', _supplierBalanceStatuses);
+
+    var outstanding = 0.0;
+    var invoiced = 0.0;
+    var paidSum = 0.0;
+    for (final row in list as List) {
+      final m = row as Map<String, dynamic>;
+      final t = (m['total'] as num?)?.toDouble() ?? 0;
+      final p = (m['amount_paid'] as num?)?.toDouble() ?? 0;
+      final bRaw = m['balance_due'] as num?;
+      final b = bRaw != null
+          ? bRaw.toDouble()
+          : (t - p < 0 ? 0.0 : t - p);
+      invoiced += t;
+      paidSum += p;
+      outstanding += b < 0 ? 0 : b;
+    }
+
+    return SupplierBalanceSummary(
+      totalOutstanding: _money(outstanding),
+      totalInvoiced: _money(invoiced),
+      totalPaid: _money(paidSum),
+    );
   }
 
   /// Auto-match supplier invoice line items to inventory products.
@@ -363,6 +714,8 @@ class SupplierInvoiceRepository {
   }
 
   /// Verify invoice calculations. Returns list of error strings (empty = clean).
+  /// Call before saving or approving an invoice (form save and invoice_list_screen
+  /// approval); callers must block the operation when this returns non-empty.
   /// Checks:
   /// 1. Each line total = quantity * unit_price (within 0.02 rounding tolerance)
   /// 2. Sum of line totals = subtotal (within 0.05 tolerance)

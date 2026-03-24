@@ -101,6 +101,7 @@ extension PromotionTypeExt on PromotionType {
 class Promotion extends BaseModel {
   final String name;
   final String? description;
+  final String? termsAndConditions;
   final PromotionStatus status;
   final PromotionType promotionType;
   /// JSON structure depends on promotion_type (e.g. bogo: buy_quantity, get_quantity).
@@ -128,6 +129,7 @@ class Promotion extends BaseModel {
     required super.id,
     required this.name,
     this.description,
+    this.termsAndConditions,
     this.status = PromotionStatus.draft,
     required this.promotionType,
     this.triggerConfig = const {},
@@ -171,6 +173,7 @@ class Promotion extends BaseModel {
       'id': id,
       'name': name,
       'description': description,
+      'terms_and_conditions': termsAndConditions,
       'status': status.dbValue,
       'promotion_type': promotionType.dbValue,
       'trigger_config': triggerConfig,
@@ -202,6 +205,7 @@ class Promotion extends BaseModel {
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
       description: json['description'] as String?,
+      termsAndConditions: json['terms_and_conditions'] as String?,
       status: PromotionStatusExt.fromDb(json['status'] as String?),
       promotionType: PromotionTypeExt.fromDb(json['promotion_type'] as String?),
       triggerConfig: (json['trigger_config'] is Map<String, dynamic>) ? json['trigger_config'] as Map<String, dynamic> : (json['trigger_config'] != null ? Map<String, dynamic>.from(json['trigger_config'] as Map) : {}),

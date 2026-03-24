@@ -30,6 +30,19 @@ class CachedInventoryItem {
   double? averageCost;
   double? targetMarginPct;
   String? vatGroup;
+  String? onlineDisplayName;
+  String? onlineWeightDescription;
+  double? onlineMinStockThreshold;
+  bool? isBestSeller;
+  bool? isFeatured;
+  String? onlineIngredients;
+  String? onlineAllergens;
+  String? onlineCookingTips;
+  int? onlineSortOrder;
+  String? onlineImageUrl;
+  String? parentStockItemId;
+  double? stockDeductionQty;
+  String? stockDeductionUnit;
   late DateTime cachedAt;
 
   CachedInventoryItem();
@@ -60,6 +73,19 @@ class CachedInventoryItem {
     c.averageCost = (row['average_cost'] as num?)?.toDouble();
     c.targetMarginPct = (row['target_margin_pct'] as num?)?.toDouble();
     c.vatGroup = row['vat_group']?.toString();
+    c.onlineDisplayName = row['online_display_name']?.toString();
+    c.onlineWeightDescription = row['online_weight_description']?.toString();
+    c.onlineMinStockThreshold = (row['online_min_stock_threshold'] as num?)?.toDouble();
+    c.isBestSeller = row['is_best_seller'] == true;
+    c.isFeatured = row['is_featured'] == true;
+    c.onlineIngredients = row['online_ingredients']?.toString();
+    c.onlineAllergens = row['online_allergens']?.toString();
+    c.onlineCookingTips = row['online_cooking_tips']?.toString();
+    c.onlineSortOrder = (row['online_sort_order'] as num?)?.toInt();
+    c.onlineImageUrl = row['online_image_url']?.toString();
+    c.parentStockItemId = row['parent_stock_item_id']?.toString();
+    c.stockDeductionQty = (row['stock_deduction_qty'] as num?)?.toDouble();
+    c.stockDeductionUnit = row['stock_deduction_unit']?.toString();
     c.cachedAt = DateTime.now().toUtc();
     return c;
   }
@@ -89,5 +115,18 @@ class CachedInventoryItem {
         'average_cost': averageCost,
         'target_margin_pct': targetMarginPct,
         'vat_group': vatGroup,
+        'online_display_name': onlineDisplayName,
+        'online_weight_description': onlineWeightDescription,
+        'online_min_stock_threshold': onlineMinStockThreshold,
+        'is_best_seller': isBestSeller,
+        'is_featured': isFeatured,
+        'online_ingredients': onlineIngredients,
+        'online_allergens': onlineAllergens,
+        'online_cooking_tips': onlineCookingTips,
+        'online_sort_order': onlineSortOrder,
+        'online_image_url': onlineImageUrl,
+        'parent_stock_item_id': parentStockItemId,
+        'stock_deduction_qty': stockDeductionQty,
+        'stock_deduction_unit': stockDeductionUnit,
       };
 }

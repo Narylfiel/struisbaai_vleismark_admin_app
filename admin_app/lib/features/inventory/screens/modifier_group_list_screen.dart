@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/db/cached_modifier_group.dart';
 import '../../../core/db/isar_service.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../shared/widgets/action_buttons.dart';
 import '../models/modifier_group.dart';
@@ -30,27 +29,21 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
       _loading = true;
       _error = null;
     });
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isModifierGroupsCacheStale();
-        if (stale) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-        }
-      } else {
-        _isOffline = true;
-        await _loadFromCache();
-      }
-      if (mounted) setState(() => _loading = false);
+      _isOffline = false;
+      await _fetchFromSupabaseAndSave();
     } catch (e) {
-      if (mounted) setState(() {
-        _error = ErrorHandler.friendlyMessage(e);
-        _loading = false;
-      });
+      _isOffline = true;
+      try {
+        await _loadFromCache();
+      } catch (_) {}
+      if (mounted && _groups.isEmpty) {
+        setState(() {
+          _error = ErrorHandler.friendlyMessage(e);
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -74,16 +67,6 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
     }).toList();
     await IsarService.saveModifierGroups(toSave);
     _groups = list;
-  }
-
-  void _refreshInBackground() {
-    Future(() async {
-      try {
-        if (!await IsarService.isModifierGroupsCacheStale()) return;
-        await _fetchFromSupabaseAndSave();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    });
   }
 
   @override

@@ -8,13 +8,16 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/features/reports/models/report_data.dart';
 import 'package:admin_app/features/reports/models/report_definition.dart';
-import 'package:admin_app/features/reports/models/report_schedule.dart';
 import 'package:admin_app/features/reports/services/report_repository.dart';
 import 'package:admin_app/features/reports/screens/timecard_report_screen.dart';
+import 'package:admin_app/features/reports/screens/report_schedule_screen.dart';
 
 /// Blueprint §11: Report hub — real data, export CSV/PDF/Excel, scheduling structure.
 class ReportHubScreen extends StatefulWidget {
-  const ReportHubScreen({super.key});
+  const ReportHubScreen({super.key, this.initialReportKey});
+
+  /// When set (e.g. dashboard alert fallback), opens that report’s run flow once after first frame.
+  final String? initialReportKey;
 
   @override
   State<ReportHubScreen> createState() => _ReportHubScreenState();
@@ -25,10 +28,26 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   final _export = ExportService();
   bool _isLoadingView = false;
   bool _isExporting = false;
+  bool _didConsumeInitialReportKey = false;
   String _selectedCategory = 'All Reports';
   DateTime _rangeStart = DateTime(DateTime.now().year, DateTime.now().month, 1);
   DateTime _rangeEnd = DateTime(DateTime.now().year, DateTime.now().month + 1, 0);
   DateTime _singleDate = DateTime.now();
+
+  @override
+  void initState() {
+    super.initState();
+    final key = widget.initialReportKey;
+    if (key != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted || _didConsumeInitialReportKey) return;
+        _didConsumeInitialReportKey = true;
+        final def = ReportDefinitions.byKey(key);
+        if (def == null) return;
+        await _viewReport(def);
+      });
+    }
+  }
 
   List<ReportDefinition> get _filteredReports {
     var list = ReportDefinitions.all;
@@ -260,23 +279,46 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
           Container(
             padding: const EdgeInsets.all(16),
             color: AppColors.cardBg,
-            child: Row(
-              children: [
-                const Text('Reports & Exports', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(width: 24),
-                TextButton.icon(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final isWide = constraints.maxWidth > 900;
+                final dateButton = TextButton.icon(
                   onPressed: _pickDateRange,
                   icon: const Icon(Icons.calendar_today, size: 18),
                   label: Text('${_rangeStart.day}/${_rangeStart.month}/${_rangeStart.year} – ${_rangeEnd.day}/${_rangeEnd.month}/${_rangeEnd.year}'),
-                ),
-                const Spacer(),
-                if (_isExporting) const Padding(padding: EdgeInsets.only(right: 16), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                ElevatedButton.icon(
+                );
+                final scheduleButton = ElevatedButton.icon(
                   onPressed: () => _openScheduleConfig(context),
                   icon: const Icon(Icons.schedule, size: 18),
                   label: const Text('Schedule'),
-                ),
-              ],
+                );
+                if (isWide) {
+                  return Row(
+                    children: [
+                      const Text('Reports & Exports', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 12),
+                      dateButton,
+                      const Spacer(),
+                      if (_isExporting) const Padding(padding: EdgeInsets.only(right: 16), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                      scheduleButton,
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text('Reports & Exports', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(child: dateButton),
+                        if (_isExporting) const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
+                        scheduleButton,
+                      ],
+                    ),
+                  ],
+                );
+              },
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
@@ -395,37 +437,9 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
   }
 
   void _openScheduleConfig(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Automated Report Schedule'),
-        content: SizedBox(
-          width: 520,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Blueprint §11.3: When reports run and where they are delivered.', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-              const SizedBox(height: 16),
-              ...DefaultReportSchedules.blueprint.map((s) => ListTile(
-                    leading: const Icon(Icons.schedule, color: AppColors.primary),
-                    title: Text(s.description),
-                    subtitle: Text(
-                      '${ReportDefinitions.byKey(s.reportKey)?.title ?? s.reportKey} → ${s.delivery.map((d) => d.name).join(', ')}',
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                  )),
-              const Divider(height: 24),
-              ElevatedButton.icon(
-                onPressed: () => Navigator.pop(context),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add schedule (backend/cron)'),
-              ),
-            ],
-          ),
-        ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close'))],
-      ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const ReportScheduleScreen()),
     );
   }
 }
@@ -753,6 +767,74 @@ class _ReportFilterDialogState extends State<_ReportFilterDialog> {
   }
 }
 
+/// Preview helper line: aligns user expectations with CONTROL vs REALITY vs MONITORING.
+/// Keys are [ReportData.title] values from [ReportDefinitions].
+enum _ReportPreviewContext {
+  real,
+  configured,
+  mixed,
+  placeholder,
+  inventoryValuation,
+}
+
+/// Reports that currently use the repository default empty payload — show [placeholder] copy only when [ReportData.data] is empty.
+const Set<String> _kPlaceholderEmptyReportTitles = {
+  'Equipment Depreciation Schedule',
+  'Purchase Sale Agreement History',
+  'Blockman Performance Report',
+  'Event / Holiday Forecast Report',
+  'Sponsorship & Donations Log',
+};
+
+const Map<String, _ReportPreviewContext> _kReportPreviewContextByTitle = {
+  'Pricing Intelligence': _ReportPreviewContext.mixed,
+};
+
+_ReportPreviewContext _reportPreviewContextFor(ReportData data) {
+  if (_kPlaceholderEmptyReportTitles.contains(data.title) &&
+      data.data.isEmpty) {
+    return _ReportPreviewContext.placeholder;
+  }
+  if (data.title == 'Inventory Valuation') {
+    return _ReportPreviewContext.inventoryValuation;
+  }
+  return _kReportPreviewContextByTitle[data.title] ??
+      _ReportPreviewContext.real;
+}
+
+class _ReportPreviewContextBanner extends StatelessWidget {
+  const _ReportPreviewContextBanner({required this.data});
+
+  final ReportData data;
+
+  @override
+  Widget build(BuildContext context) {
+    final kind = _reportPreviewContextFor(data);
+    final text = switch (kind) {
+      _ReportPreviewContext.real =>
+        'This report shows actual performance based on real sales and current costs.',
+      _ReportPreviewContext.configured =>
+        'This view is based on configured pricing and cost settings, not actual sales.',
+      _ReportPreviewContext.mixed =>
+        'This combines configured pricing with real sales data to highlight performance gaps.',
+      _ReportPreviewContext.placeholder =>
+        'This report is not yet active or has no data available.',
+      _ReportPreviewContext.inventoryValuation =>
+        'This view shows stock value based on configured cost prices, not real costs (WAC).',
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          color: Colors.grey.shade600,
+        ),
+      ),
+    );
+  }
+}
+
 class _ReportPreviewDialog extends StatelessWidget {
   final ReportData data;
   const _ReportPreviewDialog({required this.data});
@@ -811,6 +893,9 @@ class _ReportPreviewDialog extends StatelessWidget {
         height: 520,
         child: Column(
           children: [
+            _ReportPreviewContextBanner(data: data),
+            if (data.alerts != null && data.alerts!.isNotEmpty)
+              _ReportAlertsPanel(alerts: data.alerts!),
             // ── Table area ──────────────────────────────────────
             Expanded(
               child: data.data.isEmpty
@@ -1002,6 +1087,97 @@ class _ReportPreviewDialog extends StatelessWidget {
                 ],
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Pricing / profitability alerts (read-only); shown above the report table.
+class _ReportAlertsPanel extends StatelessWidget {
+  const _ReportAlertsPanel({required this.alerts});
+
+  final List<Map<String, dynamic>> alerts;
+
+  @override
+  Widget build(BuildContext context) {
+    final high =
+        alerts.where((a) => a['severity'] == 'high').toList();
+    final medium =
+        alerts.where((a) => a['severity'] == 'medium').toList();
+
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 200),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 10),
+      decoration: BoxDecoration(
+        color: AppColors.warning.withValues(alpha: 0.08),
+        border: const Border(
+          bottom: BorderSide(color: AppColors.border),
+        ),
+      ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.notifications_active_outlined,
+                    size: 18, color: AppColors.warning),
+                const SizedBox(width: 8),
+                const Text(
+                  'Automated alerts',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (high.isNotEmpty) ...[
+              Text(
+                'High severity',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...high.map(
+                (a) => Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 4),
+                  child: Text(
+                    '• ${a['message'] ?? ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+              if (medium.isNotEmpty) const SizedBox(height: 8),
+            ],
+            if (medium.isNotEmpty) ...[
+              Text(
+                'Medium severity',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.warning,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ...medium.map(
+                (a) => Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 4),
+                  child: Text(
+                    '• ${a['message'] ?? ''}',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

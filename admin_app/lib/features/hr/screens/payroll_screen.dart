@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/core/services/payslip_pdf_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
@@ -24,6 +28,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
   
   List<Map<String, dynamic>> _calculatedEntries = [];
   Map<String, dynamic>? _periodRecord;
+
+  final Set<String> _generatingPayslipIds = <String>{};
+  bool _isGeneratingAllPayslips = false;
 
   @override
   void initState() {
@@ -464,6 +471,172 @@ class _PayrollScreenState extends State<PayrollScreen> {
     }
   }
 
+  double _totalDeductionsForEntry(Map<String, dynamic> e) {
+    final d = e['deductions'];
+    if (d is num) return d.toDouble();
+    final uif = (e['uif_employee'] as num?)?.toDouble() ?? 0;
+    final meat = (e['meat_purchase_deduction'] as num?)?.toDouble() ?? 0;
+    final adv = (e['advance_deduction'] as num?)?.toDouble() ?? 0;
+    final other = (e['other_deductions'] as num?)?.toDouble() ?? 0;
+    return uif + meat + adv + other;
+  }
+
+  String _sanitizeFileSegment(String s) {
+    return s
+        .replaceAll(RegExp(r'[^\w\-\s]'), '')
+        .trim()
+        .replaceAll(RegExp(r'\s+'), '_');
+  }
+
+  Future<void> _openPdfFile(File file) async {
+    if (Platform.isWindows) {
+      await Process.run('cmd', ['/c', 'start', '', file.path]);
+    } else {
+      await Process.run('open', [file.path]);
+    }
+  }
+
+  Future<void> _generatePayslip(Map<String, dynamic> entry) async {
+    if (_periodStart == null || _periodEnd == null) return;
+    try {
+      final staff = entry['staff_profiles'];
+      final staffMap = staff is Map<String, dynamic> ? staff : <String, dynamic>{};
+      final staffName = staffMap['full_name']?.toString() ?? 'Staff';
+      final hourlyRate = (staffMap['hourly_rate'] as num?)?.toDouble() ?? 0;
+
+      final startStr = _periodStart!.toIso8601String().substring(0, 10);
+      final endStr = _periodEnd!.toIso8601String().substring(0, 10);
+
+      final regHrs = (entry['regular_hours'] as num?)?.toDouble() ?? 0;
+      final otHrs = (entry['overtime_hours'] as num?)?.toDouble() ?? 0;
+      final sunHrs = (entry['sunday_hours'] as num?)?.toDouble() ?? 0;
+      final phHrs = (entry['public_holiday_hours'] as num?)?.toDouble() ?? 0;
+
+      final regPay = (entry['regular_pay'] as num?)?.toDouble() ?? 0;
+      final otPay = (entry['overtime_pay'] as num?)?.toDouble() ?? 0;
+      final sunPay = (entry['sunday_pay'] as num?)?.toDouble() ?? 0;
+      final phPay = (entry['public_holiday_pay'] as num?)?.toDouble() ?? 0;
+
+      final uifEmp = (entry['uif_employee'] as num?)?.toDouble() ?? 0;
+      final meatDed = (entry['meat_purchase_deduction'] as num?)?.toDouble() ?? 0;
+      final advDed = (entry['advance_deduction'] as num?)?.toDouble() ?? 0;
+      final otherDed = (entry['other_deductions'] as num?)?.toDouble() ?? 0;
+
+      final grossPay = (entry['gross_pay'] as num?)?.toDouble() ?? 0;
+      final totalDed = _totalDeductionsForEntry(entry);
+      final netPay = (entry['net_pay'] as num?)?.toDouble() ?? 0;
+      final uifEmployer = (entry['uif_employer'] as num?)?.toDouble() ?? 0;
+      final statusStr = entry['status']?.toString() ?? '';
+
+      final file = await PayslipPdfService().generatePayslip(
+        entry: entry,
+        staffMap: staffMap,
+        periodStart: _periodStart!,
+        periodEnd: _periodEnd!,
+      );
+      await _openPdfFile(file);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ErrorHandler.friendlyMessage(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    }
+  }
+
+  Future<void> _generateAllPayslips() async {
+    if (_periodStart == null || _periodEnd == null || _calculatedEntries.isEmpty) {
+      return;
+    }
+    if (mounted) setState(() => _isGeneratingAllPayslips = true);
+    try {
+      final startStr = _periodStart!.toIso8601String().substring(0, 10);
+      final endStr = _periodEnd!.toIso8601String().substring(0, 10);
+
+      final data = <Map<String, dynamic>>[];
+      double sumGross = 0;
+      double sumDed = 0;
+      double sumNet = 0;
+
+      for (final e in _calculatedEntries) {
+        final staff = e['staff_profiles'] ?? {};
+        final staffMap = staff is Map<String, dynamic> ? staff : <String, dynamic>{};
+        final name = staffMap['full_name']?.toString() ?? '';
+        final regH = (e['regular_hours'] as num?)?.toDouble() ?? 0;
+        final otH = (e['overtime_hours'] as num?)?.toDouble() ?? 0;
+        final gross = (e['gross_pay'] as num?)?.toDouble() ?? 0;
+        final ded = _totalDeductionsForEntry(e);
+        final net = (e['net_pay'] as num?)?.toDouble() ?? 0;
+        sumGross += gross;
+        sumDed += ded;
+        sumNet += net;
+        data.add({
+          'staff_name': name,
+          'regular_hours': regH,
+          'overtime_hours': otH,
+          'gross_pay': gross,
+          'total_deductions': ded,
+          'net_pay': net,
+          'status': e['status']?.toString() ?? '',
+        });
+      }
+
+      final columnHeaders = <String, String>{
+        'staff_name': 'Staff',
+        'regular_hours': 'Reg Hrs',
+        'overtime_hours': 'OT Hrs',
+        'gross_pay': 'Gross (R)',
+        'total_deductions': 'Deductions (R)',
+        'net_pay': 'Net Pay (R)',
+        'status': 'Status',
+      };
+
+      final summary = <String, dynamic>{
+        'Total Staff': _calculatedEntries.length,
+        'Total Gross': sumGross,
+        'Total Deductions': sumDed,
+        'Total Net Pay': sumNet,
+      };
+
+      final baseName = 'payroll_summary_${startStr}_$endStr';
+
+      final file = await ExportService().exportToPdf(
+        fileName: baseName,
+        title: 'Payroll Summary',
+        subtitle: '$startStr to $endStr',
+        data: data,
+        columns: const [
+          'staff_name',
+          'regular_hours',
+          'overtime_hours',
+          'gross_pay',
+          'total_deductions',
+          'net_pay',
+          'status',
+        ],
+        columnHeaders: columnHeaders,
+        summary: summary,
+      );
+      await _openPdfFile(file);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Payroll summary PDF generated'),
+          backgroundColor: AppColors.success,
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(ErrorHandler.friendlyMessage(e)),
+          backgroundColor: AppColors.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isGeneratingAllPayslips = false);
+    }
+  }
+
   Widget _buildStatusChip(String? status) {
     Color bg;
     Color text = Colors.white;
@@ -524,15 +697,10 @@ class _PayrollScreenState extends State<PayrollScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    const Text('Pay Period:',
-                      style: TextStyle(fontSize: 13,
-                        fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
-                    const SizedBox(width: 12),
-                    // FROM date
-                    OutlinedButton.icon(
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final isWide = constraints.maxWidth > 700;
+                    final fromButton = OutlinedButton.icon(
                       icon: const Icon(Icons.calendar_today, size: 14),
                       label: Text(
                         _periodStart != null
@@ -550,15 +718,8 @@ class _PayrollScreenState extends State<PayrollScreen> {
                         );
                         if (d != null) setState(() => _periodStart = d);
                       },
-                    ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text('→',
-                        style: TextStyle(fontSize: 16,
-                          color: AppColors.textSecondary)),
-                    ),
-                    // TO date
-                    OutlinedButton.icon(
+                    );
+                    final toButton = OutlinedButton.icon(
                       icon: const Icon(Icons.calendar_today, size: 14),
                       label: Text(
                         _periodEnd != null
@@ -577,8 +738,48 @@ class _PayrollScreenState extends State<PayrollScreen> {
                         );
                         if (d != null) setState(() => _periodEnd = d);
                       },
-                    ),
-                  ],
+                    );
+                    if (isWide) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          const Text('Pay Period:',
+                            style: TextStyle(fontSize: 13,
+                              fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                          const SizedBox(width: 8),
+                          fromButton,
+                          const Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Text('→',
+                              style: TextStyle(fontSize: 16,
+                                color: AppColors.textSecondary)),
+                          ),
+                          toButton,
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('Pay Period:',
+                          style: TextStyle(fontSize: 13,
+                            fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            fromButton,
+                            const Text('→',
+                              style: TextStyle(fontSize: 16,
+                                color: AppColors.textSecondary)),
+                            toButton,
+                          ],
+                        ),
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
                 ElevatedButton(
@@ -625,6 +826,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
                 itemCount: _calculatedEntries.length,
                 itemBuilder: (context, index) {
                   final e = _calculatedEntries[index];
+                  final staffId = e['staff_id']?.toString() ?? '';
                   final staff = e['staff_profiles'] ?? {};
                   final isSkipped = e['is_skipped'] == true;
                   
@@ -731,6 +933,35 @@ class _PayrollScreenState extends State<PayrollScreen> {
                                 ],
                               ),
 
+                              const SizedBox(height: 16),
+                              const Divider(),
+                              SizedBox(
+                                width: double.infinity,
+                                child: OutlinedButton.icon(
+                                  onPressed: _generatingPayslipIds.contains(staffId)
+                                      ? null
+                                      : () async {
+                                          if (mounted) setState(() => _generatingPayslipIds.add(staffId));
+                                          await _generatePayslip(e);
+                                          if (mounted) {
+                                            setState(() => _generatingPayslipIds.remove(staffId));
+                                          }
+                                        },
+                                  icon: _generatingPayslipIds.contains(staffId)
+                                      ? const SizedBox(
+                                          width: 16,
+                                          height: 16,
+                                          child: CircularProgressIndicator(strokeWidth: 2),
+                                        )
+                                      : const Icon(Icons.picture_as_pdf, size: 18),
+                                  label: const Text('Download Payslip'),
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: AppColors.primary,
+                                    side: const BorderSide(color: AppColors.primary),
+                                  ),
+                                ),
+                              ),
+
                               // If timecards are captured during calculation, map them out. (For brevity in UI, we omitted separate fetches of exactly which meat items, but we display the macro summaries perfectly).
                             ],
                           ),
@@ -743,32 +974,77 @@ class _PayrollScreenState extends State<PayrollScreen> {
             ),
             
             // Bottom Actions
-            if (isOwner && (hasDrafts || (allApproved && hasUnpaidApproved)))
+            if (_calculatedEntries.isNotEmpty)
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: const BoxDecoration(
                   color: Colors.white,
                   border: Border(top: BorderSide(color: AppColors.border)),
                 ),
-                child: hasDrafts 
-                  ? ElevatedButton(
-                      onPressed: _isApproving ? null : _approvePayroll,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _isGeneratingAllPayslips ? null : _generateAllPayslips,
+                        icon: _isGeneratingAllPayslips
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Icon(Icons.download, size: 18),
+                        label: const Text('Download All Payslips (PDF)'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          side: const BorderSide(color: AppColors.primary),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
                       ),
-                      child: _isApproving ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('APPROVE PAYROLL', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
-                    )
-                  : ElevatedButton(
-                      onPressed: _isPaying ? null : _markAsPaid,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.success,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      child: _isPaying ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) : const Text('MARK AS PAID', style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1)),
                     ),
+                    if (isOwner && (hasDrafts || (allApproved && hasUnpaidApproved))) ...[
+                      const SizedBox(height: 8),
+                      hasDrafts
+                          ? ElevatedButton(
+                              onPressed: _isApproving ? null : _approvePayroll,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.primary,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: _isApproving
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : const Text(
+                                      'APPROVE PAYROLL',
+                                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                                    ),
+                            )
+                          : ElevatedButton(
+                              onPressed: _isPaying ? null : _markAsPaid,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: AppColors.success,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                              ),
+                              child: _isPaying
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                                    )
+                                  : const Text(
+                                      'MARK AS PAID',
+                                      style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
+                                    ),
+                            ),
+                    ],
+                  ],
+                ),
               ),
           ] else if (!_isCalculating && _calculatedEntries.isEmpty) ...[
             const Expanded(

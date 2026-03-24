@@ -161,26 +161,7 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
 
   Future<void> _loadSessionsAndOpen() async {
     setState(() => _loadingSessions = true);
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (!isConnected) {
-        _isOffline = true;
-        final cachedItems = await IsarService.getAllInventoryItems(true);
-        if (mounted) setState(() {
-          _sessions = [];
-          _currentSession = null;
-          _locations = [];
-          _items = cachedItems.map((e) => e.toMap()).toList();
-          _loadingSessions = false;
-          for (final item in _items) {
-            final id = item['id'] as String?;
-            if (id != null && !_actualControllers.containsKey(id)) {
-              _actualControllers[id] = TextEditingController();
-            }
-          }
-        });
-        return;
-      }
       _isOffline = false;
       final sessions = await _repo.getSessions();
       final open = await _repo.getOpenSession();
@@ -231,6 +212,24 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
         }
       }
     } catch (e) {
+      _isOffline = true;
+      try {
+        final cachedItems = await IsarService.getAllInventoryItems(true);
+        if (mounted) {
+          setState(() {
+            _sessions = [];
+            _currentSession = null;
+            _locations = [];
+            _items = cachedItems.map((entry) => entry.toMap()).toList();
+            for (final item in _items) {
+              final id = item['id'] as String?;
+              if (id != null && !_actualControllers.containsKey(id)) {
+                _actualControllers[id] = TextEditingController();
+              }
+            }
+          });
+        }
+      } catch (_) {}
       if (mounted) {
         setState(() {
           _sessions = [];

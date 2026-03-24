@@ -209,7 +209,7 @@ class AuthService extends BaseService {
       // Validate via Supabase: staff exists and is active
       final response = await executeQuery(
         () => client
-            .from('profiles')
+            .from('staff_profiles')
             .select('id, full_name, role, is_active')
             .eq('id', id)
             .maybeSingle(),

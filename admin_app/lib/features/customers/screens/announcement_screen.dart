@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 class AnnouncementScreen extends StatefulWidget {
@@ -123,26 +124,29 @@ class _ComposeTabState extends State<_ComposeTab> {
               'announcements/${DateTime.now()
               .millisecondsSinceEpoch}.jpg';
           await _client.storage
-              .from('product-images')
+              .from('announcements')
               .upload(path, _pickedImage!);
           imageUrl = _client.storage
-              .from('product-images')
+              .from('announcements')
               .getPublicUrl(path);
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('[ANNOUNCEMENT] Storage upload failed: $e');
+        }
       }
 
       await _client.from('announcements').insert({
         'title': title,
         'content': body,
+        'announcement_type': 'general',
+        'priority': 'normal',
+        'start_date': DateTime.now().toIso8601String().substring(0, 10),
         'target_audience': _audience,
         'is_active': true,
         'image_url': imageUrl,
         'end_date': _endDate != null
-            ? _endDate!.toIso8601String()
-                .substring(0, 10)
+            ? _endDate!.toIso8601String().substring(0, 10)
             : null,
-        'created_at': DateTime.now()
-            .toIso8601String(),
+        'created_by': AuthService().getCurrentStaffId(),
       });
 
       if (mounted) {
@@ -397,7 +401,7 @@ class _HistoryTabState extends State<_HistoryTab> {
           .from('announcements')
           .select()
           .order('created_at', ascending: false)
-          .limit(50);
+          .limit(300);
       if (mounted) {
         setState(() {
           _history =

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
@@ -91,6 +90,12 @@ class GoogleDriveService {
     await _storage.delete(key: _keyLastScan);
     // Reset in-memory cache too
     debugPrint('DRIVE: Cleared all processed IDs and last scan timestamp');
+  }
+
+  /// Clear processed file IDs so previously processed invoices can be re-imported.
+  Future<void> clearProcessedFileIds() async {
+    await _storage.delete(key: _keyProcessedFiles);
+    debugPrint('[DRIVE] Cleared all processed file IDs');
   }
 
   // ── Authentication ────────────────────────────────────────────

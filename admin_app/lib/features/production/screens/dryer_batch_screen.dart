@@ -4,7 +4,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/db/cached_dryer_batch.dart';
 import '../../../core/db/isar_service.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
@@ -39,35 +38,27 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
       _loading = true;
       _error = null;
     });
-    final isConnected = ConnectivityService().isConnected;
     try {
-      if (isConnected) {
-        _isOffline = false;
-        final stale = await IsarService.isDryerBatchCacheStale();
-        if (stale) {
-          await _fetchFromSupabaseAndSave();
-        } else {
-          await _loadFromCache();
-          _refreshInBackground();
-          _inventoryItems = List<Map<String, dynamic>>.from(await _client.from('inventory_items').select('id, name').eq('is_active', true).order('name') as List);
-          _recipes = List<Map<String, dynamic>>.from(await _client.from('recipes').select('id, name, expected_yield_pct, batch_size_kg, prep_time_minutes, output_product_id').eq('is_active', true).order('name') as List);
-        }
-      } else {
-        _isOffline = true;
+      _isOffline = false;
+      await _fetchFromSupabaseAndSave();
+    } catch (e) {
+      _isOffline = true;
+      try {
         await _loadFromCache();
         final inv = await IsarService.getAllInventoryItems(true);
         _inventoryItems = inv.map((e) => e.toMap()).toList();
         final rec = await IsarService.getAllRecipes(true);
         _recipes = rec.map((r) => {'id': r.recipeId, 'name': r.name}).toList();
-      }
-      if (mounted) setState(() => _loading = false);
-    } catch (e) {
+      } catch (_) {}
       if (mounted) {
-        setState(() {
-          _error = ErrorHandler.friendlyMessage(e);
-          _loading = false;
-        });
+        if (_batches.isEmpty) {
+          setState(() {
+            _error = ErrorHandler.friendlyMessage(e);
+          });
+        }
       }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -103,18 +94,8 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
       }
       return CachedDryerBatch.fromSupabase(j);
     }).toList();
-    await IsarService.saveDryerBatches(toSave);
+    unawaited(IsarService.saveDryerBatches(toSave));
     _batches = batches;
-  }
-
-  void _refreshInBackground() {
-    Future(() async {
-      try {
-        if (!await IsarService.isDryerBatchCacheStale()) return;
-        await _fetchFromSupabaseAndSave();
-        if (mounted) setState(() {});
-      } catch (_) {}
-    });
   }
 
   @override
