@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
 import 'package:admin_app/features/hunter/services/parked_sale_repository.dart';
@@ -160,9 +163,26 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
         final invId = c['inventory_item_id']?.toString();
         final w = (c['weight_kg'] as num?)?.toDouble() ?? 0;
         if (invId != null && invId.isNotEmpty && w > 0) {
-          final row = await _client.from('inventory_items').select('current_stock').eq('id', invId).single();
-          final cur = (row['current_stock'] as num?)?.toDouble() ?? 0;
-          await _client.from('inventory_items').update({'current_stock': cur + w}).eq('id', invId);
+          final movement = {
+            'item_id': invId,
+            'movement_type': 'in',
+            'quantity': w,
+            'reference_type': 'hunter_job',
+            'reference_id': jobId,
+            'staff_id': _client.auth.currentUser?.id,
+            'notes': 'Hunter job ${hunterJobDisplayNumber(jobId)} ready',
+          };
+          if (EdgePipelineConfig.canUseEdgePipeline) {
+            debugPrint('[EDGE] Calling stock_adjust');
+            try {
+              await EdgePipelineClient.instance.stockAdjust(movement: movement);
+            } catch (e) {
+              debugPrint('[EDGE] Failed: stock_adjust — $e');
+              rethrow;
+            }
+          } else {
+            await _client.from('stock_movements').insert(movement);
+          }
         }
       }
 

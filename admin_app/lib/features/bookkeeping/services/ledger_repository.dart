@@ -1,6 +1,9 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 import '../../../core/models/ledger_entry.dart';
 
 /// Blueprint §9: ledger_entries as single financial truth.
@@ -41,11 +44,25 @@ class LedgerRepository {
       'metadata': metadata,
       'recorded_by': recordedBy,
     };
-    final response = await _client
-        .from('ledger_entries')
-        .insert(row)
-        .select()
-        .single();
+    dynamic response;
+    if (EdgePipelineConfig.canUseEdgePipeline) {
+      debugPrint('[EDGE] Calling ledger_submit_entry');
+      try {
+        final res = await EdgePipelineClient.instance.ledgerSubmitEntry(
+          entry: row,
+        );
+        response = res['row'];
+      } catch (e) {
+        debugPrint('[EDGE] Failed: ledger_submit_entry');
+        rethrow;
+      }
+    } else {
+      response = await _client
+          .from('ledger_entries')
+          .insert(row)
+          .select()
+          .single();
+    }
     return LedgerEntry.fromJson(response as Map<String, dynamic>);
   }
 

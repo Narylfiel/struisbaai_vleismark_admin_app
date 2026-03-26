@@ -5,6 +5,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
 import 'package:admin_app/features/analytics/services/analytics_repository.dart';
+import 'package:admin_app/features/analytics/debt_buster/screens/debt_buster_tab.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -24,7 +25,7 @@ class _ShrinkageScreenState extends State<ShrinkageScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
   }
 
   @override
@@ -51,6 +52,7 @@ class _ShrinkageScreenState extends State<ShrinkageScreen>
                 Tab(icon: Icon(Icons.price_change, size: 18), text: 'Dynamic Pricing'),
                 Tab(icon: Icon(Icons.shopping_cart, size: 18), text: 'Predictive Reorder'),
                 Tab(icon: Icon(Icons.event_note, size: 18), text: 'Event Forecasting'),
+                Tab(icon: Icon(Icons.account_balance_wallet, size: 18), text: 'Debt Buster'),
               ],
             ),
           ),
@@ -63,6 +65,7 @@ class _ShrinkageScreenState extends State<ShrinkageScreen>
                 _PricingTab(),
                 _ReorderTab(),
                 _EventTab(),
+                const DebtBusterTab(),
               ],
             ),
           ),

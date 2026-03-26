@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
 class OnlineOrderDetailScreen extends StatefulWidget {
@@ -157,7 +160,19 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
             };
           }).toList();
 
-          await _supabase.from('stock_movements').insert(movements);
+          if (EdgePipelineConfig.canUseEdgePipeline) {
+            for (final movement in movements) {
+              debugPrint('[EDGE] Calling stock_adjust');
+              try {
+                await EdgePipelineClient.instance.stockAdjust(movement: movement);
+              } catch (e) {
+                debugPrint('[EDGE] Failed: stock_adjust — $e');
+                rethrow;
+              }
+            }
+          } else {
+            await _supabase.from('stock_movements').insert(movements);
+          }
         }
       }
 
@@ -175,6 +190,149 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Update failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _confirmCodOrder() async {
+    if (_order == null) return;
+    final status = _order!['status'] as String? ?? '';
+    if (status != 'pending_cod') return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirm COD Order'),
+        content: const Text(
+          'Confirm this COD order and create a parked sale for POS pickup?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('CANCEL'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('CONFIRM'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    try {
+      final order = _order!;
+      final orderId = widget.orderId;
+      final customer = order['loyalty_customers'] as Map<String, dynamic>?;
+      final customerName = customer?['full_name'] as String?;
+      final customerPhone = customer?['phone'] as String?;
+      final customerId = order['customer_id']?.toString();
+      final orderNumber = order['order_number']?.toString() ?? '';
+      final subtotal = (order['subtotal'] as num?)?.toDouble() ?? 0.0;
+
+      final lineItems = _items.map((item) {
+        final quantity = (item['quantity'] as num?)?.toDouble() ??
+            (item['qty'] as num?)?.toDouble() ??
+            0.0;
+        final unitPrice = (item['unit_price'] as num?)?.toDouble() ?? 0.0;
+        final lineTotal = (item['line_total'] as num?)?.toDouble() ?? 0.0;
+        return <String, dynamic>{
+          'id': item['id']?.toString(),
+          'inventory_item_id': item['inventory_item_id'],
+          'product_name': item['product_name'],
+          'quantity': quantity,
+          'unit_type': 'each',
+          'unit_price': unitPrice,
+          'line_total': lineTotal,
+          'cost_price': 0,
+          'vat_group': 'Standard',
+          'is_weighted': false,
+          'scanned_barcode': null,
+          'barcode_weight': null,
+          'barcode_price': null,
+        };
+      }).toList();
+
+      final parkedSale = await _supabase
+          .from('parked_sales')
+          .insert({
+            'source': 'online_order',
+            'online_order_id': orderId,
+            'customer_id': customerId,
+            'customer_name': customerName,
+            'customer_phone': customerPhone,
+            'reference': orderNumber,
+            'line_items': lineItems,
+            'subtotal': subtotal,
+            'notes': 'Online order — COD',
+            'status': 'parked',
+            'payment_status': 'unpaid',
+            'created_by': null,
+          })
+          .select('id')
+          .single();
+
+      await _supabase
+          .from('online_orders')
+          .update({
+            'status': 'confirmed',
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', orderId);
+
+      final staffId = _supabase.auth.currentUser?.id;
+      if (staffId != null && _items.isNotEmpty) {
+        final movements = _items
+            .where((item) => item['inventory_item_id'] != null)
+            .map((item) {
+          final quantity = (item['quantity'] as num?)?.toDouble() ??
+              (item['qty'] as num?)?.toDouble() ??
+              0.0;
+          return <String, dynamic>{
+            'item_id': item['inventory_item_id'],
+            'movement_type': 'sale',
+            'quantity': -quantity,
+            'unit_type': 'unit',
+            'reference_id': orderId,
+            'reference_type': 'online_order',
+            'staff_id': staffId,
+            'reason': 'COD order confirmed',
+          };
+        }).toList();
+
+        try {
+          if (EdgePipelineConfig.canUseEdgePipeline) {
+            for (final movement in movements) {
+              debugPrint('[EDGE] Calling stock_adjust');
+              await EdgePipelineClient.instance.stockAdjust(movement: movement);
+            }
+          } else if (movements.isNotEmpty) {
+            await _supabase.from('stock_movements').insert(movements);
+          }
+        } catch (e) {
+          debugPrint('[COD] Stock movement failed (non-fatal): $e');
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'COD order confirmed and parked sale created (${parkedSale['id']})',
+            ),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadOrder();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('COD confirm failed: $e'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -300,7 +458,8 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
     final customerTier = customer?['loyalty_tier'] as String? ?? '';
     final customerPoints = customer?['points_balance'] ?? 0;
 
-    final canAdvance = ['pending_cod', 'pending_payment', 'confirmed', 'packing', 'ready']
+    final canConfirmCod = status == 'pending_cod';
+    final canAdvance = ['pending_payment', 'confirmed', 'packing', 'ready']
         .contains(status);
     final canCancel = ['pending_cod', 'pending_payment', 'confirmed'].contains(status);
 
@@ -310,7 +469,7 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Status + Actions ──────────────────────────────────────
-          _buildStatusCard(status, canAdvance, canCancel),
+          _buildStatusCard(status, canConfirmCod, canAdvance, canCancel),
           const SizedBox(height: 16),
 
           // ── Customer Info ─────────────────────────────────────────
@@ -404,7 +563,12 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
     );
   }
 
-  Widget _buildStatusCard(String status, bool canAdvance, bool canCancel) {
+  Widget _buildStatusCard(
+    String status,
+    bool canConfirmCod,
+    bool canAdvance,
+    bool canCancel,
+  ) {
     final info = _statusInfoFull(status);
     return Card(
       color: AppColors.cardBg,
@@ -441,12 +605,26 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
                 ),
               ],
             ),
-            if (canAdvance || canCancel) ...[
+            if (canConfirmCod || canAdvance || canCancel) ...[
               const SizedBox(height: 16),
               const Divider(),
               const SizedBox(height: 12),
               Row(
                 children: [
+                  if (canConfirmCod)
+                    Expanded(
+                      child: FilledButton.icon(
+                        onPressed: _confirmCodOrder,
+                        icon: const Icon(Icons.check_circle_outline, size: 18),
+                        label: const Text('Confirm COD Order'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                  if (canConfirmCod && (canAdvance || canCancel))
+                    const SizedBox(width: 12),
                   if (canAdvance)
                     Expanded(
                       child: FilledButton.icon(

@@ -14,6 +14,7 @@ import 'package:admin_app/features/bookkeeping/screens/customer_invoice_form_scr
 import 'package:admin_app/features/bookkeeping/screens/supplier_invoice_form_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/customer_invoice_repository.dart';
 import 'package:admin_app/features/bookkeeping/services/supplier_invoice_repository.dart';
+import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:admin_app/features/bookkeeping/screens/chart_of_accounts_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/ledger_screen.dart';
 import 'package:admin_app/features/bookkeeping/screens/pl_screen.dart';
@@ -30,6 +31,8 @@ import '../../../core/services/ai_service.dart';
 import 'supplier_mapping_screen.dart';
 import '../../../core/services/supplier_mapping_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 
 class InvoiceListScreen extends StatefulWidget {
   const InvoiceListScreen({super.key});
@@ -845,68 +848,125 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
         return;
       }
 
-      final client = Supabase.instance.client;
+      final entryDate = invoice['invoice_date'] ??
+          DateTime.now().toIso8601String().substring(0, 10);
+      final invNum = invoice['invoice_number']?.toString() ?? '';
 
-      // Process each mapped line item
-      for (final item in mapped) {
-        if (item.mapping == null) continue;
-        final m = item.mapping!;
-
-        // Post ledger entry
-        await client.from('ledger_entries').insert({
-          'account_id': null,
-          'account_code': m.accountCode,
-          'entry_date': invoice['invoice_date'] ??
-              DateTime.now().toIso8601String().substring(0, 10),
-          'description':
-              '${item.description} — Invoice ${invoice['invoice_number'] ?? ''}',
-          'debit': item.lineTotal,
-          'credit': 0,
-          'reference': invoice['invoice_number']?.toString(),
+      if (EdgePipelineConfig.canUseEdgePipeline) {
+        final ledgerRows = <Map<String, dynamic>>[];
+        for (final item in mapped) {
+          if (item.mapping == null) continue;
+          final m = item.mapping!;
+          ledgerRows.add({
+            'account_id': null,
+            'account_code': m.accountCode,
+            'entry_date': entryDate,
+            'description': '${item.description} — Invoice $invNum',
+            'debit': item.lineTotal,
+            'credit': 0,
+            'reference': invNum,
+            'reference_type': 'supplier_invoice',
+            'reference_id': invoiceId,
+          });
+        }
+        ledgerRows.add({
+          'account_code': '2000',
+          'entry_date': entryDate,
+          'description': 'Accounts Payable — Invoice $invNum',
+          'debit': 0,
+          'credit': (invoice['total'] as num?)?.toDouble() ?? 0,
+          'reference': invNum,
           'reference_type': 'supplier_invoice',
           'reference_id': invoiceId,
         });
-      }
-
-      // Post AP credit entry (total payable to supplier)
-      await client.from('ledger_entries').insert({
-        'account_code': '2000',
-        'entry_date': invoice['invoice_date'] ??
-            DateTime.now().toIso8601String().substring(0, 10),
-        'description':
-            'Accounts Payable — Invoice ${invoice['invoice_number'] ?? ''}',
-        'debit': 0,
-        'credit': (invoice['total'] as num?)?.toDouble() ?? 0,
-        'reference': invoice['invoice_number']?.toString(),
-        'reference_type': 'supplier_invoice',
-        'reference_id': invoiceId,
-      });
-
-      // Post VAT entry if applicable
-      if (taxAmount > 0) {
-        await client.from('ledger_entries').insert({
-          'account_code': '2100',
-          'entry_date': invoice['invoice_date'] ??
-              DateTime.now().toIso8601String().substring(0, 10),
-          'description':
-              'Input VAT — Invoice ${invoice['invoice_number'] ?? ''}',
-          'debit': taxAmount,
-          'credit': 0,
-          'reference': invoice['invoice_number']?.toString(),
-          'reference_type': 'supplier_invoice',
-          'reference_id': invoiceId,
-        });
-      }
-
-      // Update invoice status to approved
-      await client
-          .from('supplier_invoices')
-          .update({
+        if (taxAmount > 0) {
+          ledgerRows.add({
+            'account_code': '2100',
+            'entry_date': entryDate,
+            'description': 'Input VAT — Invoice $invNum',
+            'debit': taxAmount,
+            'credit': 0,
+            'reference': invNum,
+            'reference_type': 'supplier_invoice',
+            'reference_id': invoiceId,
+          });
+        }
+        await EdgePipelineClient.instance.adminPostSupplierLedger(
+          invoiceId: invoiceId,
+          ledgerRows: ledgerRows,
+          invoicePatch: {
             'status': 'approved',
             'mappings_complete': true,
             'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', invoiceId);
+          },
+        );
+      } else {
+        final client = Supabase.instance.client;
+        final ledgerRepository = LedgerRepository(client: client);
+
+        // Process each mapped line item
+        for (final item in mapped) {
+          if (item.mapping == null) continue;
+          final m = item.mapping!;
+
+          // Post ledger entry
+          await ledgerRepository.createEntry(
+            date: DateTime.parse(entryDate),
+            accountCode: m.accountCode,
+            accountName: m.accountName ?? '',
+            debit: item.lineTotal,
+            credit: 0,
+            description:
+                '${item.description} — Invoice ${invoice['invoice_number'] ?? ''}',
+            referenceType: 'supplier_invoice',
+            referenceId: invoiceId,
+            source: 'supplier_invoice',
+            recordedBy: AuthService().getCurrentStaffId(),
+          );
+        }
+
+        // Post AP credit entry (total payable to supplier)
+        await ledgerRepository.createEntry(
+          date: DateTime.parse(entryDate),
+          accountCode: '2000',
+          accountName: 'Accounts Payable',
+          debit: 0,
+          credit: (invoice['total'] as num?)?.toDouble() ?? 0,
+          description:
+              'Accounts Payable — Invoice ${invoice['invoice_number'] ?? ''}',
+          referenceType: 'supplier_invoice',
+          referenceId: invoiceId,
+          source: 'supplier_invoice',
+          recordedBy: AuthService().getCurrentStaffId(),
+        );
+
+        // Post VAT entry if applicable
+        if (taxAmount > 0) {
+          await ledgerRepository.createEntry(
+            date: DateTime.parse(entryDate),
+            accountCode: '2100',
+            accountName: 'Input VAT',
+            debit: taxAmount,
+            credit: 0,
+            description:
+                'Input VAT — Invoice ${invoice['invoice_number'] ?? ''}',
+            referenceType: 'supplier_invoice',
+            referenceId: invoiceId,
+            source: 'supplier_invoice',
+            recordedBy: AuthService().getCurrentStaffId(),
+          );
+        }
+
+        // Update invoice status to approved
+        await client
+            .from('supplier_invoices')
+            .update({
+              'status': 'approved',
+              'mappings_complete': true,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', invoiceId);
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

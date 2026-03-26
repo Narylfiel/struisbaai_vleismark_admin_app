@@ -234,6 +234,7 @@ class OfflineQueueService {
   Future<void> _executeCreateTimecardEntry(Map<String, dynamic> p) async {
     final payload = Map<String, dynamic>.from(p);
     payload.remove('actionType');
+    // DIRECT-WRITE: offline queue path. Review before 060.
     await SupabaseService.client.from('timecards').insert(payload);
   }
 

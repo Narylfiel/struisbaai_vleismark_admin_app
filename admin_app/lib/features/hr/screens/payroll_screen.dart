@@ -7,6 +7,8 @@ import 'package:admin_app/core/services/payslip_pdf_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
+import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
+import 'package:admin_app/features/hr/services/timecard_repository.dart';
 
 class PayrollScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -111,16 +113,26 @@ class _PayrollScreenState extends State<PayrollScreen> {
         final hourlyRate = (staff['hourly_rate'] as num).toDouble();
         
         // 2a. Timecards
-        final tcResponse = await _client.from('timecards')
-            .select('shift_date, total_hours, clock_in, clock_out, break_minutes, status')
-            .eq('staff_id', staffId)
-            .eq('status', 'clocked_out')
-            .not('total_hours', 'is', null)
-            .gt('total_hours', 0)
-            .gte('shift_date', startStr)
-            .lte('shift_date', endStr);
-            
-        List<Map<String, dynamic>> timecards = List<Map<String, dynamic>>.from(tcResponse);
+        final tcResponse = await TimecardRepository(client: _client).getForPeriod(
+          staffId: staffId,
+          periodStart: _periodStart!,
+          periodEnd: _periodEnd!,
+        );
+
+        final timecards = tcResponse
+            .where((tc) =>
+                tc['status'] == 'clocked_out' &&
+                tc['total_hours'] != null &&
+                (tc['total_hours'] as num).toDouble() > 0)
+            .map((tc) => <String, dynamic>{
+                  'shift_date': tc['shift_date'],
+                  'total_hours': tc['total_hours'],
+                  'clock_in': tc['clock_in'],
+                  'clock_out': tc['clock_out'],
+                  'break_minutes': tc['break_minutes'],
+                  'status': tc['status'],
+                })
+            .toList();
         
         // 2c. Group by ISO Week (Monday)
         Map<DateTime, List<Map<String, dynamic>>> weeklyChunks = {};
@@ -447,6 +459,15 @@ class _PayrollScreenState extends State<PayrollScreen> {
     setState(() => _isPaying = true);
 
     try {
+      final currentUserId = AuthService().currentStaffId;
+      final periodNetPay = _calculatedEntries.fold<double>(
+        0.0,
+        (sum, entry) => sum + ((entry['net_pay'] as num?)?.toDouble() ?? 0.0),
+      );
+      final periodDescription = (_periodRecord?['description']?.toString().trim().isNotEmpty ?? false)
+          ? _periodRecord!['description'].toString().trim()
+          : '$startStr to $endStr';
+
       await _client.from('payroll_entries')
         .update({
           'status': 'paid',
@@ -460,6 +481,31 @@ class _PayrollScreenState extends State<PayrollScreen> {
         .update({'status': 'paid'})
         .eq('start_date', startStr)
         .eq('end_date', endStr);
+
+      if (currentUserId != null && periodNetPay > 0) {
+        // Ledger post is fatal — failure surfaces to the outer catch and blocks paid status.
+        final periodRow = await _client
+            .from('payroll_periods')
+            .select('id')
+            .eq('start_date', startStr)
+            .eq('end_date', endStr)
+            .maybeSingle();
+        final payrollPeriodId = periodRow?['id']?.toString();
+        if (payrollPeriodId != null && payrollPeriodId.isNotEmpty) {
+          await LedgerRepository(client: _client).createDoubleEntry(
+            date: DateTime.now(),
+            debitAccountCode: '6100',
+            debitAccountName: 'Wages & Salaries',
+            creditAccountCode: '1100',
+            creditAccountName: 'Bank',
+            amount: periodNetPay,
+            description: 'Payroll: $periodDescription',
+            referenceType: 'payroll',
+            referenceId: payrollPeriodId,
+            recordedBy: currentUserId,
+          );
+        }
+      }
       
       await _loadExistingPeriod();
 

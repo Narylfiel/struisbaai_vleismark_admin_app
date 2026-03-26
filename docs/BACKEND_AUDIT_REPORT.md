@@ -1,3 +1,7 @@
+> **⚠️ ARCHIVED — DO NOT USE AS CURRENT TRUTH**
+> **Reason:** Pre-Debt Buster (Feb 2026). Does not reflect Debt Buster data access patterns. Superseded by `SYSTEM_TRUTH_REPORT.md` (2026-03-25).
+> **Original content preserved below for historical reference.**
+
 # Full Backend Audit Report
 
 **Date:** 2026-02-22  

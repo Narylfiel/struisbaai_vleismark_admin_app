@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/features/hr/services/timecard_repository.dart';
 
 class TimecardReportScreen extends StatefulWidget {
   const TimecardReportScreen({super.key});
@@ -49,20 +50,58 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
     try {
-      final fromStr = _fromDate.toIso8601String().substring(0, 10);
-      final toStr = _toDate.toIso8601String().substring(0, 10);
+      final timeRepo = TimecardRepository(client: _client);
+      final timecards = await timeRepo.getAll(
+        staffId: _selectedStaffId,
+        from: _fromDate,
+        to: _toDate,
+      );
 
-      var q = _client.from('timecards')
-          .select('shift_date, clock_in, clock_out, total_hours, break_minutes, status, staff_id, staff_profiles!inner(full_name, can_clock_in)')
-          .gte('shift_date', fromStr)
-          .lte('shift_date', toStr)
-          .eq('staff_profiles.can_clock_in', true);
+      final staffIds = timecards
+          .map((t) => t['staff_id']?.toString())
+          .whereType<String>()
+          .toSet()
+          .toList();
 
-      if (_selectedStaffId != null) {
-        q = q.eq('staff_id', _selectedStaffId!);
+      // Match original server-side filter: staff_profiles.can_clock_in = true
+      final canClockInByStaffId = <String, bool>{};
+      if (staffIds.isNotEmpty) {
+        final staffRows = await _client
+            .from('staff_profiles')
+            .select('id, can_clock_in')
+            .inFilter('id', staffIds);
+
+        for (final row in staffRows) {
+          final id = row['id']?.toString();
+          if (id == null) continue;
+          canClockInByStaffId[id] = (row['can_clock_in'] as bool?) ?? false;
+        }
       }
 
-      final data = await q.order('shift_date', ascending: false);
+      final data = timecards
+          .where((tc) => canClockInByStaffId[tc['staff_id']?.toString()] == true)
+          .map((tc) {
+            final staffProfiles = tc['staff_profiles'];
+            final fullName =
+                (staffProfiles is Map ? staffProfiles['full_name'] : null) as String?;
+            final staffId = tc['staff_id']?.toString();
+            final canClockIn = staffId != null ? canClockInByStaffId[staffId] ?? false : false;
+
+            return <String, dynamic>{
+              'shift_date': tc['shift_date'],
+              'clock_in': tc['clock_in'],
+              'clock_out': tc['clock_out'],
+              'total_hours': tc['total_hours'],
+              'break_minutes': tc['break_minutes'],
+              'status': tc['status'],
+              'staff_id': tc['staff_id'],
+              'staff_profiles': {
+                'full_name': fullName,
+                'can_clock_in': canClockIn,
+              },
+            };
+          })
+          .toList();
       
       final list = List<Map<String, dynamic>>.from(data);
       list.sort((a, b) {

@@ -1,5 +1,6 @@
 import 'dart:math' show Random;
 
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -581,14 +582,15 @@ class SupplierInvoiceRepository {
     }
 
     final supplierId = invoice.supplierId;
-    await _client.from('supplier_payments').insert({
+    final paymentDateTime = DateTime.now();
+    final insertedPayment = await _client.from('supplier_payments').insert({
       'invoice_id': invoiceId,
       'supplier_id': supplierId,
       'amount': a,
       'payment_method': method,
       'recorded_by': recordedBy,
-      'payment_date': DateTime.now().toIso8601String(),
-    });
+      'payment_date': paymentDateTime.toIso8601String(),
+    }).select('id').single();
 
     final newPaidMap = _amountPaidAndBalanceDue(
       total: total,
@@ -610,6 +612,28 @@ class SupplierInvoiceRepository {
     }
 
     await _client.from('supplier_invoices').update(updates).eq('id', invoiceId);
+
+    // Ledger post is fatal — failure rolls back the payment flow to the caller.
+    final supplierPaymentId = insertedPayment['id']?.toString();
+    final lowerMethod = method.toLowerCase();
+    final creditAccountCode = lowerMethod == 'cash' ? '1000' : '1100';
+    final creditAccountName = lowerMethod == 'cash' ? 'Cash' : 'Bank';
+    final invoiceRef = invoice.supplierName?.trim().isNotEmpty == true
+        ? invoice.supplierName!.trim()
+        : invoice.invoiceNumber;
+    await LedgerRepository(client: _client).createDoubleEntry(
+      date: paymentDateTime,
+      debitAccountCode: '2000',
+      debitAccountName: 'Accounts Payable',
+      creditAccountCode: creditAccountCode,
+      creditAccountName: creditAccountName,
+      amount: a,
+      description: 'Supplier payment: $invoiceRef',
+      referenceType: 'supplier_payment',
+      referenceId: supplierPaymentId,
+      source: 'supplier_payment',
+      recordedBy: recordedBy,
+    );
 
     await AuditService.log(
       action: 'CREATE',

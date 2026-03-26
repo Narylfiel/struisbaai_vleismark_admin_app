@@ -1,0 +1,25 @@
+# ButcheryOS — Supabase CLI config (admin_app migrations + Edge Functions).
+# Project: SYSTEM_CONTEXT.md — nasfakcqzmpfcpqttmti
+
+project_id = "nasfakcqzmpfcpqttmti"
+
+# Internal pipeline: shared secret via x-edge-secret (see EDGE_FUNCTION_SECRET).
+# JWT verification off; authorization is the edge secret + validated payloads.
+
+[functions.pos_submit_sale]
+verify_jwt = false
+
+[functions.pos_submit_refund]
+verify_jwt = false
+
+[functions.admin_post_supplier_ledger]
+verify_jwt = false
+
+[functions.clock_submit_event]
+verify_jwt = false
+
+[functions.ledger_submit_entry]
+verify_jwt = false
+
+[functions.stock_adjust]
+verify_jwt = false

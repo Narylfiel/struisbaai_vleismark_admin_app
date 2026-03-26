@@ -661,7 +661,7 @@ class ReportRepository {
   }
 
   /// Read-only profit / margin by [inventory_item_id]: revenue from [transaction_items],
-  /// cost from [inventory_items.average_cost] (WAC proxy at report time). No writes.
+  /// cost uses historical [transaction_items.cost_price] first, with WAC fallback.
   Future<List<Map<String, dynamic>>> _getProfitAnalysisByProduct(
     DateTime start,
     DateTime end,
@@ -679,67 +679,134 @@ class ReportRepository {
       final rows = await _client
           .from('transaction_items')
           .select(
-            'quantity, unit_price, line_total, inventory_item_id, '
+            // IMPORTANT:
+            // Financial calculations must NEVER derive quantity from money.
+            // Always use transaction-level totals for correctness.
+            'quantity, line_total, cost_price, inventory_item_id, product_name, '
             'inventory_items!transaction_items_inventory_item_id_fkey(name, average_cost), '
-            'transactions!transaction_items_transaction_id_fkey(created_at)',
+            'transactions!transaction_items_transaction_id_fkey(id, is_refund, total_amount, cost_amount, created_at)',
           )
           .gte('transactions.created_at', start.toIso8601String())
           .lte('transactions.created_at', end.toIso8601String())
           .not('transactions.created_at', 'is', null)
           .limit(5000);
 
+      // Transaction-level financial aggregation:
+      // - Revenue/Cost/Profit come only from transactions.total_amount and
+      //   transactions.cost_amount (signed by transactions.is_refund).
+      // - We allocate those transaction totals across items proportionally
+      //   to abs(transaction_items.line_total) for product-level reporting.
+
+      // Pass 1: compute per-transaction abs(line_total) denominator.
+      final txAgg = <String, Map<String, dynamic>>{};
+      for (final raw in rows as List) {
+        final r = Map<String, dynamic>.from(raw as Map);
+        final tx = r['transactions'];
+        if (tx is! Map) continue;
+        final txId = tx['id']?.toString();
+        if (txId == null) continue;
+
+        final isRefund = tx['is_refund'] == true;
+        final totalAmount = safeNum(tx['total_amount']);
+        final costAmount = safeNum(tx['cost_amount']);
+        final signedTotal = isRefund ? -totalAmount : totalAmount;
+        final signedCost = isRefund ? -costAmount : costAmount;
+
+        final absLineTotal = safeNum(r['line_total']).abs();
+
+        final agg = txAgg.putIfAbsent(txId, () => {
+          'signed_total_amount': signedTotal,
+          'signed_cost_amount': signedCost,
+          'abs_line_total': 0.0,
+          'item_count': 0,
+        });
+
+        agg['abs_line_total'] = safeNum(agg['abs_line_total']) + absLineTotal;
+        agg['item_count'] = (agg['item_count'] as int? ?? 0) + 1;
+      }
+
+      // Pass 2: allocate signed transaction totals to product groups.
       final grouped = <String, Map<String, dynamic>>{};
       for (final raw in rows as List) {
         final r = Map<String, dynamic>.from(raw as Map);
-        final itemId = r['inventory_item_id']?.toString() ?? 'unknown';
+        final tx = r['transactions'];
+        if (tx is! Map) continue;
+        final txId = tx['id']?.toString();
+        if (txId == null) continue;
+
+        final txRow = txAgg[txId];
+        if (txRow == null) continue;
+
         final inventoryItem = r['inventory_items'];
-        final productName = inventoryItem is Map
+        final productNameFromInventory = inventoryItem is Map
             ? (inventoryItem['name']?.toString() ?? 'Unknown')
             : 'Unknown';
+        final productNameFromTi =
+            r['product_name']?.toString() ?? productNameFromInventory;
+        final itemId = r['inventory_item_id']?.toString() ?? productNameFromTi;
 
-        final quantity = safeNum(r['quantity']);
-        if (quantity <= 0) continue;
+        final absLine = safeNum(r['line_total']).abs();
+        final absLineTotal = safeNum(txRow['abs_line_total']);
+        final itemCount = txRow['item_count'] as int? ?? 0;
+        final share = absLineTotal > 0
+            ? (absLine / absLineTotal)
+            : (itemCount > 0 ? (1.0 / itemCount) : 0.0);
 
-        final unitPrice = safeNum(r['unit_price']);
-        final lineTotal = r['line_total'];
-        final revenue = lineTotal != null
-            ? _reportMoney(safeNum(lineTotal))
-            : _reportMoney(quantity * unitPrice);
+        final signedTotalAmount = safeNum(txRow['signed_total_amount']);
+        final signedCostAmount = safeNum(txRow['signed_cost_amount']);
 
-        // Current WAC as cost proxy; historical cost_at_sale would be a future enhancement.
-        final avgCostRaw =
-            inventoryItem is Map ? inventoryItem['average_cost'] : null;
-        final costPerUnit =
-            avgCostRaw != null ? safeNum(avgCostRaw) : 0.0;
-        final cost = _reportMoney(costPerUnit * quantity);
+        final revenue = _reportMoney(share * signedTotalAmount);
+        final cost = _reportMoney(share * signedCostAmount);
         final profit = _reportMoney(revenue - cost);
+
+        // Quantity is allowed for volume metrics only; refunds have quantity=0.
+        final quantity = safeNum(r['quantity']);
+
+        // Weighted avg cost per unit for recommendation math.
+        // For refunds (quantity=0), this prevents division-by-zero/instability.
+        final costPrice = safeNum(r['cost_price']);
+        final costPerUnitWeight = absLine;
 
         grouped.putIfAbsent(
           itemId,
           () => <String, dynamic>{
             'inventory_item_id': itemId,
-            'product_name': productName,
+            'product_name': productNameFromTi,
             'quantity': 0.0,
             'revenue': 0.0,
             'cost': 0.0,
             'profit': 0.0,
+            'avg_cost_per_unit_weighted_sum': 0.0,
+            'avg_cost_per_unit_weight': 0.0,
           },
         );
+
         final group = grouped[itemId]!;
         group['quantity'] = safeNum(group['quantity']) + quantity;
         group['revenue'] = _reportMoney(safeNum(group['revenue']) + revenue);
         group['cost'] = _reportMoney(safeNum(group['cost']) + cost);
         group['profit'] = _reportMoney(safeNum(group['profit']) + profit);
+        group['avg_cost_per_unit_weighted_sum'] =
+            safeNum(group['avg_cost_per_unit_weighted_sum']) +
+                (costPrice * costPerUnitWeight);
+        group['avg_cost_per_unit_weight'] = safeNum(group['avg_cost_per_unit_weight']) +
+            costPerUnitWeight;
       }
 
       final list = grouped.values.map((group) {
         final revenueTotal = safeNum(group['revenue']);
         final profitTotal = safeNum(group['profit']);
-        final marginVal = revenueTotal > 0 &&
+        final marginVal = revenueTotal != 0 &&
                 revenueTotal.isFinite &&
                 profitTotal.isFinite
             ? _reportMoney((profitTotal / revenueTotal) * 100)
             : 0.0;
+
+        final weightSum = safeNum(group['avg_cost_per_unit_weight']);
+        final avgCostPerUnit = weightSum > 0
+            ? (safeNum(group['avg_cost_per_unit_weighted_sum']) / weightSum)
+            : 0.0;
+
         return {
           'inventory_item_id': group['inventory_item_id'],
           'product_name': group['product_name'],
@@ -748,6 +815,8 @@ class ReportRepository {
           'cost': safeNum(group['cost']),
           'profit': profitTotal,
           'margin': marginVal,
+          // Used only by recommendation math; safe for sales and refunds.
+          'avg_cost_per_unit': avgCostPerUnit,
         };
       }).toList();
 
@@ -868,12 +937,15 @@ class ReportRepository {
       final margin = safeNum(row['margin']);
       final quantity = safeNum(row['quantity']);
       final cost = safeNum(row['cost']);
-      // NOTE:
-      // When quantity <= 0, safeQuantity is set to 1 to prevent division by zero.
-      // In this case, avgCostPerUnit may not reflect true per-unit cost.
-      final safeQuantity = quantity > 0 ? quantity : 1.0;
-      final avgCostRaw = cost / safeQuantity;
-      final avgCostPerUnit = avgCostRaw.isFinite ? avgCostRaw : 0.0;
+      // IMPORTANT:
+      // Financial-only refunds have quantity=0; never divide cost by 1.0.
+      // If quantity is zero, fall back to transaction-allocated avg cost per unit.
+      final quantityAbs = quantity.abs();
+      final avgCostPerUnitFromRow = safeNum(row['avg_cost_per_unit']);
+      final avgCostPerUnit = (quantityAbs > 0)
+          ? (cost.abs() / quantityAbs)
+          : avgCostPerUnitFromRow;
+      final avgCostPerUnitSafe = avgCostPerUnit.isFinite ? avgCostPerUnit : 0.0;
 
       final String marginFlag;
       if (margin < lowMarginThreshold) {
@@ -916,14 +988,14 @@ class ReportRepository {
 
       double? listMarginPct;
       if (validSellPrice != null) {
-        final lm = ((validSellPrice - avgCostPerUnit) / validSellPrice) * 100;
+        final lm = ((validSellPrice - avgCostPerUnitSafe) / validSellPrice) * 100;
         listMarginPct = lm.isFinite ? lm : null;
       }
 
       double? markupPct;
-      if (validSellPrice != null && avgCostPerUnit > 0) {
+      if (validSellPrice != null && avgCostPerUnitSafe > 0) {
         final mu =
-            ((validSellPrice - avgCostPerUnit) / avgCostPerUnit) * 100;
+            ((validSellPrice - avgCostPerUnitSafe) / avgCostPerUnitSafe) * 100;
         markupPct = mu.isFinite ? mu : null;
       }
 
@@ -933,10 +1005,10 @@ class ReportRepository {
 
       double? priceVsCostRaw;
       String? pricePosition;
-      if (validSellPrice != null && quantity > 0) {
-        final pvc = validSellPrice - avgCostPerUnit;
+      if (validSellPrice != null && quantityAbs > 0) {
+        final pvc = validSellPrice - avgCostPerUnitSafe;
         if (pvc.isFinite) priceVsCostRaw = pvc;
-        if (validSellPrice < avgCostPerUnit) {
+        if (validSellPrice < avgCostPerUnitSafe) {
           pricePosition = 'underpriced';
         } else if (listMarginPct != null && listMarginPct.isFinite) {
           pricePosition = listMarginPct >= 50 ? 'premium' : 'healthy';

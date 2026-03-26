@@ -255,6 +255,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               }
 
               try {
+                // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
                 final result = await _client.from('profiles').insert({
                   'full_name': nameController.text.trim(),
                   'role': selectedRole,

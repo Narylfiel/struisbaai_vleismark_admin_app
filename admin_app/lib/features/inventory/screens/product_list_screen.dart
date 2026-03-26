@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
@@ -14,6 +15,8 @@ import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
@@ -536,12 +539,23 @@ class ProductListScreenState extends State<ProductListScreen> {
         allowedExtensions: ['csv'],
         withData: true,
       );
-      if (result == null || result.files.isEmpty || result.files.single.bytes == null || !mounted) {
+      if (result == null || result.files.isEmpty || !mounted) {
+        return;
+      }
+      if (result.files.single.bytes == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Unable to read file bytes. Please try again.'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
         return;
       }
       final bytes = result.files.single.bytes!;
-      final content = String.fromCharCodes(bytes);
-      final rows = const CsvToListConverter().convert(content);
+      final content = utf8.decode(bytes, allowMalformed: true);
+      final rows = _parseCsvRows(content);
       if (rows.isEmpty) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -551,7 +565,9 @@ class ProductListScreenState extends State<ProductListScreen> {
         return;
       }
 
-      final headerRow = rows.first.map((c) => c.toString().trim().toLowerCase()).toList();
+      final headerRow = rows.first
+          .map((c) => c.toString().replaceFirst(RegExp(r'^\uFEFF'), '').trim().toLowerCase())
+          .toList();
       final headerIndex = <String, int>{};
       for (var i = 0; i < headerRow.length; i++) {
         headerIndex[headerRow[i]] = i;
@@ -627,7 +643,15 @@ class ProductListScreenState extends State<ProductListScreen> {
   List<String>? _toList(dynamic raw) {
     final s = raw?.toString().trim() ?? '';
     if (s.isEmpty) return null;
-    final values = s.split(';').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    final normalized = s.startsWith('[') && s.endsWith(']')
+        ? s.substring(1, s.length - 1)
+        : s;
+    final delim = normalized.contains(';') ? ';' : ',';
+    final values = normalized
+        .split(delim)
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
     return values.isEmpty ? null : values;
   }
 
@@ -636,15 +660,94 @@ class ProductListScreenState extends State<ProductListScreen> {
     return s.isEmpty ? null : s;
   }
 
+  List<List<dynamic>> _parseCsvRows(String content) {
+    final commaRows = const CsvToListConverter().convert(content);
+    if (commaRows.isNotEmpty) {
+      final header = commaRows.first;
+      final hasPlu = header.any(
+        (c) =>
+            c.toString().replaceFirst(RegExp(r'^\uFEFF'), '').trim().toLowerCase() ==
+            'plu_code',
+      );
+      if (hasPlu) return commaRows;
+    }
+    return const CsvToListConverter(fieldDelimiter: ';').convert(content);
+  }
+
+  String? _validateImportRow(Map<String, dynamic> row, int pluCode) {
+    bool inSet(String? value, Set<String> allowed) =>
+        value == null || value.isEmpty || allowed.contains(value);
+    final itemType = _toStringOrNull(row['item_type']);
+    final unitType = _toStringOrNull(row['unit_type']);
+    final vatGroup = _toStringOrNull(row['vat_group']);
+    final barcodePrefix = _toStringOrNull(row['barcode_prefix']);
+    final stockControlType = _toStringOrNull(row['stock_control_type']);
+    final productType = _toStringOrNull(row['product_type']);
+    final recipeId = _toStringOrNull(row['recipe_id']);
+
+    if (!inSet(itemType, {
+      'own_cut',
+      'own_processed',
+      'third_party_resale',
+      'service',
+      'packaging',
+      'internal',
+    })) {
+      return 'Invalid item_type "$itemType"';
+    }
+    if (!inSet(unitType, {'kg', 'units', 'packs'})) {
+      return 'Invalid unit_type "$unitType"';
+    }
+    if (!inSet(vatGroup, {'standard', 'zero_rated', 'exempt'})) {
+      return 'Invalid vat_group "$vatGroup"';
+    }
+    if (!inSet(barcodePrefix, {'20', '21', 'none'})) {
+      return 'Invalid barcode_prefix "$barcodePrefix"';
+    }
+    if (!inSet(stockControlType, {
+      'use_stock_control',
+      'no_stock_control',
+      'recipe_based',
+      'carcass_linked',
+      'hanger_count',
+    })) {
+      return 'Invalid stock_control_type "$stockControlType"';
+    }
+    if (!inSet(productType, {'raw', 'portioned', 'manufactured'})) {
+      return 'Invalid product_type "$productType"';
+    }
+    if (recipeId != null &&
+        !RegExp(
+          r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$',
+        ).hasMatch(recipeId)) {
+      return 'Invalid recipe_id UUID "$recipeId"';
+    }
+    if (_toInt(row['cdv']) == null && _toStringOrNull(row['cdv']) != null) {
+      return 'Invalid cdv "${row['cdv']}" (must be integer)';
+    }
+    if (pluCode <= 0) return 'Invalid plu_code "$pluCode"';
+    return null;
+  }
+
   Future<void> _applyProductImport(List<Map<String, dynamic>> rows) async {
     int inserted = 0, updated = 0, skipped = 0, errors = 0;
+    final sampleErrors = <String>[];
     if (mounted) setState(() => _isImportingCsv = true);
     try {
-      for (final row in rows) {
+      for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        final row = rows[rowIndex];
         try {
           final pluCode = _toInt(row['plu_code']);
           if (pluCode == null) {
             skipped++;
+            continue;
+          }
+          final rowError = _validateImportRow(row, pluCode);
+          if (rowError != null) {
+            errors++;
+            if (sampleErrors.length < 5) {
+              sampleErrors.add('Row ${rowIndex + 2} (PLU $pluCode): $rowError');
+            }
             continue;
           }
 
@@ -684,14 +787,14 @@ class ProductListScreenState extends State<ProductListScreen> {
             'best_by': _toInt(row['best_by']),
             'label_format': _toStringOrNull(row['label_format']),
             'bar_flag': _toStringOrNull(row['bar_flag']),
-            'department_no': _toInt(row['department_no']),
+            'department_no': _toStringOrNull(row['department_no']),
             'des_li1': _toStringOrNull(row['des_li1']),
             'des_li2': _toStringOrNull(row['des_li2']),
             'des_li3': _toStringOrNull(row['des_li3']),
             'des_li4': _toStringOrNull(row['des_li4']),
             'weighed': _toBool(row['weighed']),
             'has_ingredient': _toBool(row['has_ingredient']),
-            'cdv': _toStringOrNull(row['cdv']),
+            'cdv': _toInt(row['cdv']),
             'modifier_group_ids': _toList(row['modifier_group_ids']),
             'recipe_id': _toStringOrNull(row['recipe_id']),
             'dryer_product_type': _toStringOrNull(row['dryer_product_type']),
@@ -751,19 +854,56 @@ class ProductListScreenState extends State<ProductListScreen> {
           errors++;
           debugPrint("IMPORT ROW ERROR [plu=${row['plu_code']}]: $e");
           if (errors <= 3) debugPrint('IMPORT ROW DATA: $row');
+          if (sampleErrors.length < 5) {
+            sampleErrors.add(
+              'Row ${rowIndex + 2} (PLU ${row['plu_code'] ?? 'unknown'}): ${ErrorHandler.friendlyMessage(e)}',
+            );
+          }
         }
       }
 
       await IsarService.clearInventoryItemsCache();
       await _loadData();
       if (mounted) {
+        final hasFailures = errors > 0;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('$inserted inserted, $updated updated, $skipped skipped, $errors errors'),
-            backgroundColor: AppColors.success,
+            backgroundColor: hasFailures ? AppColors.warning : AppColors.success,
             duration: const Duration(seconds: 5),
           ),
         );
+        if (sampleErrors.isNotEmpty) {
+          await showDialog<void>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Import completed with issues'),
+              content: SizedBox(
+                width: 640,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Top row errors:'),
+                    const SizedBox(height: 8),
+                    ...sampleErrors.map(
+                      (msg) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6),
+                        child: Text('• $msg'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Close'),
+                ),
+              ],
+            ),
+          );
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -4709,7 +4849,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                         final double newVal =
                             (currentVal + qty).clamp(0.0, double.infinity);
 
-                        await _supabase.from('stock_movements').insert({
+                        final movement = {
                           'item_id': productId,
                           'movement_type': 'adjustment',
                           'quantity': qty,
@@ -4718,19 +4858,20 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                           'reason': adjustReason,
                           'notes': 'Manual adjustment ($adjustType stock) — $adjustReason',
                           'staff_id': _supabase.auth.currentUser?.id,
-                        });
-
-                        // 2. Update inventory_items stock column directly
-                        final String col = adjustType == 'fresh'
-                            ? 'stock_on_hand_fresh'
-                            : 'stock_on_hand_frozen';
-
-                        await _supabase.from('inventory_items').update({
-                          col: newVal,
-                          'current_stock': adjustType == 'fresh'
-                              ? newVal + currentFrozen
-                              : currentFresh + newVal,
-                        }).eq('id', productId);
+                        };
+                        if (EdgePipelineConfig.canUseEdgePipeline) {
+                          debugPrint('[EDGE] Calling stock_adjust');
+                          try {
+                            await EdgePipelineClient.instance.stockAdjust(
+                              movement: movement,
+                            );
+                          } catch (e) {
+                            debugPrint('[EDGE] Failed: stock_adjust — $e');
+                            rethrow;
+                          }
+                        } else {
+                          await _supabase.from('stock_movements').insert(movement);
+                        }
 
                         if (ctx.mounted) Navigator.pop(ctx);
 

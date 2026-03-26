@@ -1,4 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/config/edge_pipeline_config.dart';
+import 'package:admin_app/core/services/edge_pipeline_client.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import '../../../core/models/stock_movement.dart';
@@ -12,10 +15,12 @@ class InventoryRepository {
   InventoryRepository({SupabaseClient? client})
       : _client = client ?? SupabaseService.client;
 
-  /// Record a stock movement and update item stock.
-  /// For types that reduce stock (waste, donation, sponsorship, out, staff_meal): decrement current_stock.
-  /// For freezer: optional — if inventory has stock_on_hand_fresh/frozen, caller can pass metadata.markdown_pct.
-  /// For in/production: increment current_stock.
+  /// Record a stock movement and rely on DB trigger as stock authority.
+  /// Quantity is normalized to trigger semantics:
+  /// - reducing movements: negative
+  /// - increasing movements: positive
+  /// - adjustment: caller-provided signed delta
+  /// - transfer: zero net stock effect
   /// performedBy must be profile UUID (staff).
   Future<StockMovement> recordMovement({
     required String itemId,
@@ -33,10 +38,57 @@ class InventoryRepository {
     if (quantity < 0 || (quantity == 0 && movementType != MovementType.adjustment)) {
       throw ArgumentError('Quantity must be non-negative (0 only for adjustment)');
     }
+
+    // Idempotency for referenced movements: avoid duplicate stock application.
+    if ((referenceType ?? '').isNotEmpty && (referenceId ?? '').isNotEmpty) {
+      final existing = await _client
+          .from('stock_movements')
+          .select()
+          .eq('item_id', itemId)
+          .eq('movement_type', movementType.dbValue)
+          .eq('reference_type', referenceType!)
+          .eq('reference_id', referenceId!)
+          .limit(1);
+      if ((existing as List).isNotEmpty) {
+        return StockMovement.fromJson(
+          Map<String, dynamic>.from(existing.first as Map),
+        );
+      }
+    }
+
+    var dbQuantity = quantity;
+    if (movementType == MovementType.transfer) {
+      dbQuantity = 0.0;
+    } else if (movementType == MovementType.adjustment) {
+      dbQuantity = quantity;
+    } else if (movementType.reducesStock) {
+      dbQuantity = -quantity;
+    } else if (movementType.increasesStock) {
+      dbQuantity = quantity;
+    }
+
+    final allowNegative = metadata?['allow_negative'] == true;
+    if (!allowNegative &&
+        (movementType.reducesStock || movementType == MovementType.adjustment)) {
+      final item = await _client
+          .from('inventory_items')
+          .select('current_stock')
+          .eq('id', itemId)
+          .maybeSingle();
+      final current = (item?['current_stock'] as num?)?.toDouble() ?? 0.0;
+      final projected = current + dbQuantity;
+      if (projected < -0.0001) {
+        throw StateError(
+          'Insufficient stock: movement would reduce item below zero. '
+          'Set metadata.allow_negative=true only when explicitly intended.',
+        );
+      }
+    }
+
     final row = {
       'item_id': itemId,
       'movement_type': movementType.dbValue,
-      'quantity': quantity,
+      'quantity': dbQuantity,
       'reference_type': referenceType,
       'reference_id': referenceId,
       'location_from': locationFromId,
@@ -45,12 +97,24 @@ class InventoryRepository {
       'notes': notes,
       'metadata': metadata,
     };
-    final response = await _client
-        .from('stock_movements')
-        .insert(row)
-        .select()
-        .single();
-    final movement = StockMovement.fromJson(response);
+    dynamic response;
+    if (EdgePipelineConfig.canUseEdgePipeline) {
+      debugPrint('[EDGE] Calling stock_adjust');
+      try {
+        final res = await EdgePipelineClient.instance.stockAdjust(movement: row);
+        response = res['movement'];
+      } catch (e) {
+        debugPrint('[EDGE] Failed: stock_adjust — $e');
+        rethrow;
+      }
+    } else {
+      response = await _client
+          .from('stock_movements')
+          .insert(row)
+          .select()
+          .single();
+    }
+    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
 
     // Get product name for audit log
     final item = await _client
@@ -68,77 +132,7 @@ class InventoryRepository {
       entityType: 'StockMovement',
       entityId: movement.id,
     );
-
-    // Update inventory_items stock: use current_stock if present; else no-op (caller may update fresh/frozen separately)
-    await _applyStockChange(
-      itemId: itemId,
-      movementType: movementType,
-      quantity: quantity,
-      metadata: metadata,
-    );
     return movement;
-  }
-
-  /// Apply stock level change for a movement (current_stock column).
-  Future<void> _applyStockChange({
-    required String itemId,
-    required MovementType movementType,
-    required double quantity,
-    Map<String, dynamic>? metadata,
-  }) async {
-    // Check if inventory_items has current_stock (003 RPC uses it)
-    final item = await _client
-        .from('inventory_items')
-        .select('id, current_stock, stock_on_hand_fresh, stock_on_hand_frozen')
-        .eq('id', itemId)
-        .maybeSingle();
-    if (item == null) return;
-
-    final hasCurrentStock = item.containsKey('current_stock');
-    final hasFreshFrozen =
-        item.containsKey('stock_on_hand_fresh') &&
-            item.containsKey('stock_on_hand_frozen');
-
-    if (movementType == MovementType.freezer && hasFreshFrozen) {
-      // Move to freezer: reduce fresh, increase frozen (same total)
-      final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-      final frozen = (item['stock_on_hand_frozen'] as num?)?.toDouble() ?? 0;
-      final pct = (metadata?['markdown_pct'] as num?)?.toDouble() ?? 100.0;
-      final moveQty = quantity * (pct / 100).clamp(0.0, 1.0);
-      await _client.from('inventory_items').update({
-        'stock_on_hand_fresh': fresh - moveQty,
-        'stock_on_hand_frozen': frozen + moveQty,
-      }).eq('id', itemId);
-      return;
-    }
-
-    if (quantity == 0) return;
-    if (movementType.reducesStock) {
-      if (hasCurrentStock) {
-        final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
-        await _client.from('inventory_items').update({
-          'current_stock': cur - quantity,
-        }).eq('id', itemId);
-      } else if (hasFreshFrozen) {
-        final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-        await _client.from('inventory_items').update({
-          'stock_on_hand_fresh': fresh - quantity,
-        }).eq('id', itemId);
-      }
-    } else if (movementType.increasesStock) {
-      if (hasCurrentStock) {
-        final cur = (item['current_stock'] as num?)?.toDouble() ?? 0;
-        await _client.from('inventory_items').update({
-          'current_stock': cur + quantity,
-        }).eq('id', itemId);
-      } else if (hasFreshFrozen) {
-        final fresh = (item['stock_on_hand_fresh'] as num?)?.toDouble() ?? 0;
-        await _client.from('inventory_items').update({
-          'stock_on_hand_fresh': fresh + quantity,
-        }).eq('id', itemId);
-      }
-    }
-    // transfer: total unchanged; location-level handled by caller or separate table
   }
 
   /// Stock-take adjustment: set item stock to actual count; record adjustment movement with variance in notes.
@@ -190,17 +184,29 @@ class InventoryRepository {
       'notes': notes ?? 'Stock take: was $cur, set to $actualQuantity',
       'metadata': {'previous': cur, 'actual': actualQuantity},
     };
-    final response = await _client
-        .from('stock_movements')
-        .insert(row)
-        .select()
-        .single();
+    dynamic response;
+    if (EdgePipelineConfig.canUseEdgePipeline) {
+      debugPrint('[EDGE] Calling stock_adjust');
+      try {
+        final res = await EdgePipelineClient.instance.stockAdjust(movement: row);
+        response = res['movement'];
+      } catch (e) {
+        debugPrint('[EDGE] Failed: stock_adjust — $e');
+        rethrow;
+      }
+    } else {
+      response = await _client
+          .from('stock_movements')
+          .insert(row)
+          .select()
+          .single();
+    }
     // NOTE: Do NOT manually update current_stock or stock_on_hand_fresh here.
     // The Supabase trigger on_stock_movement_insert handles all stock level
     // updates automatically on INSERT. Manual update here would cause a
     // double-write race condition.
 
-    final movement = StockMovement.fromJson(response);
+    final movement = StockMovement.fromJson(response as Map<String, dynamic>);
     
     // Audit log - stock adjustment
     await AuditService.log(

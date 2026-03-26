@@ -1,3 +1,7 @@
+> **⚠️ ARCHIVED — DO NOT USE AS CURRENT TRUTH**
+> **Reason:** Pre-Debt Buster (Feb 2025). Historical fix report. Superseded by `SYSTEM_TRUTH_REPORT.md` (2026-03-25).
+> **Original content preserved below for historical reference.**
+
 # Admin App Fix Refactor — Completion Report
 
 **Project:** Struisbaai Vleismark Admin App  

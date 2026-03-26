@@ -144,6 +144,7 @@ class StockTakeRepository {
       throw StateError('Session already approved');
     }
     final entries = await getEntriesBySession(sessionId);
+    int updated = 0;
     for (final e in entries) {
       if (e.actualQuantity != null) {
         await _inventoryRepo.adjustStock(
@@ -152,6 +153,7 @@ class StockTakeRepository {
           performedBy: approvedBy,
           notes: 'Stock-take session ${session.id} (location: ${e.locationId ?? "default"})',
         );
+        updated++;
       }
     }
     await _client
@@ -164,24 +166,6 @@ class StockTakeRepository {
         })
         .eq('id', sessionId);
 
-    // Ensure inventory_items.current_stock is set for each counted product (belt-and-suspenders)
-    final rawEntries = await _client
-        .from('stock_take_entries')
-        .select('item_id, actual_quantity')
-        .eq('session_id', sessionId);
-    int updated = 0;
-    for (final entry in rawEntries as List) {
-      final map = entry as Map<String, dynamic>;
-      final itemId = map['item_id']?.toString();
-      final actual = map['actual_quantity'];
-      if (itemId != null && actual != null) {
-        await _client
-            .from('inventory_items')
-            .update({'current_stock': (actual as num).toDouble()})
-            .eq('id', itemId);
-        updated++;
-      }
-    }
     return updated;
   }
 

@@ -7,6 +7,8 @@ import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
+import 'package:admin_app/features/hr/services/leave_repository.dart';
+import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
 import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
 import '../services/dashboard_repository.dart';
@@ -279,12 +281,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     try {
-      final leave = await _supabase
-          .from('leave_requests')
-          .select('*, staff_profiles!staff_id(full_name)')
-          .eq('status', 'pending')
-          .limit(5);
-      _pendingLeave = List<Map<String, dynamic>>.from(leave);
+      final leaveRepo = LeaveRepository(client: _supabase);
+      final leave = await leaveRepo.getAll(status: 'pending');
+      final limited = leave.take(5);
+      _pendingLeave = limited.map((row) {
+        final staffProfiles = row['staff_profiles'];
+        if (staffProfiles is Map) {
+          return {
+            ...row,
+            'staff_profiles': {'full_name': staffProfiles['full_name']},
+          };
+        }
+        return row;
+      }).toList();
     } catch (e) {
       debugPrint('Leave requests: $e');
       _pendingLeave = [];
@@ -332,11 +341,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
           .eq('is_active', true)
           .inFilter('role', ['cashier', 'blockman', 'manager', 'owner']);
 
+      final todayStartDt = DateTime.tryParse(todayStart);
       final todayCards = List<Map<String, dynamic>>.from(
-          await _supabase
-              .from('timecards')
-              .select('staff_id, clock_in')
-              .gte('clock_in', todayStart));
+        (await TimecardRepository(
+                client: _supabase)
+            .getAll(
+              from: today,
+              to: today,
+            ))
+            .where((c) {
+              final ci = c['clock_in'];
+              if (ci == null || todayStartDt == null) return false;
+              final clockIn = DateTime.tryParse(ci.toString());
+              if (clockIn == null) return false;
+              return !clockIn.isBefore(todayStartDt);
+            })
+            .map((c) => <String, dynamic>{
+                  'staff_id': c['staff_id'],
+                  'clock_in': c['clock_in'],
+                })
+            .toList(),
+      );
 
       final clockedInIds = todayCards
           .map((t) => t['staff_id'])

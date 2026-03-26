@@ -17,6 +17,7 @@ import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
 import 'package:admin_app/features/hr/services/awol_repository.dart';
 import 'package:admin_app/features/hr/services/compliance_service.dart';
+import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
 import 'package:admin_app/features/hr/screens/payroll_screen.dart';
 import 'package:admin_app/shared/widgets/form_widgets.dart';
@@ -463,14 +464,47 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       // DATABASE-FIRST: Fetch from Supabase FIRST
       try {
         _isOffline = false;
-        var q = _supabase
-            .from('timecards')
-            .select('*, staff_profiles!timecards_staff_id_fkey(full_name, role, hourly_rate)')
-            .gte('clock_in', '${rangeStart}T00:00:00')
-            .lte('clock_in', '${rangeEnd}T23:59:59');
-        if (_selectedStaffId != null) q = q.eq('staff_id', _selectedStaffId!);
-        final cards =
-            List<Map<String, dynamic>>.from(await q.order('clock_in'));
+        final timeRepo = TimecardRepository(client: _supabase);
+        final periodStart = DateTime.parse(rangeStart);
+        final periodEnd = DateTime.parse(rangeEnd);
+        final rawCards = await timeRepo.getAll(
+          staffId: _selectedStaffId,
+          from: periodStart,
+          to: periodEnd,
+        );
+
+        final rangeStartDt = DateTime.parse('${rangeStart}T00:00:00');
+        final rangeEndDt = DateTime.parse('${rangeEnd}T23:59:59');
+
+        final cards = rawCards
+            .where((c) {
+              final ci = c['clock_in'];
+              final clockIn = ci != null ? DateTime.tryParse(ci.toString()) : null;
+              if (clockIn == null) return false;
+              return !clockIn.isBefore(rangeStartDt) &&
+                  !clockIn.isAfter(rangeEndDt);
+            })
+            .map((c) {
+              final staffProfiles = c['staff_profiles'];
+              if (staffProfiles is Map) {
+                return {
+                  ...c,
+                  'staff_profiles': {
+                    ...Map<String, dynamic>.from(staffProfiles),
+                    'hourly_rate': (staffProfiles as Map)['hourly_rate'],
+                  },
+                };
+              }
+              return c;
+            })
+            .toList()
+          ..sort((a, b) {
+            final ai = DateTime.tryParse(a['clock_in']?.toString() ?? '');
+            final bi = DateTime.tryParse(b['clock_in']?.toString() ?? '');
+            final aDt = ai ?? DateTime.fromMillisecondsSinceEpoch(0);
+            final bDt = bi ?? DateTime.fromMillisecondsSinceEpoch(0);
+            return aDt.compareTo(bDt);
+          });
 
         if (cards.isNotEmpty) {
           final ids = cards.map((t) => t['id'] as String).toList();
@@ -1178,6 +1212,7 @@ class _LeaveTabState extends State<_LeaveTab> {
         'reviewed_at': DateTime.now().toIso8601String(),
       }).eq('id', requestId);
       
+      // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
       // Insert to leave_history
       await _supabase.from('leave_history').insert({
         'staff_id': staffId,
@@ -1419,6 +1454,7 @@ class _LeaveTabState extends State<_LeaveTab> {
                   final startDateStr = '${startDate.year}-${startDate.month.toString().padLeft(2, '0')}-${startDate.day.toString().padLeft(2, '0')}';
                   final endDateStr = '${endDate.year}-${endDate.month.toString().padLeft(2, '0')}-${endDate.day.toString().padLeft(2, '0')}';
 
+                  // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
                   // Insert to leave_history
                   await _supabase.from('leave_history').insert({
                     'staff_id': _recordLeaveStaffId,
@@ -2645,6 +2681,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                 }
 
                 try {
+                  // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
                   await _supabase.from('leave_history').insert({
                     'staff_id': widget.staff!['id'],
                     'leave_type': leaveType,
@@ -2955,6 +2992,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
         // Sync to profiles table (used for admin app login)
         try {
+          // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
           await _supabase.from('profiles').insert({
             'id': result['id'],
             'full_name': data['full_name'],

@@ -1,3 +1,7 @@
+> **⚠️ ARCHIVED — DO NOT USE AS CURRENT TRUTH**
+> **Reason:** Pre-Debt Buster (Feb 2026). Analytics module has been significantly extended. Superseded by `SYSTEM_TRUTH_REPORT.md` (2026-03-25).
+> **Original content preserved below for historical reference.**
+
 # FINAL FULL-SYSTEM VERIFICATION REPORT
 ## Admin App vs AdminAppBluePrintTruth.md
 
