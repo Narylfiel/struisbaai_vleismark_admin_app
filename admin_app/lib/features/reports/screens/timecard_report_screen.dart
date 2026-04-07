@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
 
 class TimecardReportScreen extends StatefulWidget {
@@ -33,12 +34,10 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
 
   Future<void> _loadStaff() async {
     try {
-      final rows = await _client
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .eq('can_clock_in', true)
-          .order('full_name');
+      final rows = (await StaffProfileRepository(client: _client)
+          .getAll(isActive: true))
+          .where((r) => r['can_clock_in'] == true)
+          .toList();
       if (mounted) {
         setState(() {
           _staffList = List<Map<String, dynamic>>.from(rows);
@@ -66,10 +65,10 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
       // Match original server-side filter: staff_profiles.can_clock_in = true
       final canClockInByStaffId = <String, bool>{};
       if (staffIds.isNotEmpty) {
-        final staffRows = await _client
-            .from('staff_profiles')
-            .select('id, can_clock_in')
-            .inFilter('id', staffIds);
+        final staffRows = (await StaffProfileRepository(client: _client)
+            .getAll(isActive: null))
+            .where((r) => staffIds.contains(r['id']?.toString()))
+            .toList();
 
         for (final row in staffRows) {
           final id = row['id']?.toString();

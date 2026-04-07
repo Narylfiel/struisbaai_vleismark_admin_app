@@ -8,6 +8,7 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
 import 'package:admin_app/features/hr/services/leave_repository.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
 import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
@@ -335,11 +336,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final today = DateTime.now();
       final todayStart = DateTime(today.year, today.month, today.day).toIso8601String();
 
-      final allStaff = await _supabase
-          .from('staff_profiles')
-          .select('id, full_name, role')
-          .eq('is_active', true)
-          .inFilter('role', ['cashier', 'blockman', 'manager', 'owner']);
+      final allStaff = (await StaffProfileRepository(client: _supabase)
+          .getAll(isActive: true))
+          .where((r) => ['cashier', 'blockman', 'manager', 'owner']
+              .contains(r['role']))
+          .toList();
 
       final todayStartDt = DateTime.tryParse(todayStart);
       final todayCards = List<Map<String, dynamic>>.from(

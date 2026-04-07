@@ -17,6 +17,7 @@ import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
 import 'package:admin_app/features/hr/services/awol_repository.dart';
 import 'package:admin_app/features/hr/services/compliance_service.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
 import 'package:admin_app/features/hr/screens/payroll_screen.dart';
@@ -119,11 +120,8 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
       // DATABASE-FIRST: Fetch from Supabase FIRST (always fresh data)
       try {
         _isOffline = false;
-        var query = _supabase.from('staff_profiles').select(
-            'id, full_name, role, phone, email, employment_type, hourly_rate, '
-            'monthly_salary, pay_frequency, hire_date, is_active, max_discount_pct');
-        if (!_showInactive) query = query.eq('is_active', true);
-        final data = await query.order('full_name');
+        final data = await StaffProfileRepository(client: _supabase)
+            .getAll(isActive: _showInactive ? null : true);
         setState(() => _staff = List<Map<String, dynamic>>.from(data));
         
         // Update cache in background (non-blocking)
@@ -424,11 +422,8 @@ class _TimecardsTabState extends State<_TimecardsTab> {
     try {
       // DATABASE-FIRST: Fetch from Supabase FIRST
       try {
-        final data = await _supabase
-            .from('staff_profiles')
-            .select('id, full_name')
-            .eq('is_active', true)
-            .order('full_name');
+        final data = await StaffProfileRepository(client: _supabase)
+            .getAll(isActive: true);
         setState(() => _staff = List<Map<String, dynamic>>.from(data));
       } catch (e) {
         // Fallback to cache if database fails
@@ -1032,11 +1027,8 @@ class _LeaveTabState extends State<_LeaveTab> {
     try {
       // DATABASE-FIRST: Fetch from Supabase FIRST
       try {
-        final staff = await _supabase
-            .from('staff_profiles')
-            .select('id, full_name')
-            .eq('is_active', true)
-            .order('full_name');
+        final staff = await StaffProfileRepository(client: _supabase)
+            .getAll(isActive: true);
         
         if (mounted) {
           setState(() {
@@ -1885,11 +1877,8 @@ class _AwolTabState extends State<_AwolTab> {
     try {
       // DATABASE-FIRST: Fetch from Supabase FIRST
       try {
-        final data = await SupabaseService.client
-            .from('staff_profiles')
-            .select('id, full_name')
-            .eq('is_active', true)
-            .order('full_name');
+        final data = await StaffProfileRepository(client: SupabaseService.client)
+            .getAll(isActive: true);
         if (mounted) setState(() => _staff = List<Map<String, dynamic>>.from(data));
       } catch (e) {
         // Fallback to cache if database fails

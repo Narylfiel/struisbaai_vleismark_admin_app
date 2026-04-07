@@ -8,6 +8,7 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
 
 class PayrollScreen extends StatefulWidget {
@@ -52,7 +53,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .maybeSingle();
       
       final entriesReq = await _client.from('payroll_entries')
-          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, employment_type, is_active)')
+          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account)')
           .eq('pay_period_start', startStr)
           .eq('pay_period_end', endStr);
           
@@ -72,6 +73,48 @@ class _PayrollScreenState extends State<PayrollScreen> {
     return DateTime(d.year, d.month, d.day).subtract(Duration(days: d.weekday - 1));
   }
 
+  /// Calculates monthly PAYE tax (SARS 2025/2026 tax year)
+  static double _calculateMonthlyPAYE(double monthlyGross, DateTime? dob) {
+    final double annualIncome = monthlyGross * 12;
+
+    // Annual tax from brackets
+    double annualTax;
+    if (annualIncome <= 237100) {
+      annualTax = annualIncome * 0.18;
+    } else if (annualIncome <= 370500) {
+      annualTax = 42678 + (annualIncome - 237100) * 0.26;
+    } else if (annualIncome <= 512800) {
+      annualTax = 77362 + (annualIncome - 370500) * 0.31;
+    } else if (annualIncome <= 673000) {
+      annualTax = 121475 + (annualIncome - 512800) * 0.36;
+    } else if (annualIncome <= 857900) {
+      annualTax = 179147 + (annualIncome - 673000) * 0.39;
+    } else if (annualIncome <= 1817000) {
+      annualTax = 251258 + (annualIncome - 857900) * 0.41;
+    } else {
+      annualTax = 644489 + (annualIncome - 1817000) * 0.45;
+    }
+
+    // Rebates based on age
+    int age = 0;
+    if (dob != null) {
+      final now = DateTime.now();
+      age = now.year - dob.year;
+      if (now.month < dob.month ||
+          (now.month == dob.month && now.day < dob.day)) {
+        age--;
+      }
+    }
+
+    double rebate = 17235; // Primary — everyone
+    if (age >= 65) rebate += 9444; // Secondary
+    if (age >= 75) rebate += 3145; // Tertiary
+
+    annualTax = (annualTax - rebate).clamp(0, double.infinity);
+
+    return annualTax / 12;
+  }
+
   Future<void> _calculatePayroll() async {
     if (_periodStart == null || _periodEnd == null) return;
     setState(() => _isCalculating = true);
@@ -80,13 +123,23 @@ class _PayrollScreenState extends State<PayrollScreen> {
       final startStr = _periodStart!.toIso8601String().substring(0, 10);
       final endStr = _periodEnd!.toIso8601String().substring(0, 10);
 
-      // STEP 1a - Fetch active hourly staff
-      final staffResponse = await _client.from('staff_profiles')
-          .select('id, full_name, hourly_rate, pay_frequency, uif_exempt')
-          .eq('is_active', true)
-          .eq('employment_type', 'hourly')
-          .not('hourly_rate', 'is', null)
-          .gt('hourly_rate', 0);
+      // STEP 1a - Fetch active staff (hourly + monthly_salary)
+      final staffResponse = await StaffProfileRepository(client: _client)
+          .getAll(isActive: true)
+          .then((rows) => rows
+              .where((r) {
+                final type = r['employment_type'] as String?;
+                if (type == 'hourly') {
+                  return r['hourly_rate'] != null &&
+                      (r['hourly_rate'] as num) > 0;
+                }
+                if (type == 'monthly_salary') {
+                  return r['monthly_salary'] != null &&
+                      (r['monthly_salary'] as num) > 0;
+                }
+                return false;
+              })
+              .toList());
       
       debugPrint('Staff count: ${staffResponse.length}');
       
@@ -110,7 +163,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
       // STEP 2 - Iterate through staff
       for (var staff in staffList) {
         final staffId = staff['id'] as String;
-        final hourlyRate = (staff['hourly_rate'] as num).toDouble();
+        final employmentType = staff['employment_type'] as String? ?? 'hourly';
+        final monthlySalary = (staff['monthly_salary'] as num?)?.toDouble() ?? 0.0;
+        final hourlyRate = (staff['hourly_rate'] as num?)?.toDouble() ?? 0.0;
         
         // 2a. Timecards
         final tcResponse = await TimecardRepository(client: _client).getForPeriod(
@@ -206,16 +261,37 @@ class _PayrollScreenState extends State<PayrollScreen> {
         } // week loop
 
         // 2e. Calculate Pay
-        double regPay = totalRegHrs * hourlyRate;
-        double otPay = totalOtHrs * hourlyRate * 1.5;
-        double sunPay = totalSunHrs * hourlyRate * 2.0;
-        double phPay = totalPhHrs * hourlyRate * 1.5;
-        double grossPay = regPay + otPay + sunPay + phPay;
+        double regPay = 0;
+        double otPay = 0;
+        double sunPay = 0;
+        double phPay = 0;
+        double grossPay = 0;
+
+        if (employmentType == 'monthly_salary') {
+          // Salaried: fixed monthly amount, no hours calculation
+          totalRegHrs = 0;
+          totalOtHrs = 0;
+          totalSunHrs = 0;
+          totalPhHrs = 0;
+          grossPay = monthlySalary;
+        } else {
+          // Hourly: existing calculation unchanged
+          regPay = totalRegHrs * hourlyRate;
+          otPay = totalOtHrs * hourlyRate * 1.5;
+          sunPay = totalSunHrs * hourlyRate * 2.0;
+          phPay = totalPhHrs * hourlyRate * 1.5;
+          grossPay = regPay + otPay + sunPay + phPay;
+        }
 
         // 2f. UIF
         bool isUifExempt = staff['uif_exempt'] == true;
         double uifEmployee = isUifExempt ? 0 : grossPay * 0.01;
         double uifEmployer = isUifExempt ? 0 : grossPay * 0.01;
+
+        // 2f2. PAYE income tax (SARS 2025/2026)
+        final String? dobStr = staff['date_of_birth'] as String?;
+        final DateTime? dob = dobStr != null ? DateTime.tryParse(dobStr) : null;
+        final double payeTax = _calculateMonthlyPAYE(grossPay, dob);
 
         // 2g. Meat purchases
         final meatReq = await _client.from('staff_credit')
@@ -237,7 +313,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
         double advDed = (advReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
         // 2i. Totals
-        double totalDed = uifEmployee + meatDed + advDed;
+        double totalDed = uifEmployee + meatDed + advDed + payeTax;
         double netPay = grossPay - totalDed;
 
         sumGross += grossPay;
@@ -283,7 +359,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
           'uif_employer': uifEmployer,
           'advance_deduction': advDed,
           'meat_purchase_deduction': meatDed,
-          'other_deductions': 0,
+          'other_deductions': payeTax,
           'updated_at': DateTime.now().toIso8601String(),
         };
 
@@ -328,7 +404,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
       // Reload from DB to show accurate saved data
       final saved = await _client
           .from('payroll_entries')
-          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, employment_type, is_active)')
+          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account)')
           .eq('pay_period_start', startStr)
           .eq('pay_period_end', endStr)
           .order('full_name', referencedTable: 'staff_profiles');
@@ -547,6 +623,20 @@ class _PayrollScreenState extends State<PayrollScreen> {
     try {
       final staff = entry['staff_profiles'];
       final staffMap = staff is Map<String, dynamic> ? staff : <String, dynamic>{};
+      // Fetch leave balances for this staff member
+      Map<String, dynamic> leaveBalances = {};
+      try {
+        final staffId = entry['staff_id'] as String?;
+        if (staffId != null) {
+          final leaveRow = await _client
+              .from('leave_balances')
+              .select('annual_leave_balance, sick_leave_balance, family_leave_balance')
+              .eq('staff_id', staffId)
+              .maybeSingle();
+          if (leaveRow != null) leaveBalances = Map<String, dynamic>.from(leaveRow);
+        }
+      } catch (_) {}
+
       final staffName = staffMap['full_name']?.toString() ?? 'Staff';
       final hourlyRate = (staffMap['hourly_rate'] as num?)?.toDouble() ?? 0;
 
@@ -577,6 +667,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
       final file = await PayslipPdfService().generatePayslip(
         entry: entry,
         staffMap: staffMap,
+        leaveBalances: leaveBalances,
         periodStart: _periodStart!,
         periodEnd: _periodEnd!,
       );
@@ -891,7 +982,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
                   final advDed = (e['advance_deduction'] as num?)?.toDouble() ?? 0;
                   final otherDed = (e['other_deductions'] as num?)?.toDouble() ?? 0;
                   
+                  final employmentType = staff['employment_type'] as String? ?? 'hourly';
                   final rate = (staff['hourly_rate'] as num?)?.toDouble() ?? 0;
+                  final monthlySalary = (staff['monthly_salary'] as num?)?.toDouble() ?? 0;
 
                   return Card(
                     margin: const EdgeInsets.symmetric(vertical: 4),
@@ -950,10 +1043,14 @@ class _PayrollScreenState extends State<PayrollScreen> {
                             children: [
                               const Text('─── HOURS ───', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary)),
                               const SizedBox(height: 8),
-                              _RowItem('Regular hours:', '${regHrs}h × R${rate.toStringAsFixed(2)}', regPay),
-                              _RowItem('Overtime hours:', '${otHrs}h × R${rate.toStringAsFixed(2)} × 1.5', otPay),
-                              _RowItem('Sunday hours:', '${sunHrs}h × R${rate.toStringAsFixed(2)} × 2.0', sunPay),
-                              _RowItem('Public holiday hours:', '${phHrs}h × R${rate.toStringAsFixed(2)} × 1.5', phPay),
+                              if (employmentType == 'monthly_salary')
+                                _RowItem('Monthly salary:', 'R${monthlySalary.toStringAsFixed(2)}/month', (e['gross_pay'] as num?)?.toDouble() ?? 0)
+                              else ...[
+                                _RowItem('Regular hours:', '${regHrs}h × R${rate.toStringAsFixed(2)}', regPay),
+                                _RowItem('Overtime hours:', '${otHrs}h × R${rate.toStringAsFixed(2)} × 1.5', otPay),
+                                _RowItem('Sunday hours:', '${sunHrs}h × R${rate.toStringAsFixed(2)} × 2.0', sunPay),
+                                _RowItem('Public holiday hours:', '${phHrs}h × R${rate.toStringAsFixed(2)} × 1.5', phPay),
+                              ],
                               const Divider(height: 16),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -969,7 +1066,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
                               _RowItem('UIF (employee 1%):', '', -uifEmp, isNative: true),
                               _RowItem('Meat purchases:', '', -meatDed, isNative: true),
                               _RowItem('Salary advances:', '', -advDed, isNative: true),
-                              _RowItem('Other:', '', -otherDed, isNative: true),
+                              _RowItem('PAYE income tax:', '', -otherDed, isNative: true),
                               const Divider(height: 16),
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.spaceBetween,

@@ -10,6 +10,7 @@ class PayslipPdfService {
     required Map<String, dynamic> entry,
     required Map<String, dynamic> staffMap,
     Map<String, dynamic>? businessSettings,
+    Map<String, dynamic>? leaveBalances,
     required DateTime periodStart,
     required DateTime periodEnd,
   }) async {
@@ -18,6 +19,10 @@ class PayslipPdfService {
       ...fetchedBusiness,
       ...?businessSettings,
     };
+
+    final annualLeave = (leaveBalances?['annual_leave_balance'] as num?)?.toDouble() ?? 0;
+    final sickLeave = (leaveBalances?['sick_leave_balance'] as num?)?.toDouble() ?? 0;
+    final familyLeave = (leaveBalances?['family_leave_balance'] as num?)?.toDouble() ?? 0;
 
     final fullName = _string(staffMap['full_name'], fallback: 'Unknown Employee');
     final idNumber = _string(staffMap['id_number']);
@@ -30,6 +35,9 @@ class PayslipPdfService {
     final bankAccount = _maskBankAccount(_string(staffMap['bank_account']));
 
     final hourlyRate = _num(staffMap['hourly_rate']);
+    final monthlySalary = _num(staffMap['monthly_salary']);
+    final isSalaried = employmentType == 'monthly_salary';
+
     final regularHours = _num(entry['regular_hours']);
     final overtimeHours = _num(entry['overtime_hours']);
     final sundayHours = _num(entry['sunday_hours']);
@@ -53,38 +61,47 @@ class PayslipPdfService {
     final payDate = _dateString(entry['paid_at'], fallback: _fmtDate(periodEnd));
     final payPeriod = '${_fmtDate(periodStart)} to ${_fmtDate(periodEnd)}';
 
-    final earningsRows = <_EarningRow>[
-      _EarningRow(
-        description: 'Regular Pay',
-        hours: regularHours,
-        rate: hourlyRate,
-        amount: regularPay,
-      ),
-      _EarningRow(
-        description: 'Overtime (x1.5)',
-        hours: overtimeHours,
-        rate: hourlyRate * 1.5,
-        amount: overtimePay,
-      ),
-      _EarningRow(
-        description: 'Sunday (x2.0)',
-        hours: sundayHours,
-        rate: hourlyRate * 2.0,
-        amount: sundayPay,
-      ),
-      _EarningRow(
-        description: 'Public Holiday',
-        hours: publicHolidayHours,
-        rate: hourlyRate * 1.5,
-        amount: publicHolidayPay,
-      ),
-    ].where((r) => r.hours > 0 || r.amount > 0).toList();
+    final earningsRows = isSalaried
+        ? <_EarningRow>[
+            _EarningRow(
+              description: 'Monthly Salary',
+              hours: 0,
+              rate: 0,
+              amount: monthlySalary > 0 ? monthlySalary : grossPay,
+            ),
+          ]
+        : <_EarningRow>[
+            _EarningRow(
+              description: 'Regular Pay',
+              hours: regularHours,
+              rate: hourlyRate,
+              amount: regularPay,
+            ),
+            _EarningRow(
+              description: 'Overtime (x1.5)',
+              hours: overtimeHours,
+              rate: hourlyRate * 1.5,
+              amount: overtimePay,
+            ),
+            _EarningRow(
+              description: 'Sunday (x2.0)',
+              hours: sundayHours,
+              rate: hourlyRate * 2.0,
+              amount: sundayPay,
+            ),
+            _EarningRow(
+              description: 'Public Holiday',
+              hours: publicHolidayHours,
+              rate: hourlyRate * 1.5,
+              amount: publicHolidayPay,
+            ),
+          ].where((r) => r.hours > 0 || r.amount > 0).toList();
 
     final deductionRows = <_DeductionRow>[
       _DeductionRow(description: 'UIF (Employee 1%)', amount: uifEmployee),
       _DeductionRow(description: 'Meat Purchases', amount: meatDeduction),
       _DeductionRow(description: 'Salary Advance', amount: advanceDeduction),
-      _DeductionRow(description: 'Other Deductions', amount: otherDeductions),
+      _DeductionRow(description: 'PAYE Income Tax', amount: otherDeductions),
     ].where((r) => r.amount > 0).toList();
 
     final doc = pw.Document();
@@ -118,7 +135,7 @@ class PayslipPdfService {
           ),
           pw.SizedBox(height: 14),
           _sectionTitle('Earnings'),
-          _earningsTable(earningsRows, grossPay),
+          _earningsTable(earningsRows, grossPay, isSalaried: isSalaried),
           pw.SizedBox(height: 14),
           _sectionTitle('Deductions'),
           _deductionsTable(deductionRows, totalDeductions),
@@ -127,6 +144,9 @@ class PayslipPdfService {
           pw.SizedBox(height: 14),
           _sectionTitle('Employer Contributions'),
           _employerContrib(uifEmployer),
+          pw.SizedBox(height: 14),
+          _sectionTitle('Leave Balances'),
+          _leaveTable(annualLeave, sickLeave, familyLeave),
           pw.SizedBox(height: 14),
           _legalFooter(),
         ],
@@ -271,25 +291,42 @@ class PayslipPdfService {
     );
   }
 
-  pw.Widget _earningsTable(List<_EarningRow> rows, double grossPay) {
+  pw.Widget _earningsTable(List<_EarningRow> rows, double grossPay, {bool isSalaried = false}) {
+    final headers = isSalaried
+        ? ['Description', 'Amount (R)']
+        : ['Description', 'Hours', 'Rate (R/hr)', 'Amount (R)'];
+
     final body = rows.map((r) {
+      if (isSalaried) {
+        return <pw.Widget>[
+          _tableCell(r.description),
+          _tableCell(_fmtMoney(r.amount), right: true),
+        ];
+      }
       return <pw.Widget>[
         _tableCell(r.description),
-        _tableCell(r.hours > 0 ? _fmtHours(r.hours) : '—', right: true),
-        _tableCell(r.rate > 0 ? _fmtMoney(r.rate) : '—', right: true),
+        _tableCell(r.hours > 0 ? _fmtHours(r.hours) : '', right: true),
+        _tableCell(r.rate > 0 ? _fmtMoney(r.rate) : '', right: true),
         _tableCell(_fmtMoney(r.amount), right: true),
       ];
     }).toList();
 
-    body.add([
-      _tableCell('GROSS PAY', bold: true),
-      _tableCell('', right: true),
-      _tableCell('', right: true),
-      _tableCell(_fmtMoney(grossPay), right: true, bold: true),
-    ]);
+    if (isSalaried) {
+      body.add([
+        _tableCell('GROSS PAY', bold: true),
+        _tableCell(_fmtMoney(grossPay), right: true, bold: true),
+      ]);
+    } else {
+      body.add([
+        _tableCell('GROSS PAY', bold: true),
+        _tableCell('', right: true),
+        _tableCell('', right: true),
+        _tableCell(_fmtMoney(grossPay), right: true, bold: true),
+      ]);
+    }
 
     return _table(
-      headers: const ['Description', 'Hours', 'Rate (R/h)', 'Amount (R)'],
+      headers: headers,
       rows: body,
       highlightLast: true,
     );
@@ -346,6 +383,24 @@ class PayslipPdfService {
           ),
         ],
       ),
+    );
+  }
+
+  pw.Widget _leaveTable(double annual, double sick, double family) {
+    final rows = [
+      ['Annual Leave', '${annual.toStringAsFixed(1)} days'],
+      ['Sick Leave', '${sick.toStringAsFixed(1)} days'],
+      ['Family Responsibility Leave', '${family.toStringAsFixed(1)} days'],
+    ];
+
+    final body = rows.map((r) => <pw.Widget>[
+      _tableCell(r[0]),
+      _tableCell(r[1], right: true),
+    ]).toList();
+
+    return _table(
+      headers: const ['Leave Type', 'Balance (Days)'],
+      rows: body,
     );
   }
 

@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/reports/models/report_data.dart';
 import 'package:admin_app/features/reports/models/report_definition.dart';
 import 'package:admin_app/features/reports/services/report_repository.dart';
@@ -520,11 +521,8 @@ class _ReportFilterDialogState extends State<_ReportFilterDialog> {
   Future<void> _loadStaffList() async {
     setState(() => _loadingStaff = true);
     try {
-      final rows = await Supabase.instance.client
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .order('full_name');
+      final rows = await StaffProfileRepository(client: Supabase.instance.client)
+          .getAll(isActive: true);
       if (mounted) {
         setState(() {
           _staffList = List<Map<String, dynamic>>.from(rows);

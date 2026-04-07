@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
@@ -854,6 +856,16 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
 
   final List<Map<String, dynamic>> _cuts = [];
 
+  // Per-cut inventory item search state
+  // Parallel lists indexed to _cuts — one entry per cut row
+  final List<TextEditingController> _itemSearchControllers = [];
+  final List<List<Map<String, dynamic>>> _itemSearchResults = [];
+  final List<Timer?> _itemSearchDebounces = [];
+  // Stores selected inventory_item_id per cut (null if not linked)
+  final List<String?> _cutInventoryItemIds = [];
+  // Stores display name for chip per cut
+  final List<String?> _cutInventoryItemNames = [];
+
   final _carcassTypes = [
     'Beef Side', 'Beef Quarter', 'Whole Lamb (Premium)',
     'Whole Lamb (AB Grade)', 'Whole Lamb (B3 Grade)',
@@ -879,9 +891,86 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
               text: c['plu_code']?.toString() ?? ''),
         });
       }
+      for (final c in cuts) {
+        _addCutSearchRow(
+          inventoryItemId: c['inventory_item_id']?.toString(),
+          inventoryItemName: c['inventory_item_name']?.toString(),
+        );
+      }
     } else {
       _addDefaultBeefCuts();
+      for (int i = 0; i < _cuts.length; i++) {
+        _addCutSearchRow();
+      }
     }
+  }
+
+  void _addCutSearchRow({
+    String? inventoryItemId,
+    String? inventoryItemName,
+  }) {
+    _itemSearchControllers.add(TextEditingController());
+    _itemSearchResults.add([]);
+    _itemSearchDebounces.add(null);
+    _cutInventoryItemIds.add(inventoryItemId);
+    _cutInventoryItemNames.add(inventoryItemName);
+  }
+
+  void _removeCutSearchRow(int index) {
+    _itemSearchControllers[index].dispose();
+    _itemSearchDebounces[index]?.cancel();
+    _itemSearchControllers.removeAt(index);
+    _itemSearchResults.removeAt(index);
+    _itemSearchDebounces.removeAt(index);
+    _cutInventoryItemIds.removeAt(index);
+    _cutInventoryItemNames.removeAt(index);
+  }
+
+  void _searchInventoryItem(String query, int index) {
+    _itemSearchDebounces[index]?.cancel();
+    _itemSearchDebounces[index] =
+        Timer(const Duration(milliseconds: 300), () async {
+      if (query.trim().isEmpty) {
+        setState(() => _itemSearchResults[index] = []);
+        return;
+      }
+      try {
+        // Run name and PLU searches separately — ::text cast not supported
+        // in .or() by this PostgREST version
+        final byName = await _supabase
+            .from('inventory_items')
+            .select('id, name, plu_code')
+            .ilike('name', '%$query%')
+            .eq('is_active', true)
+            .limit(8);
+
+        List<Map<String, dynamic>> byPlu = [];
+        final pluInt = int.tryParse(query.trim());
+        if (pluInt != null) {
+          byPlu = await _supabase
+              .from('inventory_items')
+              .select('id, name, plu_code')
+              .eq('plu_code', pluInt)
+              .eq('is_active', true)
+              .limit(4);
+        }
+
+        // Merge and deduplicate by id
+        final seen = <String>{};
+        final merged = <Map<String, dynamic>>[];
+        for (final item in [...byPlu, ...byName]) {
+          final id = item['id']?.toString() ?? '';
+          if (seen.add(id)) merged.add(item);
+        }
+
+        if (mounted) {
+          setState(() => _itemSearchResults[index] =
+              List<Map<String, dynamic>>.from(merged));
+        }
+      } catch (e) {
+        debugPrint('Error searching inventory items: $e');
+      }
+    });
   }
 
   void _addDefaultBeefCuts() {
@@ -916,6 +1005,7 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
         'sellable': true,
         'plu_code': TextEditingController(),
       });
+      _addCutSearchRow();
     });
   }
 
@@ -931,15 +1021,20 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
     if (_nameController.text.trim().isEmpty) return;
     setState(() => _isSaving = true);
 
-    final cutsData = _cuts.map((c) => {
-          'cut_name': (c['cut_name'] as TextEditingController).text.trim(),
-          'yield_pct': double.tryParse(
-                  (c['yield_pct'] as TextEditingController).text) ??
-              0,
-          'sellable': c['sellable'],
-          'plu_code': int.tryParse(
-              (c['plu_code'] as TextEditingController).text),
-        }).toList();
+    final cutsData = List.generate(_cuts.length, (i) {
+      final c = _cuts[i];
+      return {
+        'cut_name': (c['cut_name'] as TextEditingController).text.trim(),
+        'yield_pct': double.tryParse(
+                (c['yield_pct'] as TextEditingController).text) ??
+            0,
+        'sellable': c['sellable'],
+        'plu_code': int.tryParse(
+            (c['plu_code'] as TextEditingController).text),
+        'inventory_item_id': _cutInventoryItemIds[i],
+        'inventory_item_name': _cutInventoryItemNames[i],
+      };
+    });
 
     final data = {
       'template_name': _nameController.text.trim(),
@@ -970,6 +1065,17 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
   }
 
   @override
+  void dispose() {
+    for (final c in _itemSearchControllers) {
+      c.dispose();
+    }
+    for (final t in _itemSearchDebounces) {
+      t?.cancel();
+    }
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final total = _totalPct;
     final isBalanced = (total - 100).abs() < 0.1;
@@ -978,7 +1084,7 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: SizedBox(
         width: 700,
-        height: 680,
+        height: 780,
         child: Column(
           children: [
             // Header
@@ -1121,61 +1227,151 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
                 separatorBuilder: (_, __) => const SizedBox(height: 6),
                 itemBuilder: (_, i) {
                   final cut = _cuts[i];
-                  return Row(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: cut['cut_name'] as TextEditingController,
-                          decoration: const InputDecoration(
-                              isDense: true, hintText: 'Cut name'),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 3,
+                            child: TextField(
+                              controller:
+                                  cut['cut_name'] as TextEditingController,
+                              decoration: const InputDecoration(
+                                  isDense: true, hintText: 'Cut name'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller:
+                                  cut['yield_pct'] as TextEditingController,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                      decimal: true),
+                              decoration: const InputDecoration(
+                                  isDense: true,
+                                  hintText: '0.0',
+                                  suffixText: '%'),
+                              onChanged: (_) => setState(() {}),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 80,
+                            child: TextField(
+                              controller:
+                                  cut['plu_code'] as TextEditingController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                  isDense: true, hintText: '1001'),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          SizedBox(
+                            width: 80,
+                            child: Switch(
+                              value: cut['sellable'] as bool,
+                              onChanged: (v) =>
+                                  setState(() => cut['sellable'] = v),
+                              activeThumbColor: AppColors.success,
+                            ),
+                          ),
+                          SizedBox(
+                            width: 40,
+                            child: IconButton(
+                              icon: const Icon(Icons.delete_outline,
+                                  size: 18, color: AppColors.error),
+                              onPressed: () => setState(() {
+                                _cuts.removeAt(i);
+                                _removeCutSearchRow(i);
+                              }),
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: cut['yield_pct'] as TextEditingController,
-                          keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true),
-                          decoration: const InputDecoration(
-                              isDense: true,
-                              hintText: '0.0',
-                              suffixText: '%'),
-                          onChanged: (_) => setState(() {}),
+                      const SizedBox(height: 4),
+                      if (_cutInventoryItemIds[i] != null)
+                        Row(
+                          children: [
+                            Chip(
+                              label: Text(
+                                '${_cutInventoryItemNames[i] ?? 'Linked'} ',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              deleteIcon:
+                                  const Icon(Icons.close, size: 14),
+                              onDeleted: () => setState(() {
+                                _cutInventoryItemIds[i] = null;
+                                _cutInventoryItemNames[i] = null;
+                                _itemSearchControllers[i].clear();
+                                _itemSearchResults[i] = [];
+                              }),
+                              visualDensity: VisualDensity.compact,
+                              backgroundColor:
+                                  AppColors.primary.withOpacity(0.08),
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _itemSearchControllers[i],
+                                decoration: InputDecoration(
+                                  isDense: true,
+                                  hintText: 'Link inventory item (optional)',
+                                  prefixIcon: const Icon(Icons.link, size: 14),
+                                  contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 6),
+                                ),
+                                style: const TextStyle(fontSize: 12),
+                                onChanged: (q) => _searchInventoryItem(q, i),
+                              ),
+                            ),
+                          ],
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 80,
-                        child: TextField(
-                          controller: cut['plu_code'] as TextEditingController,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              isDense: true, hintText: '1001'),
+                      if (_itemSearchResults[i].isNotEmpty)
+                        Container(
+                          constraints:
+                              const BoxConstraints(maxHeight: 120),
+                          decoration: BoxDecoration(
+                            border: Border.all(color: AppColors.primary),
+                            borderRadius: BorderRadius.circular(4),
+                            color: Theme.of(context).colorScheme.surface,
+                          ),
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: _itemSearchResults[i].length,
+                            itemBuilder: (context, j) {
+                              final item = _itemSearchResults[i][j];
+                              return ListTile(
+                                dense: true,
+                                title: Text(
+                                  item['name']?.toString() ?? '',
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                subtitle: Text(
+                                  'PLU: ${item['plu_code']}',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                                onTap: () => setState(() {
+                                  _cutInventoryItemIds[i] =
+                                      item['id']?.toString();
+                                  _cutInventoryItemNames[i] =
+                                      item['name']?.toString();
+                                  _itemSearchControllers[i].clear();
+                                  _itemSearchResults[i] = [];
+                                }),
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 80,
-                        child: Switch(
-                          value: cut['sellable'] as bool,
-                          onChanged: (v) =>
-                              setState(() => cut['sellable'] = v),
-                          activeThumbColor: AppColors.success,
-                        ),
-                      ),
-                      SizedBox(
-                        width: 40,
-                        child: IconButton(
-                          icon: const Icon(Icons.delete_outline,
-                              size: 18, color: AppColors.error),
-                          onPressed: () =>
-                              setState(() => _cuts.removeAt(i)),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ),
+                      const SizedBox(height: 4),
                     ],
                   );
                 },
@@ -1844,6 +2040,7 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
             'actual_kg': actual,
             'plu_code': _cuts[i]['plu_code'],
             'sellable': _cuts[i]['sellable'],
+            'inventory_item_id': _cuts[i]['inventory_item_id'],
           });
         }
       }
@@ -1872,9 +2069,32 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
               'actual_kg': c['actual_kg'],
               'plu_code': c['plu_code'],
               'sellable': c['sellable'],
+              'inventory_item_id': c['inventory_item_id'],
               'breakdown_date': DateTime.now().toIso8601String(),
             }).toList(),
       );
+
+      // Insert stock_movements for each cut linked to an inventory item
+      final stockMovements = cutsLogged
+          .where((c) =>
+              c['inventory_item_id'] != null &&
+              (c['actual_kg'] as num) > 0)
+          .map((c) => {
+                'item_id': c['inventory_item_id'],
+                'movement_type': 'in',
+                'quantity': (c['actual_kg'] as num).toDouble(),
+                'unit_type': 'kg',
+                'reference_id': widget.intake['id'],
+                'reference_type': 'carcass_breakdown',
+                'staff_id': null,
+                'reason':
+                    'Carcass breakdown: ${c['cut_name']} from intake #${widget.intake['carcass_number'] ?? widget.intake['id']}',
+              })
+          .toList();
+
+      if (stockMovements.isNotEmpty) {
+        await _supabase.from('stock_movements').insert(stockMovements);
+      }
 
       widget.onSaved();
       if (mounted) Navigator.pop(context);

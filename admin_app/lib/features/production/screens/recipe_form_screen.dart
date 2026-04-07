@@ -44,6 +44,14 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   List<Map<String, dynamic>> _categories = [];
   bool _loadingInventory = true;
   bool _saving = false;
+  // Recipe costing
+  double _calculatedIngredientCost = 0.0;
+  double _calculatedLabourCost = 0.0;
+  double _calculatedTotalCost = 0.0;
+  double _calculatedCostPerKg = 0.0;
+  bool _costCalculated = false;
+  // Cost prices keyed by inventory_item_id — loaded once, refreshed on demand
+  Map<String, double> _costPriceCache = {};
   final _repo = RecipeRepository();
   final _client = SupabaseService.client;
 
@@ -79,14 +87,21 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     try {
       final r = await _client
           .from('inventory_items')
-          .select('id, name, plu_code, barcode')
+          .select('id, name, plu_code, barcode, cost_price, unit_type')
           .eq('is_active', true)
           .order('name');
       if (mounted) {
         setState(() {
           _inventoryItems = List<Map<String, dynamic>>.from(r as List);
+          _costPriceCache = {
+            for (final item in _inventoryItems)
+              if (item['id'] != null && item['cost_price'] != null)
+                item['id'] as String:
+                    (item['cost_price'] as num).toDouble(),
+          };
           _loadingInventory = false;
         });
+        if (mounted) _calculateCost();
       }
     } catch (_) {
       if (mounted) setState(() => _loadingInventory = false);
@@ -232,12 +247,66 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         _avgLabourRate = avg;
         _loadingLabourRate = false;
       });
+      if (mounted) _calculateCost();
     } catch (_) {
       if (mounted) setState(() {
         _avgLabourRate = AdminConfig.minimumWagePerHour; // SA minimum wage fallback
         _loadingLabourRate = false;
       });
+      if (mounted) _calculateCost();
     }
+  }
+
+  void _calculateCost() {
+    final batchSize =
+        double.tryParse(_batchSizeController.text) ?? 0;
+    final expectedYield =
+        double.tryParse(_expectedYieldController.text) ?? 100;
+    final prepMinutes =
+        int.tryParse(_prepTimeController.text) ?? 0;
+
+    if (batchSize <= 0) {
+      setState(() => _costCalculated = false);
+      return;
+    }
+
+    double ingredientTotal = 0.0;
+    for (final row in _ingredients) {
+      if (row.inventoryItemId == null ||
+          row.inventoryItemId!.isEmpty) continue;
+      final cp = _costPriceCache[row.inventoryItemId];
+      if (cp == null || cp <= 0) continue;
+      final qty = row.quantity;
+      if (qty <= 0) continue;
+
+      // Convert to kg-equivalent before multiplying by cost_price
+      double qtyInKg;
+      final unit = row.unit.trim().toLowerCase();
+      if (unit == 'g') {
+        qtyInKg = qty / 1000.0;
+      } else if (unit == 'ml') {
+        qtyInKg = qty / 1000.0;
+      } else {
+        // kg, l, units, or anything else — use as-is
+        qtyInKg = qty;
+      }
+      ingredientTotal += qtyInKg * cp;
+    }
+
+    final labourCost =
+        (prepMinutes / 60.0) * _avgLabourRate;
+    final total = ingredientTotal + labourCost;
+    final actualYieldKg = batchSize * (expectedYield / 100.0);
+    final costPerKg =
+        actualYieldKg > 0 ? total / actualYieldKg : 0.0;
+
+    setState(() {
+      _calculatedIngredientCost = ingredientTotal;
+      _calculatedLabourCost = labourCost;
+      _calculatedTotalCost = total;
+      _calculatedCostPerKg = costPerKg;
+      _costCalculated = true;
+    });
   }
 
   /// C5: Create new output product (minimal) — no auto-create; explicit user action only.
@@ -365,6 +434,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
               .toList();
         });
       }
+      _calculateCost();
     } catch (_) {}
   }
 
@@ -387,10 +457,12 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         unit: 'kg',
       ));
     });
+    _calculateCost();
   }
 
   void _removeIngredient(int index) {
     setState(() => _ingredients.removeAt(index));
+    _calculateCost();
   }
 
   Future<void> _confirmDeleteRecipe(Recipe recipe) async {
@@ -437,6 +509,9 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     }
     final expectedYield = double.tryParse(_expectedYieldController.text) ?? 95;
     final batchSize = double.tryParse(_batchSizeController.text) ?? 10;
+    final costPerUnit = _costCalculated && _calculatedCostPerKg > 0
+        ? _calculatedCostPerKg
+        : null;
     if (expectedYield <= 0 || expectedYield > 100) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Expected yield % must be 0–100'), backgroundColor: AppColors.danger),
@@ -465,6 +540,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
+          costPerUnit: costPerUnit,
           requiredRole: _requiredRole,
           goesToDryer: _goesToDryer,
           dryerOutputProductId: _goesToDryer ? _dryerOutputProductId : null,
@@ -511,6 +587,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           outputProductId: _outputProductId?.isEmpty == true ? null : _outputProductId,
           expectedYieldPct: expectedYield,
           batchSizeKg: batchSize,
+          costPerUnit: costPerUnit,
           requiredRole: _requiredRole,
           goesToDryer: _goesToDryer,
           dryerOutputProductId: _goesToDryer ? _dryerOutputProductId : null,
@@ -689,6 +766,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 hint: '95',
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                onChanged: (_) => _calculateCost(),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Required';
                   final n = double.tryParse(v);
@@ -704,6 +782,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 hint: '10',
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d.]'))],
+                onChanged: (_) => _calculateCost(),
                 validator: (v) {
                   if (v == null || v.isEmpty) return 'Required';
                   final n = double.tryParse(v);
@@ -719,6 +798,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 hint: 'e.g. 60 for 1 hour of labour',
                 keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[\d]'))],
+                onChanged: (_) => _calculateCost(),
                 prefixIcon: const Icon(Icons.timer_outlined),
               ),
               const SizedBox(height: 16),
@@ -781,6 +861,260 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                         ],
                       ),
                     ),
+                  const SizedBox(height: 24),
+                  if (_costCalculated) ...[
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(
+                            color: AppColors.primary.withOpacity(0.2)),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'RECIPE COST BREAKDOWN',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.textSecondary,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _calculateCost,
+                                icon: const Icon(Icons.refresh, size: 14),
+                                label: const Text('Recalculate',
+                                    style: TextStyle(fontSize: 12)),
+                                style: TextButton.styleFrom(
+                                    padding: EdgeInsets.zero,
+                                    visualDensity: VisualDensity.compact),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          // Per-ingredient breakdown
+                          ..._ingredients.where((row) =>
+                              row.inventoryItemId != null &&
+                              row.inventoryItemId!.isNotEmpty &&
+                              _costPriceCache.containsKey(row.inventoryItemId))
+                          .map((row) {
+                            final cp = _costPriceCache[row.inventoryItemId]!;
+                            final unit = row.unit.trim().toLowerCase();
+                            double qtyInKg;
+                            if (unit == 'g' || unit == 'ml') {
+                              qtyInKg = row.quantity / 1000.0;
+                            } else {
+                              qtyInKg = row.quantity;
+                            }
+                            final lineCost = qtyInKg * cp;
+                            return Padding(
+                              padding:
+                                  const EdgeInsets.only(bottom: 4),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3,
+                                    child: Text(
+                                      row.ingredientName.isEmpty
+                                          ? 'Ingredient'
+                                          : row.ingredientName,
+                                      style: const TextStyle(
+                                          fontSize: 13),
+                                    ),
+                                  ),
+                                  Text(
+                                    '${row.quantity} ${row.unit}',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Text(
+                                    '× R${cp.toStringAsFixed(2)}/kg',
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        color: AppColors.textSecondary),
+                                  ),
+                                  const Spacer(),
+                                  Text(
+                                    'R${lineCost.toStringAsFixed(2)}',
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            );
+                          }),
+                          // Ingredients with no cost price
+                          ..._ingredients.where((row) =>
+                              row.inventoryItemId != null &&
+                              row.inventoryItemId!.isNotEmpty &&
+                              !_costPriceCache.containsKey(row.inventoryItemId))
+                          .map((row) => Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: 3,
+                                  child: Text(
+                                    row.ingredientName.isEmpty
+                                        ? 'Ingredient'
+                                        : row.ingredientName,
+                                    style: const TextStyle(fontSize: 13),
+                                  ),
+                                ),
+                                const Text(
+                                  'no cost price set',
+                                  style: TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary,
+                                      fontStyle: FontStyle.italic),
+                                ),
+                                const Spacer(),
+                                const Text('R 0.00',
+                                    style: TextStyle(fontSize: 13)),
+                              ],
+                            ),
+                          )),
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Ingredients:',
+                                  style: TextStyle(fontSize: 13)),
+                              Text(
+                                'R${_calculatedIngredientCost.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Labour (${_prepTimeController.text}min'
+                                ' × R${_avgLabourRate.toStringAsFixed(2)}/hr):',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                              Text(
+                                'R${_calculatedLabourCost.toStringAsFixed(2)}',
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 16),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text('Batch total:',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.w600)),
+                              Text(
+                                'R${_calculatedTotalCost.toStringAsFixed(2)}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                  fontSize: 15,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Yield: ${_batchSizeController.text}kg'
+                                ' × ${_expectedYieldController.text}%'
+                                ' = ${((double.tryParse(_batchSizeController.text) ?? 0) * ((double.tryParse(_expectedYieldController.text) ?? 100) / 100)).toStringAsFixed(2)}kg output',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: AppColors.textSecondary),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            mainAxisAlignment:
+                                MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Text(
+                                'Cost per kg output:',
+                                style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 14),
+                              ),
+                              Text(
+                                'R${_calculatedCostPerKg.toStringAsFixed(2)}/kg',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primary,
+                                  fontSize: 16,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          // Suggested sell prices at common GP targets
+                          Container(
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                  color: AppColors.border),
+                            ),
+                            child: Column(
+                              crossAxisAlignment:
+                                  CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Suggested sell prices:',
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textSecondary,
+                                      letterSpacing: 0.3),
+                                ),
+                                const SizedBox(height: 6),
+                                ...[25, 30, 35, 40].map((gp) {
+                                  final sell = _calculatedCostPerKg > 0
+                                      ? _calculatedCostPerKg /
+                                          (1 - gp / 100.0)
+                                      : 0.0;
+                                  return Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text('$gp% GP:',
+                                          style: const TextStyle(
+                                              fontSize: 12)),
+                                      Text(
+                                        'R${sell.toStringAsFixed(2)}/kg',
+                                        style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w500),
+                                      ),
+                                    ],
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
                 ],
               ),
               const SizedBox(height: 16),
@@ -881,6 +1215,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                   final id = await _showProductPicker(currentValue: row.inventoryItemId);
                   if (id == null || !mounted) return;
                   setState(() => row.inventoryItemId = id.isEmpty ? null : id);
+                  _calculateCost();
                 },
                 child: InputDecorator(
                   decoration: const InputDecoration(
@@ -910,7 +1245,10 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 initialValue: row.quantity > 0 ? row.quantity.toString() : '',
                 decoration: const InputDecoration(labelText: 'Qty', isDense: true),
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (v) => row.quantity = double.tryParse(v) ?? 0,
+                onChanged: (v) {
+                  row.quantity = double.tryParse(v) ?? 0;
+                  _calculateCost();
+                },
               ),
             ),
             const SizedBox(width: 8),
@@ -919,7 +1257,10 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
               child: TextFormField(
                 initialValue: row.unit,
                 decoration: const InputDecoration(labelText: 'Unit', isDense: true),
-                onChanged: (v) => row.unit = v,
+                onChanged: (v) {
+                  row.unit = v;
+                  _calculateCost();
+                },
               ),
             ),
             IconButton(

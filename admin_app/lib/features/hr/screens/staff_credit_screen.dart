@@ -7,6 +7,7 @@ import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/hr/models/staff_credit.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/staff_credit_repository.dart';
 import 'package:admin_app/shared/widgets/form_widgets.dart';
 
@@ -67,11 +68,8 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         if (mounted) setState(() => _staffList = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
         return;
       }
-      final data = await _client
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .order('full_name');
+      final data = await StaffProfileRepository(client: _client)
+          .getAll(isActive: true);
       if (mounted) setState(() => _staffList = List<Map<String, dynamic>>.from(data));
     } catch (_) {}
   }

@@ -20,6 +20,7 @@ class Recipe extends BaseModel {
   final double expectedYieldPct;
   /// Blueprint: Ingredient quantities are per this batch size (e.g. 10 kg)
   final double batchSizeKg;
+  final double? costPerUnit;
   final String? createdBy;
   final String? requiredRole;
   /// If true, completing a production batch auto-creates a dryer batch
@@ -40,6 +41,7 @@ class Recipe extends BaseModel {
     this.outputProductId,
     this.expectedYieldPct = 100,
     this.batchSizeKg = 1,
+    this.costPerUnit,
     this.createdBy,
     this.requiredRole,
     this.goesToDryer = false,
@@ -61,6 +63,7 @@ class Recipe extends BaseModel {
       'output_product_id': outputProductId,
       'expected_yield_pct': expectedYieldPct,
       'batch_size_kg': batchSizeKg,
+      if (costPerUnit != null) 'cost_per_unit': costPerUnit,
       'created_by': createdBy,
       if (requiredRole != null) 'required_role': requiredRole,
       'goes_to_dryer': goesToDryer,
@@ -85,6 +88,7 @@ class Recipe extends BaseModel {
       outputProductId: json['output_product_id'] as String?,
       expectedYieldPct: (json['expected_yield_pct'] as num?)?.toDouble() ?? 100,
       batchSizeKg: (json['batch_size_kg'] as num?)?.toDouble() ?? 1,
+      costPerUnit: (json['cost_per_unit'] as num?)?.toDouble(),
       createdBy: json['created_by'] as String?,
       requiredRole: json['required_role'] as String?,
       goesToDryer: json['goes_to_dryer'] as bool? ?? false,

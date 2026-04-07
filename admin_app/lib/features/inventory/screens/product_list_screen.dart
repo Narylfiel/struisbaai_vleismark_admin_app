@@ -51,6 +51,7 @@ class ProductListScreenState extends State<ProductListScreen> {
   bool _isExportingCsv = false;
   bool _isImportingCsv = false;
   bool _didConsumeOpenInventoryItemId = false;
+  final ScrollController _scrollController = ScrollController();
 
   static const List<String> _productCsvColumns = [
     'plu_code',
@@ -125,6 +126,12 @@ class ProductListScreenState extends State<ProductListScreen> {
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -386,7 +393,19 @@ class ProductListScreenState extends State<ProductListScreen> {
       builder: (_) => _ProductFormDialog(
         product: product,
         categories: _categories.where((c) => c['id'] != null).toList(),
-        onSaved: _loadData,
+        onSaved: () async {
+          final offset = _scrollController.hasClients
+              ? _scrollController.offset
+              : 0.0;
+          await _loadData();
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (_scrollController.hasClients) {
+              _scrollController.jumpTo(
+                offset.clamp(0.0, _scrollController.position.maxScrollExtent),
+              );
+            }
+          });
+        },
       ),
     );
   }
@@ -411,7 +430,47 @@ class ProductListScreenState extends State<ProductListScreen> {
         .from('inventory_items')
         .update({'is_active': newVal})
         .eq('id', product['id']);
-    _loadData();
+    final productId = product['id']?.toString() ?? '';
+    // Update local list without full reload to preserve scroll position.
+    setState(() {
+      final idx = _products.indexWhere((p) => p['id'] == productId);
+      if (idx != -1) {
+        _products[idx] = Map<String, dynamic>.from(_products[idx])
+          ..['is_active'] = newVal;
+      }
+    });
+    _filterProducts();
+  }
+
+  Future<void> _quickToggle(
+      String productId, String field, bool newValue) async {
+    try {
+      await _supabase
+          .from('inventory_items')
+          .update({
+            field: newValue,
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', productId);
+      // Update local list without full reload to preserve scroll position
+      setState(() {
+        final idx = _products.indexWhere((p) => p['id'] == productId);
+        if (idx != -1) {
+          _products[idx] = Map<String, dynamic>.from(_products[idx])
+            ..[field] = newValue;
+        }
+      });
+      _filterProducts();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update: ${ErrorHandler.friendlyMessage(e)}'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _exportProductsCsv() async {
@@ -1249,36 +1308,49 @@ class ProductListScreenState extends State<ProductListScreen> {
                                   fontSize: 13, color: AppColors.textSecondary)),
                         ],
                       ),
-                      const Spacer(),
-                      countText,
-                      const SizedBox(width: 6),
-                      bulkButton,
-                      IconButton(
-                        icon: const Icon(Icons.refresh, size: 20),
-                        tooltip: 'Refresh from server',
-                        onPressed: () async {
-                          await IsarService.clearInventoryItemsCache();
-                          _loadData();
-                        },
+                      Flexible(
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                countText,
+                                const SizedBox(width: 6),
+                                bulkButton,
+                                IconButton(
+                                  icon: const Icon(Icons.refresh, size: 20),
+                                  tooltip: 'Refresh from server',
+                                  onPressed: () async {
+                                    await IsarService.clearInventoryItemsCache();
+                                    _loadData();
+                                  },
+                                ),
+                                IconButton(
+                                  onPressed: _isExportingCsv ? null : _exportProductsCsv,
+                                  icon: _isExportingCsv
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                      : const Icon(Icons.download, size: 20),
+                                  tooltip: 'Export CSV',
+                                ),
+                                IconButton(
+                                  onPressed: _isImportingCsv ? null : _importProductsCsv,
+                                  icon: _isImportingCsv
+                                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                      : const Icon(Icons.upload_file, size: 20),
+                                  tooltip: 'Import CSV',
+                                ),
+                                const SizedBox(width: 4),
+                                sortButton,
+                                const SizedBox(width: 6),
+                                addButton,
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                      IconButton(
-                        onPressed: _isExportingCsv ? null : _exportProductsCsv,
-                        icon: _isExportingCsv
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.download, size: 20),
-                        tooltip: 'Export CSV',
-                      ),
-                      IconButton(
-                        onPressed: _isImportingCsv ? null : _importProductsCsv,
-                        icon: _isImportingCsv
-                            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                            : const Icon(Icons.upload_file, size: 20),
-                        tooltip: 'Import CSV',
-                      ),
-                      const SizedBox(width: 4),
-                      sortButton,
-                      const SizedBox(width: 6),
-                      addButton,
                     ],
                   );
                 } else {
@@ -1356,7 +1428,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                 const SizedBox(width: 8),
                 const SizedBox(width: 70, child: Text('STATUS', style: _headerStyle)),
                 const SizedBox(width: 8),
-                const SizedBox(width: 80, child: Text('ACTIONS', style: _headerStyle)),
+                const SizedBox(width: 128, child: Text('ACTIONS', style: _headerStyle)),
               ],
             ),
           ),
@@ -1372,6 +1444,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                         child: Text('No products found',
                             style: TextStyle(color: AppColors.textSecondary)))
                     : ListView.separated(
+                        controller: _scrollController,
                         padding: const EdgeInsets.symmetric(horizontal: 24),
                         itemCount: _filtered.length,
                         separatorBuilder: (_, __) =>
@@ -1636,12 +1709,56 @@ class ProductListScreenState extends State<ProductListScreen> {
                                   ),
                                   const SizedBox(width: 8),
 
-                                  // Actions — fixed 80px, min size
+                                  // Actions — fixed width, min size
                                   SizedBox(
-                                    width: 80,
+                                    width: 128,
                                     child: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
+                                        // Online toggle
+                                        Tooltip(
+                                          message: (p['available_online'] as bool? ?? false)
+                                              ? 'Online: ON — tap to disable'
+                                              : 'Online: OFF — tap to enable',
+                                          child: IconButton(
+                                            icon: Icon(
+                                              Icons.storefront,
+                                              size: 16,
+                                              color: (p['available_online'] as bool? ?? false)
+                                                  ? AppColors.success
+                                                  : AppColors.textSecondary,
+                                            ),
+                                            onPressed: () => _quickToggle(
+                                              p['id'] as String,
+                                              'available_online',
+                                              !(p['available_online'] as bool? ?? false),
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                          ),
+                                        ),
+                                        // Loyalty toggle
+                                        Tooltip(
+                                          message: (p['available_loyalty_app'] as bool? ?? false)
+                                              ? 'Loyalty: ON — tap to disable'
+                                              : 'Loyalty: OFF — tap to enable',
+                                          child: IconButton(
+                                            icon: Icon(
+                                              Icons.loyalty,
+                                              size: 16,
+                                              color: (p['available_loyalty_app'] as bool? ?? false)
+                                                  ? AppColors.primary
+                                                  : AppColors.textSecondary,
+                                            ),
+                                            onPressed: () => _quickToggle(
+                                              p['id'] as String,
+                                              'available_loyalty_app',
+                                              !(p['available_loyalty_app'] as bool? ?? false),
+                                            ),
+                                            padding: EdgeInsets.zero,
+                                            constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                                          ),
+                                        ),
                                         IconButton(
                                           icon: const Icon(Icons.edit,
                                               size: 16),
@@ -1864,6 +1981,15 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   String _stockDeductionUnit = 'kg';
   List<Map<String, dynamic>> _parentStockSearchResults = [];
   Timer? _parentStockDebounce;
+
+  // Production parent link
+  String? _productionParentItemId;
+  String? _productionParentItemName;
+  String? _productionParentItemPlu;
+  final TextEditingController _productionParentSearchController =
+      TextEditingController();
+  List<Map<String, dynamic>> _productionParentSearchResults = [];
+  Timer? _productionParentDebounce;
 
   // Section H — Media & Notes
   final _internalNotesController = TextEditingController();
@@ -2110,6 +2236,70 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     }
   }
 
+  Future<void> _loadProductionParentItemDetails(String parentId) async {
+    try {
+      final result = await _supabase
+          .from('inventory_items')
+          .select('id, name, plu_code')
+          .eq('id', parentId)
+          .maybeSingle();
+      if (result != null && mounted) {
+        setState(() {
+          _productionParentItemName = result['name']?.toString();
+          _productionParentItemPlu = result['plu_code']?.toString();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading production parent item details: $e');
+    }
+  }
+
+  void _searchProductionParentItems(String query) {
+    _productionParentDebounce?.cancel();
+    _productionParentDebounce =
+        Timer(const Duration(milliseconds: 300), () async {
+      if (query.trim().isEmpty) {
+        setState(() => _productionParentSearchResults = []);
+        return;
+      }
+      try {
+        final byName = await _supabase
+            .from('inventory_items')
+            .select('id, name, plu_code')
+            .ilike('name', '%$query%')
+            .eq('is_active', true)
+            .neq('id', widget.product?['id'] ?? '')
+            .limit(8);
+
+        List<Map<String, dynamic>> byPlu = [];
+        final pluInt = int.tryParse(query.trim());
+        if (pluInt != null) {
+          byPlu = await _supabase
+              .from('inventory_items')
+              .select('id, name, plu_code')
+              .eq('plu_code', pluInt)
+              .eq('is_active', true)
+              .neq('id', widget.product?['id'] ?? '')
+              .limit(4);
+        }
+
+        final seen = <String>{};
+        final merged = <Map<String, dynamic>>[];
+        for (final item in [...byPlu, ...byName]) {
+          final id = item['id']?.toString() ?? '';
+          if (seen.add(id)) merged.add(item);
+        }
+
+        if (mounted) {
+          setState(() => _productionParentSearchResults =
+              List<Map<String, dynamic>>.from(merged));
+        }
+      } catch (e) {
+        debugPrint('Error searching production parent items: $e');
+      }
+    });
+  }
+
   void _searchParentStockItems(String query) {
     _parentStockDebounce?.cancel();
     _parentStockDebounce = Timer(const Duration(milliseconds: 300), () async {
@@ -2118,15 +2308,36 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
         return;
       }
       try {
-        final results = await _supabase
+        final byName = await _supabase
             .from('inventory_items')
             .select('id, name, plu_code')
-            .or('name.ilike.%$query%,plu_code.ilike.%$query%')
+            .ilike('name', '%$query%')
             .eq('is_active', true)
             .neq('id', widget.product?['id'] ?? '')
-            .limit(10);
+            .limit(8);
+
+        List<Map<String, dynamic>> byPlu = [];
+        final pluInt = int.tryParse(query.trim());
+        if (pluInt != null) {
+          byPlu = await _supabase
+              .from('inventory_items')
+              .select('id, name, plu_code')
+              .eq('plu_code', pluInt)
+              .eq('is_active', true)
+              .neq('id', widget.product?['id'] ?? '')
+              .limit(4);
+        }
+
+        final seen = <String>{};
+        final merged = <Map<String, dynamic>>[];
+        for (final item in [...byPlu, ...byName]) {
+          final id = item['id']?.toString() ?? '';
+          if (seen.add(id)) merged.add(item);
+        }
+
         if (mounted) {
-          setState(() => _parentStockSearchResults = List<Map<String, dynamic>>.from(results));
+          setState(() => _parentStockSearchResults =
+              List<Map<String, dynamic>>.from(merged));
         }
       } catch (e) {
         debugPrint('Error searching parent stock items: $e');
@@ -2225,6 +2436,11 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _stockDeductionUnit = p['stock_deduction_unit']?.toString() ?? 'kg';
     if (_parentStockItemId != null) {
       _loadParentStockItemDetails(_parentStockItemId!);
+    }
+    _productionParentItemId =
+        p['production_parent_item_id']?.toString();
+    if (_productionParentItemId != null) {
+      _loadProductionParentItemDetails(_productionParentItemId!);
     }
   }
 
@@ -2362,6 +2578,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'online_allergens': _onlineAllergensController.text.trim().isEmpty ? null : _onlineAllergensController.text.trim(),
       'online_cooking_tips': _onlineCookingTipsController.text.trim().isEmpty ? null : _onlineCookingTipsController.text.trim(),
       'parent_stock_item_id': _parentStockItemId,
+      'production_parent_item_id': _productionParentItemId,
       'stock_deduction_qty': double.tryParse(_stockDeductionQtyController.text),
       'stock_deduction_unit': _parentStockItemId != null ? _stockDeductionUnit : null,
       'price_last_changed': DateTime.now().toIso8601String(),
@@ -2524,6 +2741,8 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _parentStockSearchController.dispose();
     _stockDeductionQtyController.dispose();
     _parentStockDebounce?.cancel();
+    _productionParentSearchController.dispose();
+    _productionParentDebounce?.cancel();
     super.dispose();
   }
 
@@ -4577,7 +4796,95 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                   label: const Text('Upload Product Image'),
                 ),
           const Divider(height: 48),
-          
+
+          // SECTION: Production / Carcass Source Link
+          const SizedBox(height: 32),
+          const Text(
+            'Production Source Link',
+            style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: AppColors.primary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Link this product to the bulk or carcass item it is cut or '
+            'yielded from. Used by the carcass breakdown and production '
+            'screens to track yield sources. This is separate from the '
+            'online order stock deduction link below.',
+            style: TextStyle(
+                fontSize: 12, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _productionParentSearchController,
+            decoration: const InputDecoration(
+              labelText: 'Search source item by name or PLU',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+            ),
+            onChanged: _searchProductionParentItems,
+          ),
+          if (_productionParentSearchResults.isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 200),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.primary),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: _productionParentSearchResults.length,
+                itemBuilder: (context, index) {
+                  final item = _productionParentSearchResults[index];
+                  return ListTile(
+                    title: Text(item['name']?.toString() ?? ''),
+                    subtitle: Text('PLU: ${item['plu_code']}'),
+                    onTap: () {
+                      setState(() {
+                        _productionParentItemId =
+                            item['id']?.toString();
+                        _productionParentItemName =
+                            item['name']?.toString();
+                        _productionParentItemPlu =
+                            item['plu_code']?.toString();
+                        _productionParentSearchController.clear();
+                        _productionParentSearchResults = [];
+                      });
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
+          if (_productionParentItemId != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: Chip(
+                    label: Text(
+                      '${_productionParentItemName ?? 'Unknown'} '
+                      '(PLU: ${_productionParentItemPlu ?? 'N/A'})',
+                    ),
+                    deleteIcon: const Icon(Icons.close, size: 16),
+                    onDeleted: () {
+                      setState(() {
+                        _productionParentItemId = null;
+                        _productionParentItemName = null;
+                        _productionParentItemPlu = null;
+                        _productionParentSearchController.clear();
+                        _productionParentSearchResults = [];
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 32),
+
           // SECTION: Parent Stock Link
           const Text(
             'Parent Stock Link',

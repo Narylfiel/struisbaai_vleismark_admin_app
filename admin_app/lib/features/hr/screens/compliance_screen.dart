@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 
 /// H4: BCEA Compliance — grid of staff × document types, cell status (Valid/Expiring/Expired/—), tap to edit, PDF export.
 class ComplianceScreen extends StatefulWidget {
@@ -55,11 +56,8 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
-      final staffData = await _client
-          .from('staff_profiles')
-          .select('id, full_name')
-          .eq('is_active', true)
-          .order('full_name');
+      final staffData = await StaffProfileRepository(client: _client)
+          .getAll(isActive: true);
       final recordsData = await _client.from('compliance_records').select('*');
       String? biz = _businessName;
       try {

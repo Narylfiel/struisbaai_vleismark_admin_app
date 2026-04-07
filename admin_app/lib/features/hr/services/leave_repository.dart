@@ -10,7 +10,7 @@ class LeaveRepository {
     String? status,
   }) async {
     var q = _client.from('leave_requests').select(
-          '*, staff_profiles(full_name, role)',
+          '*, staff_profiles!leave_requests_staff_id_fkey(full_name, role)',
         );
     if (staffId != null) q = q.eq('staff_id', staffId);
     if (status != null) q = q.eq('status', status);
