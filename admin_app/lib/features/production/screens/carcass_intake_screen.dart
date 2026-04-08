@@ -1555,6 +1555,9 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
         newValues: data,
       );
       
+      // Create stock movement for carcass intake using RPC
+      await _createCarcassIntakeStockMovementRPC(result['id'], _carcassType, _actualWeight);
+      
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
@@ -2030,6 +2033,26 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
   Future<void> _save() async {
     setState(() => _isSaving = true);
     try {
+      // Idempotency guard - check if breakdown already exists
+      final existingMovements = await _supabase
+          .from('stock_movements')
+          .select('id')
+          .eq('reference_id', widget.intake['id'])
+          .eq('reference_type', 'carcass_breakdown');
+      
+      if (existingMovements.isNotEmpty) {
+        setState(() => _isSaving = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Breakdown already completed for this carcass.'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+        }
+        return;
+      }
+
       final cutsLogged = <Map<String, dynamic>>[];
       for (int i = 0; i < _cuts.length; i++) {
         final actual = double.tryParse(_controllers[i].text);
@@ -2045,13 +2068,28 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
         }
       }
 
+      // Perform atomic carcass breakdown using RPC
       final status = _isPartial ? 'in_progress' : 'complete';
-      await _supabase.from('carcass_intakes').update({
-        'status': status,
-        'remaining_weight': _remaining,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).eq('id', widget.intake['id']);
-      
+      final result = await _performCarcassBreakdownRPC(
+        widget.intake['id'],
+        status,
+        _remaining,
+        cutsLogged,
+      );
+
+      if (!result['success']) {
+        setState(() => _isSaving = false);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Breakdown failed: ${result['message']}'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+        return;
+      }
+
       // Audit log - breakdown completed
       await AuditService.log(
         action: 'UPDATE',
@@ -2061,40 +2099,7 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
         entityId: widget.intake['id'],
       );
 
-      await _supabase.from('carcass_cuts').insert(
-        cutsLogged.map((c) => {
-              'intake_id': widget.intake['id'],
-              'cut_name': c['cut_name'],
-              'expected_kg': c['expected_kg'],
-              'actual_kg': c['actual_kg'],
-              'plu_code': c['plu_code'],
-              'sellable': c['sellable'],
-              'inventory_item_id': c['inventory_item_id'],
-              'breakdown_date': DateTime.now().toIso8601String(),
-            }).toList(),
-      );
-
-      // Insert stock_movements for each cut linked to an inventory item
-      final stockMovements = cutsLogged
-          .where((c) =>
-              c['inventory_item_id'] != null &&
-              (c['actual_kg'] as num) > 0)
-          .map((c) => {
-                'item_id': c['inventory_item_id'],
-                'movement_type': 'in',
-                'quantity': (c['actual_kg'] as num).toDouble(),
-                'unit_type': 'kg',
-                'reference_id': widget.intake['id'],
-                'reference_type': 'carcass_breakdown',
-                'staff_id': null,
-                'reason':
-                    'Carcass breakdown: ${c['cut_name']} from intake #${widget.intake['carcass_number'] ?? widget.intake['id']}',
-              })
-          .toList();
-
-      if (stockMovements.isNotEmpty) {
-        await _supabase.from('stock_movements').insert(stockMovements);
-      }
+      debugPrint('[CARCASS_BREAKDOWN] RPC completed: ${result['message']}');
 
       widget.onSaved();
       if (mounted) Navigator.pop(context);
@@ -2423,6 +2428,133 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
                 color: color)),
       ],
     );
+  }
+
+  /// Create stock movement for carcass intake using RPC
+  Future<void> _createCarcassIntakeStockMovementRPC(
+      String carcassIntakeId, String carcassType, double weight) async {
+    try {
+      final result = await _supabase.rpc('create_carcass_intake_stock', params: {
+        'p_carcass_intake_id': carcassIntakeId,
+        'p_carcass_type': carcassType,
+        'p_weight': weight,
+      });
+
+      if (result['success'] == false) {
+        debugPrint('[CARCASS_INTAKE] RPC failed: ${result['message']}');
+        // Don't fail the operation, just log warning
+        return;
+      }
+
+      debugPrint('[CARCASS_INTAKE] Stock movement created via RPC: ${result['message']}');
+    } catch (e) {
+      debugPrint('[CARCASS_INTAKE] Failed to create stock movement via RPC: $e');
+      // Don't fail the intake operation, just log error
+    }
+  }
+
+  /// Create stock movement for carcass intake (fallback)
+  Future<void> _createCarcassIntakeStockMovement(
+      String carcassIntakeId, String carcassType, double weight) async {
+    try {
+      // Map carcass types to inventory items
+      final carcassItemMap = {
+        'Whole Lamb (Premium)': '833f35f7-8fea-4696-9f73-f5bbb44e9e98', // Whole Lamb
+        'Whole Lamb (AB Grade)': '833f35f7-8fea-4696-9f73-f5bbb44e9e98', // Whole Lamb
+        'Beef Side': null, // No beef side item exists
+        'Pork Side': null, // No pork side item exists
+      };
+
+      final inventoryItemId = carcassItemMap[carcassType];
+      
+      if (inventoryItemId == null) {
+        debugPrint('[CARCASS_INTAKE] No inventory item found for carcass type: $carcassType');
+        // Don't fail the operation, just log warning
+        return;
+      }
+
+      final stockMovement = {
+        'item_id': inventoryItemId,
+        'movement_type': 'carcass_in',
+        'quantity': weight,
+        'unit_type': 'kg',
+        'reference_id': carcassIntakeId,
+        'reference_type': 'carcass_intake',
+        'reason': 'Carcass intake: $carcassType',
+        'staff_id': null, // Could add staff tracking later
+      };
+
+      await _supabase.from('stock_movements').insert(stockMovement);
+      debugPrint('[CARCASS_INTAKE] Stock movement created for carcass $carcassType: ${weight}kg');
+    } catch (e) {
+      debugPrint('[CARCASS_INTAKE] Failed to create stock movement: $e');
+      // Don't fail the intake operation, just log error
+    }
+  }
+
+  /// Perform atomic carcass breakdown using RPC
+  Future<Map<String, dynamic>> _performCarcassBreakdownRPC(
+      String carcassIntakeId,
+      String status,
+      double remainingWeight,
+      List<Map<String, dynamic>> cuts) async {
+    try {
+      final result = await _supabase.rpc('perform_carcass_breakdown', params: {
+        'p_carcass_intake_id': carcassIntakeId,
+        'p_status': status,
+        'p_remaining_weight': remainingWeight,
+        'p_cuts': cuts,
+      });
+
+      return result;
+    } catch (e) {
+      debugPrint('[CARCASS_BREAKDOWN] RPC failed: $e');
+      return {
+        'success': false,
+        'message': 'RPC call failed: $e',
+        'cuts_created': 0,
+        'stock_movements_created': 0,
+      };
+    }
+  }
+
+  /// Consume carcass stock on breakdown (fallback)
+  Future<void> _consumeCarcassStock(
+      String carcassIntakeId, String carcassType, double consumedWeight) async {
+    try {
+      // Map carcass types to inventory items
+      final carcassItemMap = {
+        'Whole Lamb (Premium)': '833f35f7-8fea-4696-9f73-f5bbb44e9e98', // Whole Lamb
+        'Whole Lamb (AB Grade)': '833f35f7-8fea-4696-9f73-f5bbb44e9e98', // Whole Lamb
+        'Beef Side': null, // No beef side item exists
+        'Pork Side': null, // No pork side item exists
+      };
+
+      final inventoryItemId = carcassItemMap[carcassType];
+      
+      if (inventoryItemId == null) {
+        debugPrint('[CARCASS_BREAKDOWN] No inventory item found for carcass type: $carcassType');
+        // Don't fail the operation, just log warning
+        return;
+      }
+
+      final stockMovement = {
+        'item_id': inventoryItemId,
+        'movement_type': 'carcass_out',
+        'quantity': -consumedWeight, // Negative to consume stock
+        'unit_type': 'kg',
+        'reference_id': carcassIntakeId,
+        'reference_type': 'carcass_breakdown',
+        'reason': 'Carcass breakdown consumption: $carcassType',
+        'staff_id': null, // Could add staff tracking later
+      };
+
+      await _supabase.from('stock_movements').insert(stockMovement);
+      debugPrint('[CARCASS_BREAKDOWN] Carcass stock consumed: $carcassType ${consumedWeight}kg');
+    } catch (e) {
+      debugPrint('[CARCASS_BREAKDOWN] Failed to consume carcass stock: $e');
+      // Don't fail the breakdown operation, just log error
+    }
   }
 
   static const _bHdr = TextStyle(

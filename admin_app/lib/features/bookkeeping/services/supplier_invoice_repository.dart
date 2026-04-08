@@ -549,7 +549,8 @@ class SupplierInvoiceRepository {
 
   /// Records a supplier payment against [invoiceId]. Updates `amount_paid`,
   /// `balance_due`, and sets status to `paid` when fully settled.
-  /// Does not post ledger entries.
+  /// Posts ledger entries (DR Accounts Payable / CR Cash or Bank) via
+  /// [LedgerRepository.createDoubleEntry]; posting failure is fatal.
   Future<void> recordPayment({
     required String invoiceId,
     required double amount,

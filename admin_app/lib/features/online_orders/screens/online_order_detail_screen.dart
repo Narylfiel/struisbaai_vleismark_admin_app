@@ -59,6 +59,13 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
           .eq('order_id', widget.orderId)
           .order('created_at');
 
+      // FIX D: Runtime guard - ensure this is NOT a delivery order
+      if (orderRes['is_delivery'] == true) {
+        throw Exception(
+          'ARCHITECTURE VIOLATION: Retail screen received delivery order (ID: ${orderRes['id']})',
+        );
+      }
+
       if (mounted) {
         setState(() {
           _order = Map<String, dynamic>.from(orderRes);

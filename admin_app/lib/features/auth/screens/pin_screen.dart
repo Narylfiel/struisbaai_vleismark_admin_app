@@ -39,17 +39,20 @@ class _PinScreenState extends State<PinScreen> {
   /// Runs silently — does not block the UI.
   Future<void> _refreshCacheIfOnline() async {
     try {
+      debugPrint('[AUTH] Cache refresh → staff_profiles');
       final supabase = SupabaseService.client;
       final data = await supabase
-          .from('profiles')
+          .from('staff_profiles')
           .select('id, full_name, role, pin_hash, is_active')
           .eq('is_active', true)
           .timeout(const Duration(seconds: 6));
       final rows = List<Map<String, dynamic>>.from(data);
       final profiles = rows.map((r) => CachedStaffProfile.fromSupabase(r)).toList();
       await IsarService.saveStaffProfiles(profiles);
+      debugPrint('[AUTH] Cache refresh → SUCCESS (${profiles.length} staff)');
       if (mounted) setState(() { _isOffline = false; _cacheStale = false; });
     } catch (_) {
+      debugPrint('[AUTH] Cache refresh → FAILED (offline)');
       if (mounted) setState(() => _isOffline = true);
     }
   }
@@ -92,9 +95,10 @@ class _PinScreenState extends State<PinScreen> {
 
     // 1. Try Supabase (online path)
     try {
+      debugPrint('[AUTH] PIN verification → staff_profiles');
       final supabase = SupabaseService.client;
       final response = await supabase
-          .from('profiles')
+          .from('staff_profiles')
           .select('id, full_name, role, pin_hash, is_active')
           .eq('pin_hash', pinHash)
           .inFilter('role', AdminConfig.allowedRoles)
@@ -105,15 +109,18 @@ class _PinScreenState extends State<PinScreen> {
       final rows = List<Map<String, dynamic>>.from(response);
       if (rows.isNotEmpty) {
         staff = rows.first;
+        debugPrint('[AUTH] PIN verification → SUCCESS (online)');
         // We're online — refresh cache in background
         _refreshCacheIfOnline();
         if (mounted) setState(() => _isOffline = false);
       } else {
         // Online but PIN not found in database
+        debugPrint('[AUTH] PIN verification → NOT FOUND (online)');
         _handleFailedAttempt();
         return;
       }
     } catch (_) {
+      debugPrint('[AUTH] PIN verification → OFFLINE FALLBACK');
       // 2. Offline fallback — read from Isar
       if (mounted) setState(() => _isOffline = true);
 

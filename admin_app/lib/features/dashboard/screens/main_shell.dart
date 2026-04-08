@@ -24,7 +24,7 @@ import 'package:admin_app/features/audit/screens/audit_log_screen.dart';
 import 'package:admin_app/features/settings/screens/business_settings_screen.dart';
 import 'package:admin_app/features/transactions/screens/transaction_list_screen.dart';
 import 'package:admin_app/features/transactions/screens/till_session_list_screen.dart';
-import 'package:admin_app/features/online_orders/screens/online_orders_screen.dart';
+import 'package:admin_app/features/online_orders/screens/unified_orders_dashboard_screen.dart';
 
 class MainShell extends StatefulWidget {
   final String staffId;
@@ -160,7 +160,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _NavItem(
           icon: Icons.shopping_bag,
           label: 'Online Orders',
-          screen: const OnlineOrdersScreen(),
+          screen: const UnifiedOrdersDashboardScreen(),
           locked: !ps.can(Permissions.manageCustomers),
         ),
         _NavItem(
