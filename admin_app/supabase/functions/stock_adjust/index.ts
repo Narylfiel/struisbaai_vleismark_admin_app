@@ -59,7 +59,13 @@ serve(async (req) => {
       }
     }
 
-    const { data, error } = await admin.from('stock_movements').insert(movement).select().single()
+    const { data, error } = await admin
+      .from('stock_movements')
+      .insert(movement)
+      .onConflict('line_id')
+      .ignore()
+      .select()
+      .single()
     if (error) throw error
 
     await writeAudit(admin, {

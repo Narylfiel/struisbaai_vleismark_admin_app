@@ -87,7 +87,11 @@ serve(async (req) => {
       })
     }
     if (stockRows.length > 0) {
-      const { error: e3 } = await admin.from('stock_movements').insert(stockRows)
+      const { error: e3 } = await admin
+        .from('stock_movements')
+        .insert(stockRows)
+        .onConflict('line_id')
+        .ignore()
       if (e3) throw e3
     }
 
