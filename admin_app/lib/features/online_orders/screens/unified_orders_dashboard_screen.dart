@@ -4,9 +4,8 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import '../models/order_type.dart';
 import '../models/online_order_summary.dart';
+import '../online_order_navigation.dart';
 import '../repositories/online_orders_repository.dart';
-import 'delivery_order_detail_screen.dart';
-import 'online_order_detail_screen.dart';
 import 'cape_town_delivery_manifest_screen.dart';
 
 /// Unified Admin Online Orders Dashboard
@@ -283,34 +282,24 @@ class _UnifiedOrdersDashboardScreenState
         itemBuilder: (context, index) {
           return _UnifiedOrderCard(
             order: orders[index],
-            onTap: () => _navigateToDetail(orders[index]),
+            onTap: () async {
+              await _navigateToDetail(orders[index]);
+            },
           );
         },
       ),
     );
   }
 
-  /// Hard routing guard - delivery vs retail
-  /// 
-  /// FIX D: Runtime guard instead of assert
-  /// FIX 3: Hard safety enforcement
-  void _navigateToDetail(OnlineOrderSummary order) {
-    // Hard routing guard
-    if (order.type == OrderType.capeTownDelivery) {
-      // Delivery order -> Delivery detail screen
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => DeliveryOrderDetailScreen(orderId: order.id),
-        ),
-      ).then((_) => _loadOrders());
-    } else {
-      // Retail order -> Retail detail screen
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => OnlineOrderDetailScreen(orderId: order.id),
-        ),
-      ).then((_) => _loadOrders());
-    }
+  Future<void> _navigateToDetail(OnlineOrderSummary order) async {
+    await OnlineOrderNavigator.openOrder(
+      context,
+      order,
+      onRoutePopped: () {
+        if (!mounted) return;
+        _loadOrders();
+      },
+    );
   }
 
   void _openManifestScreen() {

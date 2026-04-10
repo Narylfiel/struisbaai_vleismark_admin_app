@@ -280,6 +280,11 @@ class _InventoryReconciliationScreenState extends State<InventoryReconciliationS
                     'Source: ${_formatSourceType(anomaly['source_reference_type'])} (${anomaly['source_reference_id']})',
                     style: const TextStyle(fontSize: 12, color: Colors.blue),
                   ),
+                if (anomaly['details'] != null && anomaly['details']['divergence_point'] != null)
+                  Text(
+                    'Divergence: ${DateTime.parse(anomaly['details']['divergence_point']).toLocal().toString().split('.')[0]}',
+                    style: const TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
               ],
             ),
             trailing: Chip(
@@ -386,6 +391,8 @@ class _InventoryReconciliationScreenState extends State<InventoryReconciliationS
         return 'Stock Out';
       case 'freezer':
         return 'Freezer Transfer';
+      case 'manual_override':
+        return 'Manual Stock Override';
       default:
         return sourceType;
     }

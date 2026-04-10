@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
-import 'online_order_detail_screen.dart';
+import '../models/online_order_summary.dart';
+import '../online_order_navigation.dart';
 
 class OnlineOrdersScreen extends StatefulWidget {
   const OnlineOrdersScreen({super.key});
@@ -195,7 +196,9 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen>
                           itemBuilder: (context, index) {
                             return _OrderCard(
                               order: filtered[index],
-                              onTap: () => _openOrderDetail(filtered[index]),
+                              onTap: () async {
+                                await _openOrderDetail(filtered[index]);
+                              },
                             );
                           },
                         ),
@@ -208,14 +211,24 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen>
     );
   }
 
-  void _openOrderDetail(Map<String, dynamic> order) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => OnlineOrderDetailScreen(
-          orderId: order['id'] as String,
-        ),
-      ),
-    ).then((_) => _loadOrders());
+  Future<void> _openOrderDetail(Map<String, dynamic> order) async {
+    try {
+      final summary = OnlineOrderSummary.fromJson(order);
+      await OnlineOrderNavigator.openOrder(
+        context,
+        summary,
+        onRoutePopped: () {
+          if (!mounted) return;
+          _loadOrders();
+        },
+      );
+    } catch (e, st) {
+      debugPrint('[ONLINE_ORDERS] open detail failed: $e $st');
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Unable to open order')),
+      );
+    }
   }
 }
 

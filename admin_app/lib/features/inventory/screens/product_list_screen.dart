@@ -17,6 +17,8 @@ import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/config/edge_pipeline_config.dart';
 import 'package:admin_app/core/services/edge_pipeline_client.dart';
+import 'package:admin_app/features/commercial/repositories/commercial_repository.dart';
+import 'package:admin_app/features/commercial/services/commercial_badge_notifier.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
 
@@ -48,6 +50,8 @@ class ProductListScreenState extends State<ProductListScreen> {
   String? _searchExactProductId; // when user selects autocomplete suggestion
   String _searchQuery = ''; // text search (managed by Autocomplete field)
   String _sortOption = 'plu_asc'; // plu_asc, plu_desc, name_az, name_za, price_low, price_high, stock_low, stock_high, category
+  /// inventory_item_id values with pending_review commercial_actions (batch-loaded).
+  Set<String> _pendingCommercialActionIds = {};
   bool _isExportingCsv = false;
   bool _isImportingCsv = false;
   bool _didConsumeOpenInventoryItemId = false;
@@ -125,11 +129,28 @@ class ProductListScreenState extends State<ProductListScreen> {
   @override
   void initState() {
     super.initState();
+    CommercialBadgeNotifier.instance.addListener(_onCommercialBadgesChanged);
     _loadData();
+  }
+
+  void _onCommercialBadgesChanged() {
+    unawaited(_refreshCommercialBadgeIds());
+  }
+
+  Future<void> _refreshCommercialBadgeIds() async {
+    if (!ConnectivityService().isConnected) return;
+    try {
+      final ids =
+          await CommercialRepository().getPendingActionInventoryItemIds();
+      if (mounted) setState(() => _pendingCommercialActionIds = ids);
+    } catch (e) {
+      debugPrint('Commercial badges refresh: $e');
+    }
   }
 
   @override
   void dispose() {
+    CommercialBadgeNotifier.instance.removeListener(_onCommercialBadgesChanged);
     _scrollController.dispose();
     super.dispose();
   }
@@ -143,6 +164,7 @@ class ProductListScreenState extends State<ProductListScreen> {
       } catch (e) {
         // Fallback to cache if database fails
         debugPrint('Supabase fetch failed, using cache: $e');
+        _pendingCommercialActionIds = {};
         await _loadFromCache();
       }
       _filterProducts();
@@ -229,7 +251,15 @@ class ProductListScreenState extends State<ProductListScreen> {
     if (!_showInactive) q = q.eq('is_active', true);
     final res = await q.order('plu_code').limit(300);
     _products = List<Map<String, dynamic>>.from(res);
-    
+
+    try {
+      _pendingCommercialActionIds =
+          await CommercialRepository().getPendingActionInventoryItemIds();
+    } catch (e) {
+      debugPrint('Commercial pending product ids: $e');
+      _pendingCommercialActionIds = {};
+    }
+
     // Update cache in background (non-blocking)
     unawaited(IsarService.saveCategories(categoryList));
     final itemList = _products.map((i) => CachedInventoryItem.fromSupabase(i)).toList();
@@ -1556,6 +1586,21 @@ class ProductListScreenState extends State<ProductListScreen> {
                                             ),
                                             overflow: TextOverflow.ellipsis,
                                             maxLines: 1,
+                                          ),
+                                        if (_pendingCommercialActionIds
+                                            .contains(productId))
+                                          Padding(
+                                            padding: const EdgeInsets.only(top: 4),
+                                            child: Text(
+                                              'Action Required',
+                                              style: TextStyle(
+                                                fontSize: 10,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.warning,
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                              maxLines: 1,
+                                            ),
                                           ),
                                       ],
                                     ),

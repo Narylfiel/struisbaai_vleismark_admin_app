@@ -1,3 +1,24 @@
+/*
+PRICING SYSTEM (COMMERCIAL-ONLY)
+
+This screen uses commercial_actions as the sole source of pricing data.
+
+Legacy pricing system has been permanently removed.
+
+Key guarantees:
+• Read-only UI (no direct DB writes)
+• Deterministic pipeline (fetch → sort → map → validate → dedupe)
+• No cross-app dependencies
+
+Any changes must preserve:
+• data integrity
+• read-only behavior
+• deterministic ordering
+*/
+
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
@@ -6,6 +27,9 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
 import 'package:admin_app/features/analytics/services/analytics_repository.dart';
 import 'package:admin_app/features/analytics/debt_buster/screens/debt_buster_tab.dart';
+import 'package:admin_app/features/commercial/adapters/commercial_pricing_adapter.dart';
+import 'package:admin_app/features/commercial/repositories/commercial_repository.dart';
+import 'package:admin_app/features/commercial/utils/commercial_sort.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -192,41 +216,216 @@ class _ShrinkageTabState extends State<_ShrinkageTab> {
 // ══════════════════════════════════════════════════════════════════
 // TAB 2: DYNAMIC PRICING SUGGESTIONS
 // ══════════════════════════════════════════════════════════════════
+
+bool _isValidDisplayField(dynamic v) {
+  if (v == null) return false;
+  final s = v.toString().trim();
+  return s.isNotEmpty && s != '—';
+}
+
+/// Commercial adapter row is usable when title and at least one price column are present.
+bool _isValidMappedPricingRow(Map<String, dynamic> sug) {
+  if (!_isValidDisplayField(sug['product_name'])) return false;
+  final curOk = _isValidDisplayField(sug['current_sell_price']);
+  final sugOk = _isValidDisplayField(sug['suggested_sell_price']);
+  return curOk || sugOk;
+}
+
+/// Normalized dedupe key: prefer inventory UUID, else action id (string-safe).
+String _commercialPricingDedupeKey(Map<String, dynamic> r) {
+  final inv = CommercialRepository.inventoryItemIdFromCommercialRow(r);
+  final raw = (inv != null && inv.toString().trim().isNotEmpty)
+      ? inv.toString().trim()
+      : r['id'];
+  if (raw == null) return '';
+  return raw.toString().trim();
+}
+
+/// UI-aligned dedupe key: [base] from row, then normalized [product_name], then [id], never empty.
+String _safePricingKey(Map<String, dynamic> row) {
+  final base = _commercialPricingDedupeKey(row);
+  if (base.isNotEmpty) return base;
+  final name = (row['product_name'] ?? '').toString().trim().toLowerCase();
+  if (name.isNotEmpty) return name;
+  final id = row['id']?.toString().trim() ?? '';
+  if (id.isNotEmpty) return id;
+  return '__unkeyed';
+}
+
+/// Stable log / audit label for Dynamic Pricing (multi-surface safe).
+String _pricingDatasetContext() => 'pricing_tab';
+
 class _PricingTab extends StatefulWidget {
   @override
   State<_PricingTab> createState() => _PricingTabState();
 }
 
 class _PricingTabState extends State<_PricingTab> {
-  final _repo = AnalyticsRepository();
+  final _commercialRepo = CommercialRepository();
   List<Map<String, dynamic>> _suggestions = [];
   bool _isLoading = true;
+  bool _usingCommercialSource = false;
+  // ignore: unused_field — commercial query returned 0 rows; reserved for future messaging
+  bool _isCommercialEmpty = false;
+
+  /// Prevents overlapping [_load] invocations.
+  bool _pricingLoadLocked = false;
+  int _loadVersion = 0;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    unawaited(_load());
+  }
+
+  @override
+  void dispose() {
+    _loadVersion++;
+    super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
-    final data = await _repo.getPricingSuggestions();
-    if (mounted) {
-      setState(() {
-        _suggestions = data;
-        _isLoading = false;
-      });
-    }
-  }
+    if (_pricingLoadLocked) return;
+    _pricingLoadLocked = true;
+    final currentVersion = ++_loadVersion;
+    final start = DateTime.now();
+    final ctx = _pricingDatasetContext();
 
-  Future<void> _handleAction(
-      String id, String status, {double? suggestedPrice}) async {
-    await _repo.updatePricingSuggestion(
-      id,
-      status,
-      newSellPrice: status == 'Applied' ? suggestedPrice : null,
-    );
-    _load();
+    if (mounted) setState(() => _isLoading = true);
+
+    var commercialRows = <Map<String, dynamic>>[];
+    final commercialKeys = <String>{};
+    var dedupeCollisions = 0;
+    var invalidCommercialCount = 0;
+    var commercialRawCount = 0;
+    var isCommercialEmpty = false;
+    String? fallbackReason;
+
+    try {
+      try {
+        final rows = await _commercialRepo.getPricingActions();
+        if (!mounted || currentVersion != _loadVersion) return;
+        commercialRawCount = rows.length;
+        isCommercialEmpty = rows.isEmpty;
+
+        if (rows.isEmpty) {
+          debugPrint('[PRICING_TAB][HEALTH] commercial_source_empty context=$ctx');
+          fallbackReason = 'empty';
+        } else {
+          if (kDebugMode) {
+            final s = rows.first;
+            final nameOk = (s['product_name'] ?? s['item_name']) != null;
+            final priceOk = s['suggested_price'] != null ||
+                s['recommended_sell_price'] != null ||
+                s['proposed_sell_price'] != null ||
+                s['model_suggested_price'] != null ||
+                s['current_sell_price'] != null;
+            if (!nameOk || !priceOk) {
+              debugPrint(
+                '[PRICING_TAB][HEALTH] context=$ctx sample_row_weak_fields '
+                'name_ok=$nameOk price_ok=$priceOk id=${s['id']}',
+              );
+            }
+          }
+
+          final sortedRows = List<Map<String, dynamic>>.from(rows);
+          CommercialSort.sortByPriority(sortedRows);
+
+          for (final r in sortedRows) {
+            if (!mounted || currentVersion != _loadVersion) return;
+            final mapped = CommercialPricingAdapter.fromRow(r);
+            if (!_isValidMappedPricingRow(mapped)) {
+              invalidCommercialCount++;
+              continue;
+            }
+            final k = _safePricingKey(mapped);
+            if (commercialKeys.contains(k)) {
+              dedupeCollisions++;
+              continue;
+            }
+            assert(
+              mapped['__from_commercial'] == true,
+              'Dynamic Pricing rows must be commercial-only',
+            );
+            commercialKeys.add(k);
+            commercialRows.add(mapped);
+          }
+
+          if (commercialRows.isEmpty) {
+            fallbackReason = 'invalid_rows';
+          }
+        }
+      } catch (e) {
+        if (!mounted || currentVersion != _loadVersion) return;
+        debugPrint(
+          '[PRICING_TAB] context=$ctx Dynamic pricing commercial load: $e',
+        );
+        fallbackReason = 'exception';
+      }
+
+      if (!mounted || currentVersion != _loadVersion) return;
+
+      final displayRows = commercialRows;
+
+      debugPrint(
+        '[PRICING_TAB] context=$ctx dedupe_collisions=$dedupeCollisions',
+      );
+
+      if (commercialRawCount > 0 &&
+          invalidCommercialCount > commercialRawCount * 0.3) {
+        debugPrint(
+          '[PRICING_TAB][ALERT] high_invalid_rate context=$ctx '
+          'invalid=$invalidCommercialCount raw=$commercialRawCount',
+        );
+      }
+
+      if (commercialRows.isEmpty) {
+        debugPrint(
+          '[PRICING_TAB][ALERT] no_commercial_results context=$ctx '
+          'reason=${fallbackReason ?? "unknown"} '
+          'invalid=$invalidCommercialCount raw=$commercialRawCount',
+        );
+      }
+
+      if (kDebugMode) {
+        debugPrint(
+          '[PRICING_TAB] context=$ctx commercial_count=${commercialRows.length}',
+        );
+        debugPrint(
+          '[PRICING_TAB] context=$ctx invalid_commercial_rows=$invalidCommercialCount',
+        );
+        if (commercialRows.isEmpty) {
+          debugPrint(
+            '[PRICING_TAB][WARNING] context=$ctx no_commercial_results '
+            'reason=${fallbackReason ?? "unknown"} '
+            'invalid=$invalidCommercialCount '
+            'commercial_raw=$commercialRawCount',
+          );
+        }
+      }
+
+      if (mounted && currentVersion == _loadVersion) {
+        setState(() {
+          _suggestions = displayRows;
+          _usingCommercialSource = commercialRows.isNotEmpty;
+          _isCommercialEmpty = isCommercialEmpty;
+          _isLoading = false;
+        });
+      }
+    } finally {
+      _pricingLoadLocked = false;
+      if (currentVersion == _loadVersion) {
+        final duration = DateTime.now().difference(start).inMilliseconds;
+        if (kDebugMode) {
+          debugPrint('[PRICING_TAB] context=$ctx load_duration_ms=$duration');
+        }
+        if (duration > 1000) {
+          debugPrint(
+            '[PRICING_TAB][ALERT] slow_load context=$ctx load_duration_ms=$duration',
+          );
+        }
+      }
+    }
   }
 
   Widget _dynamicPricingDisclaimer() {
@@ -236,7 +435,9 @@ class _PricingTabState extends State<_PricingTab> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Prices are calculated from cost and target markup. This view suggests updates based on current costs, not actual sales performance.',
+            _usingCommercialSource
+                ? 'Pricing suggestions from the commercial decision engine (pending_review / approved). Approve or reject in Commercial Actions.'
+                : 'Commercial pricing from commercial_actions (read-only here). When recommendations exist, they appear below.',
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey.shade600,
@@ -244,7 +445,9 @@ class _PricingTabState extends State<_PricingTab> {
           ),
           const SizedBox(height: 8),
           Text(
-            'Use Pricing Intelligence to see actual margins based on real sales.',
+            _usingCommercialSource
+                ? 'This tab is view-only; use Commercial Actions to approve or reject.'
+                : 'Use Commercial Actions to manage pending commercial recommendations.',
             style: TextStyle(
               fontSize: 12,
               color: Colors.grey.shade500,
@@ -263,12 +466,41 @@ class _PricingTabState extends State<_PricingTab> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _dynamicPricingDisclaimer(),
-          const Expanded(
+          Expanded(
             child: Center(
               child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  'No supplier price hikes detected needing markdown corrections.',
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      '⚠ No commercial pricing data available',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.orange.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'No pricing recommendations available',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Commercial engine has not produced recommendations for this dataset.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey.shade500,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -287,7 +519,7 @@ class _PricingTabState extends State<_PricingTab> {
             itemCount: _suggestions.length,
             itemBuilder: (_, i) {
               final sug = _suggestions[i];
-              final id = sug['id']?.toString() ?? '';
+              final flagged = sug['__validation_flagged'] == true;
               return Card(
                 margin: const EdgeInsets.only(bottom: 16),
                 child: Padding(
@@ -297,9 +529,25 @@ class _PricingTabState extends State<_PricingTab> {
                     children: [
                       Row(
                         children: [
-                          const Icon(Icons.trending_up, color: AppColors.error),
+                          Icon(
+                            flagged
+                                ? Icons.warning_amber
+                                : Icons.trending_up,
+                            color: AppColors.error,
+                          ),
                           const SizedBox(width: 8),
-                          Text('Supplier: ${sug['supplier_name'] ?? 'Unknown'} - ${sug['product_name'] ?? 'Unknown'} (+${sug['percentage_increase'] ?? '0'}%)', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          Expanded(
+                            child: Text(
+                              'Supplier: ${sug['supplier_name'] ?? 'Unknown'} - ${sug['product_name'] ?? 'Unknown'} (+${sug['percentage_increase'] ?? '0'}%)',
+                              style: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                                color: flagged
+                                    ? AppColors.error
+                                    : AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
                         ],
                       ),
                       const Divider(height: 32),
@@ -316,27 +564,35 @@ class _PricingTabState extends State<_PricingTab> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Expanded(child: Text(sug['product_name'] ?? 'Unknown')),
-                          Expanded(child: Text('R ${sug['current_sell_price'] ?? '0.00'}/kg')),
-                          Expanded(child: Text('R ${sug['suggested_sell_price'] ?? '0.00'}/kg', style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.success))),
-                          Expanded(child: Text(sug['margin_impact'] ?? 'Check Margin', style: const TextStyle(color: AppColors.error))),
+                          Expanded(
+                            child: Text(
+                              sug['product_name'] ?? 'Unknown',
+                              style: const TextStyle(color: AppColors.textPrimary),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'R ${sug['current_sell_price'] ?? '0.00'}/kg',
+                              style: const TextStyle(color: AppColors.textPrimary),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              'R ${sug['suggested_sell_price'] ?? '0.00'}/kg',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.success,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child: Text(
+                              sug['margin_impact'] ?? 'Check Margin',
+                              style: const TextStyle(color: AppColors.error),
+                            ),
+                          ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          ElevatedButton(
-                            onPressed: () {
-                              final newPrice = double.tryParse(
-                                  sug['suggested_sell_price']?.toString() ?? '');
-                              _handleAction(id, 'Applied', suggestedPrice: newPrice);
-                            },
-                            child: const Text('Accept & Update Price'),
-                          ),
-                          const SizedBox(width: 8),
-                          TextButton(onPressed: () => _handleAction(id, 'Ignored'), child: const Text('Ignore')),
-                        ],
-                      )
                     ],
                   ),
                 ),

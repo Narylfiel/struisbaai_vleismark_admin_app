@@ -1947,6 +1947,29 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
       ),
     );
   }
+
+  /// Create stock movement for carcass intake using RPC
+  Future<void> _createCarcassIntakeStockMovementRPC(
+      String carcassIntakeId, String carcassType, double weight) async {
+    try {
+      final result = await _supabase.rpc('create_carcass_intake_stock', params: {
+        'p_carcass_intake_id': carcassIntakeId,
+        'p_carcass_type': carcassType,
+        'p_weight': weight,
+      });
+
+      if (result['success'] == false) {
+        debugPrint('[CARCASS_INTAKE] RPC failed: ${result['message']}');
+        // Don't fail the operation, just log warning
+        return;
+      }
+
+      debugPrint('[CARCASS_INTAKE] Stock movement created via RPC: ${result['message']}');
+    } catch (e) {
+      debugPrint('[CARCASS_INTAKE] Failed to create stock movement via RPC: $e');
+      // Don't fail the intake operation, just log error
+    }
+  }
 }
 
 // ── Breakdown Dialog ──────────────────────────────────────────────
@@ -2428,29 +2451,6 @@ class _BreakdownDialogState extends State<_BreakdownDialog> {
                 color: color)),
       ],
     );
-  }
-
-  /// Create stock movement for carcass intake using RPC
-  Future<void> _createCarcassIntakeStockMovementRPC(
-      String carcassIntakeId, String carcassType, double weight) async {
-    try {
-      final result = await _supabase.rpc('create_carcass_intake_stock', params: {
-        'p_carcass_intake_id': carcassIntakeId,
-        'p_carcass_type': carcassType,
-        'p_weight': weight,
-      });
-
-      if (result['success'] == false) {
-        debugPrint('[CARCASS_INTAKE] RPC failed: ${result['message']}');
-        // Don't fail the operation, just log warning
-        return;
-      }
-
-      debugPrint('[CARCASS_INTAKE] Stock movement created via RPC: ${result['message']}');
-    } catch (e) {
-      debugPrint('[CARCASS_INTAKE] Failed to create stock movement via RPC: $e');
-      // Don't fail the intake operation, just log error
-    }
   }
 
   /// Create stock movement for carcass intake (fallback)

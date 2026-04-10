@@ -10,6 +10,8 @@ import 'package:admin_app/core/constants/permissions.dart';
 import 'package:admin_app/features/hr/services/leave_repository.dart';
 import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
+import 'package:admin_app/features/commercial/repositories/commercial_repository.dart';
+import 'package:admin_app/features/commercial/screens/commercial_actions_screen.dart';
 import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
 import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
 import '../services/dashboard_repository.dart';
@@ -62,6 +64,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   /// Pricing intelligence alerts (same pipeline as report — [DashboardService]).
   List<Map<String, dynamic>> _pricingAlerts = [];
   bool _loadingPricingAlerts = true;
+
+  /// Pending commercial_actions (decision engine) — summary only on dashboard.
+  int _commercialPendingCount = 0;
 
   // Clock-in status
   List<Map<String, dynamic>> _clockedIn = [];
@@ -164,6 +169,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _loadPricingAlerts(),
         _loadClockInStatus(),
         _loadOnlineOrdersStats(),
+        _loadCommercialPendingCount(),
       ]);
     } catch (e) {
       debugPrint('Dashboard error: $e');
@@ -228,6 +234,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
           _readyOnlineOrders = 0;
         });
       }
+    }
+  }
+
+  Future<void> _loadCommercialPendingCount() async {
+    if (!ConnectivityService().isConnected) {
+      if (mounted) {
+        setState(() => _commercialPendingCount = 0);
+      }
+      return;
+    }
+    if (!_canSeeFinancials) return;
+    try {
+      final n = await CommercialRepository().getPendingReviewCount();
+      if (!mounted) return;
+      setState(() => _commercialPendingCount = n);
+    } catch (e) {
+      debugPrint('Dashboard commercial actions count: $e');
+      if (mounted) setState(() => _commercialPendingCount = 0);
     }
   }
 
@@ -442,6 +466,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildStatsRow(),
+                        if (_canSeeFinancials) ...[
+                          const SizedBox(height: 20),
+                          _buildCommercialActionsSummaryCard(),
+                        ],
                         const SizedBox(height: 24),
                         if (_canSeeChartAmounts)
                           _build7DayChart()
@@ -720,6 +748,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildCommercialActionsSummaryCard() {
+    final text = _commercialPendingCount == 0
+        ? 'No actions require review'
+        : '$_commercialPendingCount Commercial Actions Require Review';
+    return InkWell(
+      onTap: () {
+        Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => const CommercialActionsScreen(),
+          ),
+        ).then((_) {
+          if (mounted) _loadCommercialPendingCount();
+        });
+      },
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              Icons.rule_folder,
+              color: _commercialPendingCount > 0
+                  ? AppColors.warning
+                  : AppColors.textSecondary,
+              size: 28,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 14,
+                  color: AppColors.textPrimary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppColors.textSecondary),
+          ],
+        ),
+      ),
     );
   }
 
