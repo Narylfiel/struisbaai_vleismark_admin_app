@@ -1076,15 +1076,15 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
               ),
               const SizedBox(height: 4),
               Text(
-                '- Data strength: $dataStrengthLabel ($dataStrength.toStringAsFixed(0))',
+                '- Data strength: $dataStrengthLabel (${dataStrength.toStringAsFixed(0)})',
                 style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
               Text(
-                '- Assumptions: $assumptionLabel ($assumptionLevel.toStringAsFixed(0))',
+                '- Assumptions: $assumptionLabel (${assumptionLevel.toStringAsFixed(0)})',
                 style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
               Text(
-                '- Overlap risk: $overlapLabel ($overlapRisk.toStringAsFixed(0))',
+                '- Overlap risk: $overlapLabel (${overlapRisk.toStringAsFixed(0)})',
                 style: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
               ),
             ],

@@ -478,10 +478,13 @@ class DebtBusterService {
     try {
       final recommendations = await _analyticsRepo.getReorderRecommendations();
 
+      // STEP A: Collect all itemIds that need cost lookup.
+      final itemIds = <String>{};
+      final candidates = <Map<String, dynamic>>[];
+
       for (final rec in recommendations) {
         final productName = rec['product_name']?.toString() ?? 'Unknown';
         final itemId = rec['inventory_item_id']?.toString() ?? '';
-        final status = rec['status']?.toString() ?? '';
         final daysRemainingStr = rec['days_remaining']?.toString() ?? '999';
         final dailyVelocity = (rec['daily_velocity'] as num?)?.toDouble() ?? 0;
         final currentStock = double.tryParse(rec['current_stock']?.toString() ?? '0') ?? 0;
@@ -490,50 +493,80 @@ class DebtBusterService {
         final daysRemaining = double.tryParse(daysRemainingStr) ?? 999;
 
         if (daysRemaining > 30 && dailyVelocity < 0.5 && currentStock > 0) {
-          // Estimate tied-up capital
-          double costPrice = 0;
-          try {
-            if (itemId.isNotEmpty) {
-              final invRow = await _client
-                  .from('inventory_items')
-                  .select('cost_price, average_cost')
-                  .eq('id', itemId)
-                  .maybeSingle();
-
-              if (invRow != null) {
-                costPrice = (invRow['average_cost'] as num?)?.toDouble() ??
-                    (invRow['cost_price'] as num?)?.toDouble() ??
-                    0;
-              }
-            }
-          } catch (_) {
-            costPrice = 50.0;
+          if (itemId.isNotEmpty) {
+            itemIds.add(itemId);
           }
+          candidates.add({
+            'productName': productName,
+            'itemId': itemId,
+            'daysRemaining': daysRemaining,
+            'dailyVelocity': dailyVelocity,
+            'currentStock': currentStock,
+          });
+        }
+      }
 
-          final tiedCapital = currentStock * costPrice;
+      // STEP B: Single batched query for all costs (N+1 elimination).
+      final costById = <String, double>{};
+      if (itemIds.isNotEmpty) {
+        try {
+          final rows = await _client
+              .from('inventory_items')
+              .select('id, average_cost, cost_price')
+              .inFilter('id', itemIds.toList());
 
-          // Assume promotion could move 30% of excess stock monthly
-          final excessStock = currentStock * 0.3;
-          final monthlyImpact = _round(excessStock * costPrice * 0.1);
+          for (final raw in (rows as List)) {
+            final map = raw as Map<String, dynamic>;
+            final id = map['id']?.toString() ?? '';
+            if (id.isEmpty) continue;
 
-          if (monthlyImpact >= 100 && tiedCapital > 500) {
-            opportunities.add(Opportunity(
-              id: 'slow_$itemId',
-              productName: productName,
-              inventoryItemId: itemId,
-              type: OpportunityType.slow_stock,
-              action: 'Run promotion or reduce ordering',
-              reason: '${daysRemaining.toStringAsFixed(0)} days of stock, low velocity',
-              monthlyImpact: monthlyImpact,
-              confidenceScore: 0.5,
-              breakdown: {
-                'current_stock': currentStock,
-                'days_remaining': daysRemaining,
-                'daily_velocity': dailyVelocity,
-                'tied_capital': tiedCapital,
-              },
-            ));
+            final avg = (map['average_cost'] as num?)?.toDouble();
+            final cost = (map['cost_price'] as num?)?.toDouble();
+            costById[id] = avg ?? cost ?? 0.0;
           }
+        } catch (e) {
+          debugPrint('DebtBuster: slow stock batch cost fetch failed: $e');
+          // Fail gracefully — costById remains empty, fallbacks apply below.
+        }
+      }
+
+      // STEP C: Process candidates with cached costs.
+      for (final c in candidates) {
+        final productName = c['productName'] as String;
+        final itemId = c['itemId'] as String;
+        final daysRemaining = c['daysRemaining'] as double;
+        final dailyVelocity = c['dailyVelocity'] as double;
+        final currentStock = c['currentStock'] as double;
+
+        // Lookup cached cost (fallback to 0.0 if missing, then to 50.0 if zero)
+        var costPrice = costById[itemId] ?? 0.0;
+        if (costPrice == 0.0) {
+          costPrice = 50.0; // Historical fallback preserved
+        }
+
+        final tiedCapital = currentStock * costPrice;
+
+        // Assume promotion could move 30% of excess stock monthly
+        final excessStock = currentStock * 0.3;
+        final monthlyImpact = _round(excessStock * costPrice * 0.1);
+
+        if (monthlyImpact >= 100 && tiedCapital > 500) {
+          opportunities.add(Opportunity(
+            id: 'slow_$itemId',
+            productName: productName,
+            inventoryItemId: itemId,
+            type: OpportunityType.slow_stock,
+            action: 'Run promotion or reduce ordering',
+            reason: '${daysRemaining.toStringAsFixed(0)} days of stock, low velocity',
+            monthlyImpact: monthlyImpact,
+            confidenceScore: 0.5,
+            breakdown: {
+              'current_stock': currentStock,
+              'days_remaining': daysRemaining,
+              'daily_velocity': dailyVelocity,
+              'tied_capital': tiedCapital,
+            },
+          ));
         }
       }
     } catch (e) {

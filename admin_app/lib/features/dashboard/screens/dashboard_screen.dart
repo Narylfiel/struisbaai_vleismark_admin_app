@@ -357,72 +357,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Future<void> _loadClockInStatus() async {
     try {
-      final today = DateTime.now();
-      final todayStart = DateTime(today.year, today.month, today.day).toIso8601String();
-
-      final allStaff = (await StaffProfileRepository(client: _supabase)
-          .getAll(isActive: true))
-          .where((r) => ['cashier', 'blockman', 'manager', 'owner']
-              .contains(r['role']))
-          .toList();
-
-      final todayStartDt = DateTime.tryParse(todayStart);
-      final todayCards = List<Map<String, dynamic>>.from(
-        (await TimecardRepository(
-                client: _supabase)
-            .getAll(
-              from: today,
-              to: today,
-            ))
-            .where((c) {
-              final ci = c['clock_in'];
-              if (ci == null || todayStartDt == null) return false;
-              final clockIn = DateTime.tryParse(ci.toString());
-              if (clockIn == null) return false;
-              return !clockIn.isBefore(todayStartDt);
-            })
-            .map((c) => <String, dynamic>{
-                  'staff_id': c['staff_id'],
-                  'clock_in': c['clock_in'],
-                })
-            .toList(),
-      );
-
-      final clockedInIds = todayCards
-          .map((t) => t['staff_id'])
-          .whereType<String>()
-          .toSet();
-
-      final inList = <Map<String, dynamic>>[];
-      final outList = <Map<String, dynamic>>[];
-
-      for (final staff in allStaff) {
-        final sid = staff['id'] as String?;
-        if (sid != null && clockedInIds.contains(sid)) {
-          final matching = todayCards.where((t) => t['staff_id'] == sid).toList();
-          if (matching.isNotEmpty) {
-            inList.add({...staff, 'clock_in': matching.first['clock_in']});
-          } else {
-            outList.add(staff);
-          }
-        } else {
-          outList.add(staff);
-        }
-      }
-
+      final data = await _supabase.rpc('get_today_clock_status').select();
+      
       if (mounted) {
         setState(() {
-          _clockedIn = inList;
-          _notClockedIn = outList;
+          _clockedIn = List<Map<String, dynamic>>.from(data as List);
+          _notClockedIn = [];
         });
       }
     } catch (e) {
-      debugPrint('Clock-in status: $e');
-      if (mounted) {
-        setState(() {
-          _clockedIn = [];
-          _notClockedIn = [];
-        });
+      debugPrint('Clock-in status (trying direct query): $e');
+      // Fallback to direct query if RPC doesn't exist
+      try {
+        final data = await _supabase
+            .from('timecards')
+            .select('''
+              id,
+              staff_id,
+              clock_in,
+              clock_out,
+              status,
+              staff_profiles!timecards_staff_id_fkey(full_name, role)
+            ''')
+            .eq('shift_date', DateTime.now().toIso8601String().substring(0, 10))
+            .order('clock_in', ascending: true);
+
+        final List<Map<String, dynamic>> statusList = [];
+
+        for (final timecard in (data as List)) {
+          final timecardId = timecard['id'] as String?;
+          if (timecardId == null) continue;
+
+          final staffProfile = timecard['staff_profiles'];
+          if (staffProfile == null) continue;
+
+          // Check for active break
+          final breakData = await _supabase
+              .from('timecard_breaks')
+              .select('break_start, break_end')
+              .eq('timecard_id', timecardId)
+              .is_('break_end', null)
+              .maybeSingle();
+
+          statusList.add({
+            'full_name': staffProfile['full_name'],
+            'role': staffProfile['role'],
+            'clock_in': timecard['clock_in'],
+            'clock_out': timecard['clock_out'],
+            'break_start': breakData?['break_start'],
+          });
+        }
+
+        if (mounted) {
+          setState(() {
+            _clockedIn = statusList;
+            _notClockedIn = [];
+          });
+        }
+      } catch (e2) {
+        debugPrint('Clock-in status fallback: $e2');
+        if (mounted) {
+          setState(() {
+            _clockedIn = [];
+            _notClockedIn = [];
+          });
+        }
       }
     }
   }
@@ -967,27 +966,51 @@ class _DashboardScreenState extends State<DashboardScreen> {
       icon: Icons.access_time,
       child: Column(
         children: [
-          ..._clockedIn.map((s) => _ClockRow(
-                name: s['full_name'],
-                role: s['role'],
-                clockIn: s['clock_in'],
-                isClockedIn: true,
-              )),
-          ..._notClockedIn.map((s) => _ClockRow(
-                name: s['full_name'],
-                role: s['role'],
-                clockIn: null,
-                isClockedIn: false,
-              )),
-          if (_clockedIn.isEmpty && _notClockedIn.isEmpty)
+          ..._clockedIn.map((s) {
+            final clockOut = s['clock_out'];
+            final breakStart = s['break_start'];
+            final clockIn = s['clock_in'];
+            
+            String statusText;
+            Color statusColor;
+            
+            if (clockOut != null) {
+              // Clocked out
+              statusText = 'Out at ${_formatTime(clockOut)}';
+              statusColor = AppColors.textSecondary;
+            } else if (breakStart != null) {
+              // On break
+              statusText = 'On break since ${_formatTime(breakStart)}';
+              statusColor = AppColors.warning;
+            } else {
+              // Clocked in
+              statusText = 'In since ${_formatTime(clockIn)}';
+              statusColor = AppColors.success;
+            }
+            
+            return _ClockRow(
+              name: s['full_name'],
+              role: s['role'],
+              statusText: statusText,
+              statusColor: statusColor,
+            );
+          }),
+          if (_clockedIn.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('No staff profiles found',
+              child: Text('No staff clocked in today',
                   style: TextStyle(color: AppColors.textSecondary)),
             ),
         ],
       ),
     );
+  }
+  
+  String _formatTime(String? iso) {
+    if (iso == null) return '';
+    final dt = DateTime.tryParse(iso)?.toLocal();
+    if (dt == null) return '';
+    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   Widget _buildTransactionCountChart() {
@@ -1465,22 +1488,15 @@ class _AlertRow extends StatelessWidget {
 class _ClockRow extends StatelessWidget {
   final String name;
   final String role;
-  final String? clockIn;
-  final bool isClockedIn;
+  final String statusText;
+  final Color statusColor;
 
   const _ClockRow({
     required this.name,
     required this.role,
-    required this.clockIn,
-    required this.isClockedIn,
+    required this.statusText,
+    required this.statusColor,
   });
-
-  String _formatTime(String? iso) {
-    if (iso == null) return '';
-    final dt = DateTime.tryParse(iso)?.toLocal();
-    if (dt == null) return '';
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -1491,7 +1507,7 @@ class _ClockRow extends StatelessWidget {
           Icon(
             Icons.circle,
             size: 10,
-            color: isClockedIn ? AppColors.success : AppColors.error,
+            color: statusColor,
           ),
           const SizedBox(width: 8),
           Expanded(
@@ -1504,10 +1520,10 @@ class _ClockRow extends StatelessWidget {
             ),
           ),
           Text(
-            isClockedIn ? _formatTime(clockIn) : 'Not in',
+            statusText,
             style: TextStyle(
               fontSize: 12,
-              color: isClockedIn ? AppColors.success : AppColors.error,
+              color: statusColor,
             ),
           ),
         ],
