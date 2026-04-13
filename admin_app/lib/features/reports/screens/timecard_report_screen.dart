@@ -86,7 +86,14 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
             final staffId = tc['staff_id']?.toString();
             final canClockIn = staffId != null ? canClockInByStaffId[staffId] ?? false : false;
 
-            return <String, dynamic>{
+            final rawBreaks = tc['timecard_breaks'];
+              final breaks = (rawBreaks is List)
+                  ? (rawBreaks.cast<Map<String, dynamic>>()
+                      ..sort((a, b) =>
+                          (a['break_start'] as String? ?? '')
+                              .compareTo(b['break_start'] as String? ?? '')))
+                  : <Map<String, dynamic>>[];
+              return <String, dynamic>{
               'shift_date': tc['shift_date'],
               'clock_in': tc['clock_in'],
               'clock_out': tc['clock_out'],
@@ -94,6 +101,7 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
               'break_minutes': tc['break_minutes'],
               'status': tc['status'],
               'staff_id': tc['staff_id'],
+              'timecard_breaks': breaks,
               'staff_profiles': {
                 'full_name': fullName,
                 'can_clock_in': canClockIn,
@@ -187,6 +195,21 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
       if (mounted) setState(() => _isExporting = false);
     }
   }
+
+  String _fmtDate(String? dt) {
+    if (dt == null) return '—';
+    final d = DateTime.parse(dt).toLocal();
+    const months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${d.day.toString().padLeft(2,'0')} ${months[d.month-1]}';
+  }
+
+  static const _hS = TextStyle(
+      fontSize: 9,
+      fontWeight: FontWeight.bold,
+      color: AppColors.textSecondary,
+      letterSpacing: 0.4,
+      height: 1.3);
 
   Widget _buildStatusChip(String? status) {
     Color bg;
@@ -287,16 +310,37 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             color: AppColors.surfaceBg,
-            child: const Row(
-              children: [
-                SizedBox(width: 100, child: Text('Date', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                Expanded(flex: 2, child: Text('Staff', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                SizedBox(width: 80, child: Text('Clock In', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                SizedBox(width: 80, child: Text('Clock Out', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                SizedBox(width: 80, child: Text('Total Hrs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                SizedBox(width: 90, child: Text('Break Mins', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                SizedBox(width: 90, child: Text('Status', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-              ],
+            child: const SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  SizedBox(width: 80,  child: Text('DATE',      style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 110, child: Text('STAFF',     style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 68,  child: Text('CLOCK IN',  style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 56,  child: Text('BRK 1\nOUT', style: _hS)),
+                  SizedBox(width: 4),
+                  SizedBox(width: 56,  child: Text('BRK 1\nIN',  style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 56,  child: Text('BRK 2\nOUT', style: _hS)),
+                  SizedBox(width: 4),
+                  SizedBox(width: 56,  child: Text('BRK 2\nIN',  style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 56,  child: Text('BRK 3\nOUT', style: _hS)),
+                  SizedBox(width: 4),
+                  SizedBox(width: 56,  child: Text('BRK 3\nIN',  style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 68,  child: Text('CLOCK OUT', style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 64,  child: Text('TOTAL BRK', style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 64,  child: Text('TOTAL HRS', style: _hS)),
+                  SizedBox(width: 8),
+                  SizedBox(width: 80,  child: Text('STATUS',    style: _hS)),
+                ],
+              ),
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
@@ -316,18 +360,153 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
                       final totalHrs = (r['total_hours'] as num?)?.toDouble() ?? 0.0;
                       final breakMins = (r['break_minutes'] as num?)?.toInt() ?? 0;
                       
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        child: Row(
-                          children: [
-                            SizedBox(width: 100, child: Text(r['shift_date'] ?? '—')),
-                            Expanded(flex: 2, child: Text(staffName, overflow: TextOverflow.ellipsis)),
-                            SizedBox(width: 80, child: Text(clockIn)),
-                            SizedBox(width: 80, child: Text(clockOut)),
-                            SizedBox(width: 80, child: Text('${totalHrs.toStringAsFixed(1)}h', style: const TextStyle(fontWeight: FontWeight.w600))),
-                            SizedBox(width: 90, child: Text(breakMins > 0 ? '${breakMins}m' : '—')),
-                            SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _buildStatusChip(r['status']))),
-                          ],
+                      final breaks = (r['timecard_breaks'] as List?)
+                              ?.cast<Map<String, dynamic>>() ??
+                          [];
+
+                      String brkTime(int idx, String field) {
+                        if (idx >= breaks.length) return '—';
+                        final val = breaks[idx][field] as String?;
+                        if (val == null) return '—';
+                        final dt = DateTime.tryParse(val)?.toLocal();
+                        if (dt == null) return '—';
+                        return '${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')}';
+                      }
+
+                      final isOpen = r['clock_out'] == null;
+                      final longBreak = breakMins > 60;
+
+                      return Container(
+                        color: longBreak
+                            ? AppColors.error.withValues(alpha: 0.04)
+                            : Colors.transparent,
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 9),
+                            child: Row(children: [
+                              SizedBox(width: 80,
+                                child: Text(
+                                  r['shift_date'] != null
+                                      ? _fmtDate(r['clock_in'])
+                                      : '—',
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppColors.textSecondary)),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(width: 110,
+                                child: Text(staffName,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary)),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(width: 68, child: Text(clockIn,
+                                  style: const TextStyle(fontSize: 13))),
+                              const SizedBox(width: 8),
+                              // BRK 1 OUT
+                              SizedBox(width: 56, child: Text(
+                                brkTime(0, 'break_start'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.isNotEmpty
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 4),
+                              // BRK 1 IN
+                              SizedBox(width: 56, child: Text(
+                                brkTime(0, 'break_end'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.isNotEmpty
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 8),
+                              // BRK 2 OUT
+                              SizedBox(width: 56, child: Text(
+                                brkTime(1, 'break_start'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.length > 1
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 4),
+                              // BRK 2 IN
+                              SizedBox(width: 56, child: Text(
+                                brkTime(1, 'break_end'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.length > 1
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 8),
+                              // BRK 3 OUT
+                              SizedBox(width: 56, child: Text(
+                                brkTime(2, 'break_start'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.length > 2
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 4),
+                              // BRK 3 IN
+                              SizedBox(width: 56, child: Text(
+                                brkTime(2, 'break_end'),
+                                style: TextStyle(fontSize: 12,
+                                    color: breaks.length > 2
+                                        ? AppColors.textPrimary
+                                        : AppColors.border),
+                                textAlign: TextAlign.center)),
+                              const SizedBox(width: 8),
+                              // CLOCK OUT
+                              SizedBox(width: 68,
+                                child: Text(
+                                  isOpen ? '● Active' : clockOut,
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      color: isOpen
+                                          ? AppColors.success
+                                          : AppColors.textPrimary,
+                                      fontWeight: isOpen
+                                          ? FontWeight.bold
+                                          : FontWeight.normal)),
+                              ),
+                              const SizedBox(width: 8),
+                              // TOTAL BREAK
+                              SizedBox(width: 64,
+                                child: Text(
+                                  breakMins > 0 ? '${breakMins}m' : '—',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: longBreak
+                                          ? AppColors.error
+                                          : breakMins > 0
+                                              ? AppColors.info
+                                              : AppColors.textSecondary)),
+                              ),
+                              const SizedBox(width: 8),
+                              // TOTAL HRS
+                              SizedBox(width: 64,
+                                child: Text(
+                                  '${totalHrs.toStringAsFixed(1)}h',
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w600,
+                                      color: AppColors.textPrimary)),
+                              ),
+                              const SizedBox(width: 8),
+                              // STATUS
+                              SizedBox(width: 80,
+                                child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: _buildStatusChip(r['status']))),
+                            ]),
+                          ),
                         ),
                       );
                     },

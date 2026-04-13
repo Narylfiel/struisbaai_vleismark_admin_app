@@ -44,6 +44,13 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   bool _smtpTesting = false;
   bool _smtpObscure = true;
 
+  // Break alert config
+  int _shortBreakThreshold = 5;
+  int _overrunThreshold = 45;
+  bool _enablePosAlerts = true;
+  bool _enableEmailAlerts = true;
+  final _alertEmailController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
@@ -53,6 +60,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
   @override
   void dispose() {
     _whatsappController.dispose();
+    _alertEmailController.dispose();
     super.dispose();
   }
 
@@ -83,6 +91,22 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
       if (whatsappRow?['setting_value'] != null) {
         _whatsappController.text = whatsappRow!['setting_value'].toString();
       }
+      final breakRow = await _client
+          .from('business_settings')
+          .select('setting_value')
+          .eq('setting_key', 'break_alert_config')
+          .maybeSingle();
+      final breakCfg = breakRow?['setting_value'];
+      if (breakCfg is Map) {
+        _shortBreakThreshold =
+            (breakCfg['short_break_threshold_minutes'] as num?)?.toInt() ?? 5;
+        _overrunThreshold =
+            (breakCfg['break_overrun_threshold_minutes'] as num?)?.toInt() ?? 45;
+        _enablePosAlerts = breakCfg['enable_pos_alerts'] == true;
+        _enableEmailAlerts = breakCfg['enable_email_alerts'] == true;
+        _alertEmailController.text =
+            breakCfg['alert_email'] as String? ?? '';
+      }
       await _loadSmtpSettings();
       if (mounted) setState(() => _loading = false);
     } catch (_) {
@@ -100,23 +124,59 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
         'invoice_overdue_days': _invoiceOverdueDays,
         'document_expiry_days': _documentExpiryDays,
       };
-      await _client.from('business_settings').upsert(
-        {'setting_key': 'notification_config', 'setting_value': config},
-        onConflict: 'setting_key',
+
+      await _upsertSetting('notification_config', config);
+      await _upsertSetting(
+        'admin_whatsapp_number',
+        _whatsappController.text.trim(),
       );
-      await _client.from('business_settings').upsert(
-        {'setting_key': 'admin_whatsapp_number', 'setting_value': _whatsappController.text.trim()},
-        onConflict: 'setting_key',
-      );
+      await _upsertSetting('break_alert_config', {
+        'short_break_threshold_minutes': _shortBreakThreshold,
+        'break_overrun_threshold_minutes': _overrunThreshold,
+        'enable_pos_alerts': _enablePosAlerts,
+        'enable_email_alerts': _enableEmailAlerts,
+        'alert_email': _alertEmailController.text.trim(),
+      });
+
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Notification settings saved'), backgroundColor: AppColors.success));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notification settings saved'),
+            backgroundColor: AppColors.success,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(ErrorHandler.friendlyMessage(e)),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
+    }
+  }
+
+  /// Safe upsert for business_settings — works without a unique
+  /// constraint on setting_key by doing select → update or insert.
+  Future<void> _upsertSetting(String key, dynamic value) async {
+    final existing = await _client
+        .from('business_settings')
+        .select('id')
+        .eq('setting_key', key)
+        .maybeSingle();
+    if (existing != null) {
+      await _client
+          .from('business_settings')
+          .update({'setting_value': value})
+          .eq('setting_key', key);
+    } else {
+      await _client
+          .from('business_settings')
+          .insert({'setting_key': key, 'setting_value': value});
     }
   }
 
@@ -280,6 +340,78 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                 ),
               ),
           ]),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
+          const Text(
+            'Break & Staff Alerts',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Alerts appear on the POS screen when a staff member '
+            'takes a suspiciously short break or overruns their break time.',
+            style: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          SwitchListTile(
+            title: const Text('Show alerts on POS screen'),
+            value: _enablePosAlerts,
+            onChanged: (v) => setState(() => _enablePosAlerts = v),
+            activeColor: AppColors.primary,
+            dense: true,
+          ),
+          SwitchListTile(
+            title: const Text('Email alerts to manager'),
+            value: _enableEmailAlerts,
+            onChanged: (v) => setState(() => _enableEmailAlerts = v),
+            activeColor: AppColors.primary,
+            dense: true,
+          ),
+          if (_enableEmailAlerts) ...[
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _alertEmailController,
+              decoration: const InputDecoration(
+                labelText: 'Alert recipient email',
+                hintText: 'manager@yourbusiness.co.za',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              keyboardType: TextInputType.emailAddress,
+            ),
+          ],
+          const SizedBox(height: 16),
+          Text(
+            'Short break threshold: $_shortBreakThreshold min',
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          Slider(
+            value: _shortBreakThreshold.toDouble(),
+            min: 1,
+            max: 15,
+            divisions: 14,
+            label: '$_shortBreakThreshold min',
+            activeColor: AppColors.primary,
+            onChanged: (v) => setState(() => _shortBreakThreshold = v.toInt()),
+          ),
+          Text(
+            'Break overrun alert after: $_overrunThreshold min',
+            style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+          ),
+          Slider(
+            value: _overrunThreshold.toDouble(),
+            min: 15,
+            max: 90,
+            divisions: 15,
+            label: '$_overrunThreshold min',
+            activeColor: AppColors.primary,
+            onChanged: (v) => setState(() => _overrunThreshold = v.toInt()),
+          ),
           const SizedBox(height: 24),
           const Divider(),
           const SizedBox(height: 16),

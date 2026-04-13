@@ -10,7 +10,9 @@ class TimecardRepository {
     DateTime? to,
   }) async {
     var q = _client.from('timecards').select(
-          '*, staff_profiles(full_name, role)',
+          '*, '
+          'staff_profiles!timecards_staff_id_fkey(full_name, role, hourly_rate), '
+          'timecard_breaks(id, break_type, break_start, break_end, break_duration_minutes)',
         );
     if (staffId != null) q = q.eq('staff_id', staffId);
     if (from != null) {
@@ -19,9 +21,20 @@ class TimecardRepository {
     if (to != null) {
       q = q.lte('shift_date', to.toIso8601String().substring(0, 10));
     }
-    return List<Map<String, dynamic>>.from(
+    final rows = List<Map<String, dynamic>>.from(
       await q.order('shift_date', ascending: false),
     );
+    for (final row in rows) {
+      final breaks = row['timecard_breaks'];
+      if (breaks is List) {
+        breaks.sort((a, b) {
+          final aStart = (a as Map)['break_start'] as String? ?? '';
+          final bStart = (b as Map)['break_start'] as String? ?? '';
+          return aStart.compareTo(bStart);
+        });
+      }
+    }
+    return rows;
   }
 
   Future<List<Map<String, dynamic>>> getForPeriod({
@@ -42,7 +55,7 @@ class TimecardRepository {
   Future<List<Map<String, dynamic>>> getClockedIn() async {
     final rows = await _client
         .from('timecards')
-        .select('*, staff_profiles(full_name, role)')
+        .select('*, staff_profiles!timecards_staff_id_fkey(full_name, role)')
         .isFilter('clock_out', null);
     return List<Map<String, dynamic>>.from(rows);
   }

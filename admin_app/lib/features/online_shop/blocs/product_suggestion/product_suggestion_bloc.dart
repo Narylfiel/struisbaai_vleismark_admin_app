@@ -18,7 +18,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     AuthService? authService,
   })  : _service = service ?? ProductSuggestionService(),
         _authService = authService ?? AuthService(),
-        super(const ProductSuggestionInitial()) {
+        super(ProductSuggestionInitial()) {
     on<LoadSuggestions>(_onLoadSuggestions);
     on<AddSuggestion>(_onAddSuggestion);
     on<RemoveSuggestion>(_onRemoveSuggestion);
@@ -36,7 +36,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     Emitter<ProductSuggestionState> emit,
   ) async {
     try {
-      emit(const ProductSuggestionLoading());
+      emit(ProductSuggestionLoading());
       
       final performedBy = _authService.currentUser?.id ?? '';
       if (performedBy.isEmpty) {
@@ -64,7 +64,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       // Get next display order for this type
       final typeSuggestions = currentState.suggestions
@@ -101,7 +101,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       await _service.removeSuggestion(
         suggestionId: event.suggestionId,
@@ -133,7 +133,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
       // Guard: prevent empty reorder operations
       if (event.updatedOrders.isEmpty) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       await _service.batchUpdateOrders(
         updates: event.updatedOrders,
@@ -172,7 +172,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       if (event.query.trim().isEmpty) {
         emit(currentState.copyWith(searchResults: []));
@@ -201,7 +201,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       final availableProducts = await _service.getAvailableProducts(event.excludeProductId);
 
@@ -225,7 +225,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
       // Guard: prevent empty bulk operations
       if (event.productIds.isEmpty) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       await _service.bulkCreateSuggestions(
         sourceProductId: event.sourceProductId,
@@ -254,7 +254,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       
       await _service.toggleSuggestionStatus(
         suggestionId: event.suggestionId,
@@ -287,7 +287,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       final suggestion = currentState.suggestions
           .where((s) => s['id'] == event.suggestionId)
           .firstOrNull;
@@ -347,7 +347,7 @@ class ProductSuggestionBloc extends Bloc<ProductSuggestionEvent, ProductSuggesti
     try {
       if (state is! ProductSuggestionLoaded) return;
 
-      final currentState = state;
+      final currentState = state as ProductSuggestionLoaded;
       final suggestion = currentState.suggestions
           .where((s) => s['id'] == event.suggestionId)
           .firstOrNull;

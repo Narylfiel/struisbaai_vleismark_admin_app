@@ -155,7 +155,7 @@ class PrintAutomationService {
       final response = await _supabase
           .from('online_order_print_queue')
           .select('*')
-          .is('last_error', 'not', null)
+          .not('last_error', 'is', null)
           .eq('printed', false)
           .order('created_at', ascending: false)
           .limit(5); // Process only recent failed jobs

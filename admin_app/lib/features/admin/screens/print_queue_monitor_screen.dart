@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
@@ -37,8 +38,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
       // Load queue statistics
       final statsResponse = await _supabase
           .from('online_order_print_queue')
-          .select('print_type, printed, count(*)')
-          .group('print_type, printed');
+          .select('print_type, printed');
 
       // Load recent jobs
       final jobsResponse = await _supabase

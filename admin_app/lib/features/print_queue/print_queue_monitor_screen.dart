@@ -151,8 +151,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
     // Get queue summary
     final response = await _supabase
         .from('online_order_print_queue')
-        .select('print_type, printed, hold_until, last_error, count(*)')
-        .group('print_type, printed, hold_until, last_error');
+        .select('print_type, printed, hold_until, last_error');
 
     // Process summary data
     final summary = {
@@ -213,7 +212,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
     final response = await _supabase
         .from('online_order_print_queue')
         .select('*')
-        .is('last_error', 'not', null)
+        .not('last_error', 'is', null)
         .order('created_at', ascending: false)
         .limit(10);
 
@@ -228,10 +227,9 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
       
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('print_type, last_error, count(*)')
-          .is('last_error', 'not', null)
-          .gte('created_at', oneHourAgo)
-          .group('print_type, last_error');
+          .select('print_type, last_error')
+          .not('last_error', 'is', null)
+          .gte('created_at', oneHourAgo);
 
       final breakdown = <String, int>{};
       for (final item in response) {
@@ -258,7 +256,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
       final response = await _supabase
           .from('online_order_print_queue')
           .select('created_at, last_error')
-          .is('last_error', 'not', null)
+          .not('last_error', 'is', null)
           .gte('created_at', oneHourAgo);
 
       int last5Min = 0;
@@ -299,9 +297,8 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
     try {
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('print_type, printed, count(*)')
-          .gte('created_at', DateTime.now().subtract(const Duration(hours: 1)).toUtc().toIso8601String())
-          .group('print_type, printed');
+          .select('print_type, printed')
+          .gte('created_at', DateTime.now().subtract(const Duration(hours: 1)).toUtc().toIso8601String());
 
       final health = <String, dynamic>{};
       

@@ -2595,9 +2595,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'modifier_group_ids': _modifierGroupIds.isEmpty ? null : _modifierGroupIds,
       'supplier_ids': _supplierIds.isEmpty ? null : _supplierIds,
       'recipe_id': _recipeId,
-      'recipe_link': _recipeId != null
-          ? _recipeNameForSelectedId
-          : null,
+      'recipe_link': _recipeId,
       'dryer_product_type': _dryerProductType,
       'manufactured_item': _manufacturedItem,
       'shrinkage_allowance_pct': _shrinkageAllowancePct ?? 2.0,
@@ -4053,7 +4051,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _recipeId,
+                value: _recipes.any((r) => r['id'] == _recipeId) ? _recipeId : null,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   isDense: true,

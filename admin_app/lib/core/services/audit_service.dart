@@ -28,8 +28,8 @@ class AuditService {
   /// - module: text
   /// - entity_type: text
   /// - record_id: text
-  /// - old_values: jsonb
-  /// - new_values: jsonb
+  /// - old_value: jsonb
+  /// - new_value: jsonb
   static Future<void> log({
     required String action,      // 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'EXPORT' | 'APPROVE' | 'REJECT'
     required String module,      // 'Inventory' | 'HR' | 'Production' | 'Hunter' | 'Accounts' | 'Bookkeeping' | 'Auth'
@@ -75,8 +75,8 @@ class AuditService {
         'staff_name': staffName.isNotEmpty ? staffName : 'System',
         'entity_type': entityType,
         'record_id': entityId,
-        'old_values': oldValues,
-        'new_values': newValues,
+        'old_value': oldValues,
+        'new_value': newValues,
       };
 
       // Remove nulls

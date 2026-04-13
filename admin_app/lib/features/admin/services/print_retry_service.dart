@@ -77,7 +77,7 @@ class PrintRetryService {
       final response = await _supabase
           .from('online_order_print_queue')
           .select('id')
-          .is('last_error', 'not', null);
+          .not('last_error', 'is', null);
 
       return (response as List).length;
     } catch (e) {
@@ -90,9 +90,8 @@ class PrintRetryService {
     try {
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('print_type, count(*)')
-          .is('last_error', 'not', null)
-          .group('print_type');
+          .select('print_type')
+          .not('last_error', 'is', null);
 
       final Map<String, int> result = {};
       for (final item in response) {
@@ -113,7 +112,7 @@ class PrintRetryService {
           .from('online_order_print_queue')
           .delete()
           .lt('created_at', cutoffDate)
-          .is('last_error', 'not', null)
+          .not('last_error', 'is', null)
           .eq('printed', true);
 
       return (response as List).length;

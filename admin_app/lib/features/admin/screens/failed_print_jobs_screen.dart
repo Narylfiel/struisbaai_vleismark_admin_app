@@ -35,7 +35,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
       final response = await _supabase
           .from('online_order_print_queue')
           .select('*')
-          .is('last_error', 'not', null)
+          .not('last_error', 'is', null)
           .order('created_at', ascending: false);
 
       setState(() {

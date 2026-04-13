@@ -70,8 +70,11 @@ class ScaleSyncService {
       final shelfRaw = item['scale_shelf_life'] as int?;
       final shelf = (shelfRaw ?? 5).toString().padLeft(3, '0');
 
+      // Desc — scale label name; strip quotes to keep CSV valid
+      final desc = (item['scale_label_name'] as String? ?? '').replaceAll('"', "'");
+
       buffer.writeln(
-        '"$pluPadded","$priceStr","$shelf","0","","","","$pluPadded",""',
+        '"$pluPadded","$priceStr","$shelf","0","","","","$pluPadded","$desc"',
       );
     }
 

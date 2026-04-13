@@ -852,8 +852,10 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
       final settings = await _repo.getBusinessSettings();
       if (mounted) {
         setState(() {
-          _onlineShopEnabled = settings['online_shop_enabled'] ?? false;
-          _deliveryEnabled = settings['delivery_enabled'] ?? false;
+          final onlineShopValue = settings['online_shop_enabled'];
+          _onlineShopEnabled = onlineShopValue == true || onlineShopValue == 'true';
+          final deliveryValue = settings['delivery_enabled'];
+          _deliveryEnabled = deliveryValue == true || deliveryValue == 'true';
           _collectionTimeController.text = settings['collection_time'] ?? 'Same day (before 2pm)';
           _deliveryTimeController.text = settings['delivery_time'] ?? 'Next day delivery';
           _minOrderController.text = (settings['min_order_amount'] ?? 0).toString();

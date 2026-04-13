@@ -12,6 +12,8 @@ import 'package:admin_app/core/db/cached_awol_record.dart';
 import 'package:admin_app/core/db/cached_compliance_record.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/services/permission_service.dart';
+import 'package:admin_app/core/constants/permissions.dart';
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:admin_app/features/hr/models/awol_record.dart';
@@ -37,7 +39,7 @@ class _StaffListScreenState extends State<StaffListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 7, vsync: this);
+    _tabController = TabController(length: 8, vsync: this);
   }
 
   @override
@@ -67,6 +69,7 @@ class _StaffListScreenState extends State<StaffListScreen>
                 Tab(icon: Icon(Icons.warning_amber, size: 18), text: 'AWOL'),
                 Tab(icon: Icon(Icons.credit_card, size: 18), text: 'Staff Credit'),
                 Tab(icon: Icon(Icons.verified_user, size: 18), text: 'Compliance'),
+                Tab(icon: Icon(Icons.notifications_active, size: 18), text: 'Break Alerts'),
               ],
             ),
           ),
@@ -82,6 +85,7 @@ class _StaffListScreenState extends State<StaffListScreen>
                 _AwolTab(),
                 _StaffCreditTab(),
                 _ComplianceTab(),
+                _BreakAlertsTab(),
               ],
             ),
           ),
@@ -501,26 +505,6 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             return aDt.compareTo(bDt);
           });
 
-        if (cards.isNotEmpty) {
-          final ids = cards.map((t) => t['id'] as String).toList();
-          final breaks = List<Map<String, dynamic>>.from(
-            await _supabase
-                .from('timecard_breaks')
-                .select('*')
-                .inFilter('timecard_id', ids)
-                .order('break_start'),
-          );
-          for (final c in cards) {
-            c['breaks'] = breaks
-                .where((b) => b['timecard_id'] == c['id'])
-                .toList();
-          }
-        } else {
-          for (final c in cards) {
-            c['breaks'] = <Map<String, dynamic>>[];
-          }
-        }
-
         setState(() => _timecards = cards);
         
         // Update cache in background
@@ -528,8 +512,10 @@ class _TimecardsTabState extends State<_TimecardsTab> {
           return CachedTimecard.fromSupabase(item);
         }).toList();
         unawaited(IsarService.saveTimecards(cachedTimecards));
-      } catch (e) {
+      } catch (e, stackTrace) {
         // Fallback to cache if database fails
+        debugPrint('TIMECARDS DB ERROR: $e');
+        debugPrint('STACK: $stackTrace');
         _isOffline = true;
         final cached = await IsarService.getAllTimecards();
         final rangeStartDt = DateTime.parse('${rangeStart}T00:00:00');
@@ -753,42 +739,27 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                         const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (_, i) {
                       final t = _timecards[i];
-                      final breaks = (t['breaks'] as List?)
-                              ?.cast<Map<String, dynamic>>() ??
-                          [];
+                      final b1Start = t['break_1_start'] as String?;
+                      final b1End   = t['break_1_end']   as String?;
+                      final b2Start = t['break_2_start'] as String?;
+                      final b2End   = t['break_2_end']   as String?;
+                      final b3Start = t['break_3_start'] as String?;
+                      final b3End   = t['break_3_end']   as String?;
 
-                      // Up to 3 breaks
-                      final b1 = breaks.isNotEmpty ? breaks[0] : null;
-                      final b2 = breaks.length > 1 ? breaks[1] : null;
-                      final b3 = breaks.length > 2 ? breaks[2] : null;
-
-                      final totalBreakMins = breaks.fold<int>(
-                          0,
-                          (s, b) =>
-                              s +
-                              ((b['break_duration_minutes'] as num?)
-                                      ?.toInt() ??
-                                  0));
+                      final totalBreakMins = (t['break_minutes'] as num?)?.toInt() ?? 0;
 
                       final regHrs =
                           (t['regular_hours'] as num?)?.toDouble() ?? 0;
                       final otHrs =
                           (t['overtime_hours'] as num?)?.toDouble() ?? 0;
                       final isOpen = t['clock_out'] == null;
-                      final needsApproval =
-                          t['requires_approval'] as bool? ?? false;
-                      final otApproved =
-                          t['overtime_approved'] as bool? ?? false;
-
-                      // BCEA violation: any single break > 60 min
-                      final longBreak = breaks.any((b) =>
-                          ((b['break_duration_minutes'] as num?)?.toInt() ??
-                              0) >
-                          60);
+                      // BCEA violation: any single break > 60 min (check break_detail JSON if needed)
+                      // For now, use total break time as proxy
+                      final longBreak = totalBreakMins > 60;
 
                       final rowColor = longBreak
                           ? AppColors.error.withValues(alpha: 0.04)
-                          : (otHrs > 0 && !otApproved)
+                          : (otHrs > 0 && !(t['overtime_approved'] as bool? ?? false))
                               ? AppColors.warning.withValues(alpha: 0.04)
                               : Colors.transparent;
 
@@ -832,25 +803,25 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                               ),
                               const SizedBox(width: 8),
                               // BRK 1 OUT
-                              _breakCell(b1?['break_start'], 56),
+                              _breakCell(b1Start, 56),
                               const SizedBox(width: 4),
                               // BRK 1 IN
-                              _breakCell(b1?['break_end'], 56,
-                                  isOnBreak: b1 != null && b1['break_end'] == null),
+                              _breakCell(b1End, 56,
+                                  isOnBreak: b1Start != null && b1End == null),
                               const SizedBox(width: 8),
                               // BRK 2 OUT
-                              _breakCell(b2?['break_start'], 56),
+                              _breakCell(b2Start, 56),
                               const SizedBox(width: 4),
                               // BRK 2 IN
-                              _breakCell(b2?['break_end'], 56,
-                                  isOnBreak: b2 != null && b2['break_end'] == null),
+                              _breakCell(b2End, 56,
+                                  isOnBreak: b2Start != null && b2End == null),
                               const SizedBox(width: 8),
                               // BRK 3 OUT
-                              _breakCell(b3?['break_start'], 56),
+                              _breakCell(b3Start, 56),
                               const SizedBox(width: 4),
                               // BRK 3 IN
-                              _breakCell(b3?['break_end'], 56,
-                                  isOnBreak: b3 != null && b3['break_end'] == null),
+                              _breakCell(b3End, 56,
+                                  isOnBreak: b3Start != null && b3End == null),
                               const SizedBox(width: 8),
                               // CLOCK OUT
                               SizedBox(
@@ -919,12 +890,27 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                                 width: 80,
                                 child: isOpen
                                     ? _badge('CLOCKED IN', AppColors.success)
-                                    : needsApproval && !otApproved
+                                    : (t['requires_approval'] as bool? ?? false) &&
+                                            !(t['overtime_approved'] as bool? ?? false)
                                         ? _badge('OT PENDING', AppColors.warning)
                                         : longBreak
                                             ? _badge('LONG BREAK', AppColors.error)
                                             : _badge('COMPLETE', AppColors.info),
                               ),
+                              // EDIT BUTTON — managers and owners only
+                              if (PermissionService().can(Permissions.manageHr)) ...[
+                                const SizedBox(width: 8),
+                                SizedBox(
+                                  width: 32,
+                                  child: IconButton(
+                                    icon: const Icon(Icons.edit, size: 16),
+                                    color: AppColors.textSecondary,
+                                    tooltip: 'Edit timecard',
+                                    padding: EdgeInsets.zero,
+                                    onPressed: () => _openEditTimecard(t),
+                                  ),
+                                ),
+                              ],
                             ]),
                           ),
                         ),
@@ -983,6 +969,332 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       color: AppColors.textSecondary,
       letterSpacing: 0.4,
       height: 1.3);
+
+  Future<void> _openEditTimecard(Map<String, dynamic> t) async {
+    final staffName = t['staff_profiles']?['full_name'] ?? 'Staff';
+    final timecardId = t['id'] as String;
+
+    // Pre-fill controllers with existing values (HH:mm format)
+    String formatTime(String? iso) {
+      if (iso == null) return '';
+      final d = DateTime.parse(iso).toLocal();
+      return '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
+    }
+
+    final clockInCtrl    = TextEditingController(text: formatTime(t['clock_in']));
+    final clockOutCtrl   = TextEditingController(text: formatTime(t['clock_out']));
+    final b1StartCtrl    = TextEditingController(text: formatTime(t['break_1_start']));
+    final b1EndCtrl      = TextEditingController(text: formatTime(t['break_1_end']));
+    final b2StartCtrl    = TextEditingController(text: formatTime(t['break_2_start']));
+    final b2EndCtrl      = TextEditingController(text: formatTime(t['break_2_end']));
+    final b3StartCtrl    = TextEditingController(text: formatTime(t['break_3_start']));
+    final b3EndCtrl      = TextEditingController(text: formatTime(t['break_3_end']));
+    final reasonCtrl     = TextEditingController();
+
+    bool isSaving = false;
+    String? errorMsg;
+
+    // Helper: parse HH:mm on the timecard's shift_date into a timestamptz string
+    // shiftDate is already a String like '2026-04-11'
+    String? parseToIso(String hhmm, String shiftDate) {
+      if (hhmm.trim().isEmpty) return null;
+      final parts = hhmm.trim().split(':');
+      if (parts.length != 2) return null;
+      return '${shiftDate}T${parts[0].padLeft(2,'0')}:${parts[1].padLeft(2,'0')}:00+02:00';
+    }
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: Row(
+            children: [
+              const Icon(Icons.edit_calendar, size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Edit Timecard — $staffName',
+                  style: const TextStyle(fontSize: 16),
+                ),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (errorMsg != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(errorMsg!,
+                          style: TextStyle(color: AppColors.error, fontSize: 13)),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  // Shift date (read-only label)
+                  Text(
+                    'Shift: ${t['shift_date'] ?? ''}',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500),
+                  ),
+                  const SizedBox(height: 12),
+                  // Clock in / out row
+                  Row(children: [
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Clock In (HH:MM)',
+                        controller: clockInCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Clock Out (HH:MM)',
+                        controller: clockOutCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Text('Breaks',
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppColors.textSecondary,
+                          fontWeight: FontWeight.w500)),
+                  const SizedBox(height: 8),
+                  // Break 1
+                  Row(children: [
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 1 Out',
+                        controller: b1StartCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 1 In',
+                        controller: b1EndCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  // Break 2
+                  Row(children: [
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 2 Out',
+                        controller: b2StartCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 2 In',
+                        controller: b2EndCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  // Break 3
+                  Row(children: [
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 3 Out',
+                        controller: b3StartCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FormWidgets.textFormField(
+                        label: 'Break 3 In',
+                        controller: b3EndCtrl,
+                        keyboardType: TextInputType.datetime,
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 12),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  // Reason — required
+                  FormWidgets.textFormField(
+                    label: 'Reason for edit (required)',
+                    controller: reasonCtrl,
+                    keyboardType: TextInputType.text,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isSaving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: isSaving
+                  ? null
+                  : () async {
+                      // Validate reason
+                      if (reasonCtrl.text.trim().isEmpty) {
+                        setDialogState(
+                            () => errorMsg = 'Please enter a reason for this edit.');
+                        return;
+                      }
+
+                      final shiftDate = t['shift_date'] as String? ?? '';
+
+                      // Build update payload — only include non-empty fields
+                      final newData = <String, dynamic>{
+                        if (clockInCtrl.text.trim().isNotEmpty)
+                          'clock_in': parseToIso(clockInCtrl.text, shiftDate),
+                        if (clockOutCtrl.text.trim().isNotEmpty)
+                          'clock_out': parseToIso(clockOutCtrl.text, shiftDate),
+                        'break_1_start': b1StartCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b1StartCtrl.text, shiftDate),
+                        'break_1_end': b1EndCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b1EndCtrl.text, shiftDate),
+                        'break_2_start': b2StartCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b2StartCtrl.text, shiftDate),
+                        'break_2_end': b2EndCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b2EndCtrl.text, shiftDate),
+                        'break_3_start': b3StartCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b3StartCtrl.text, shiftDate),
+                        'break_3_end': b3EndCtrl.text.trim().isEmpty
+                            ? null
+                            : parseToIso(b3EndCtrl.text, shiftDate),
+                        // Recalculate break_minutes from filled breaks
+                        'break_minutes': _calcBreakMinutes(
+                          b1StartCtrl.text, b1EndCtrl.text,
+                          b2StartCtrl.text, b2EndCtrl.text,
+                          b3StartCtrl.text, b3EndCtrl.text,
+                          shiftDate,
+                        ),
+                        // Audit trail
+                        'edited_by': SupabaseService.client.auth.currentUser?.id,
+                        'edited_at': DateTime.now().toIso8601String(),
+                        'edit_reason': reasonCtrl.text.trim(),
+                      };
+
+                      setDialogState(() => isSaving = true);
+                      try {
+                        final timeRepo = TimecardRepository(client: SupabaseService.client);
+                        await timeRepo.update(timecardId, newData);
+
+                        // Write to audit log
+                        await AuditService.log(
+                          action: 'UPDATE',
+                          module: 'HR',
+                          description:
+                              'Timecard corrected for $staffName on $shiftDate. Reason: ${reasonCtrl.text.trim()}',
+                          entityType: 'Timecard',
+                          entityId: timecardId,
+                          oldValues: {
+                            'clock_in': t['clock_in'],
+                            'clock_out': t['clock_out'],
+                            'break_1_start': t['break_1_start'],
+                            'break_1_end': t['break_1_end'],
+                            'break_2_start': t['break_2_start'],
+                            'break_2_end': t['break_2_end'],
+                            'break_3_start': t['break_3_start'],
+                            'break_3_end': t['break_3_end'],
+                          },
+                          newValues: newData,
+                        );
+
+                        if (mounted) {
+                          Navigator.pop(ctx);
+                          _load(); // refresh the list
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Timecard updated successfully'),
+                              backgroundColor: AppColors.success,
+                            ),
+                          );
+                        }
+                      } catch (e) {
+                        setDialogState(() {
+                          isSaving = false;
+                          errorMsg = 'Save failed: ${e.toString()}';
+                        });
+                      }
+                    },
+              child: isSaving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Dispose controllers
+    for (final c in [
+      clockInCtrl, clockOutCtrl,
+      b1StartCtrl, b1EndCtrl,
+      b2StartCtrl, b2EndCtrl,
+      b3StartCtrl, b3EndCtrl,
+      reasonCtrl,
+    ]) {
+      c.dispose();
+    }
+  }
+
+  /// Calculates total break minutes from HH:MM string pairs
+  int _calcBreakMinutes(
+    String b1s, String b1e,
+    String b2s, String b2e,
+    String b3s, String b3e,
+    String shiftDate,
+  ) {
+    int mins = 0;
+    for (final pair in [
+      [b1s, b1e],
+      [b2s, b2e],
+      [b3s, b3e],
+    ]) {
+      final s = pair[0].trim();
+      final e = pair[1].trim();
+      if (s.isEmpty || e.isEmpty) continue;
+      try {
+        final sp = s.split(':');
+        final ep = e.split(':');
+        final start = DateTime(2000, 1, 1,
+            int.parse(sp[0]), int.parse(sp[1]));
+        final end = DateTime(2000, 1, 1,
+            int.parse(ep[0]), int.parse(ep[1]));
+        final diff = end.difference(start).inMinutes;
+        if (diff > 0) mins += diff;
+      } catch (_) {}
+    }
+    return mins;
+  }
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1070,7 +1382,7 @@ class _LeaveTabState extends State<_LeaveTab> {
             .from('staff_requests')
             .select('*, staff_profiles!staff_id(full_name)')
             .eq('request_type', 'leave')
-            .inFilter('status', ['pending', 'rejected'])
+            .inFilter('status', ['pending', 'declined'])
             .order('created_at', ascending: false);
         
         // Tag records with type
@@ -1088,7 +1400,7 @@ class _LeaveTabState extends State<_LeaveTab> {
           return {
             ...record,
             'record_type': 'staff_request',
-            'display_status': record['status'] == 'pending' ? 'Pending' : 'Rejected',
+            'display_status': record['status'] == 'pending' ? 'Pending' : 'Declined',
             // Map staff_request fields to match leave_history format for display
             'leave_type': record['leave_type'],
             'start_date': record['leave_start_date'],
@@ -1281,7 +1593,7 @@ class _LeaveTabState extends State<_LeaveTab> {
 
     try {
       await _supabase.from('staff_requests').update({
-        'status': 'rejected',
+        'status': 'declined',
         'leave_decline_reason': reason,
         'reviewed_by': AuthService().getCurrentStaffId(),
         'reviewed_at': DateTime.now().toIso8601String(),
@@ -3386,4 +3698,328 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
 
   static const _labelStyle = TextStyle(
       fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary);
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 8: BREAK ALERTS
+// ══════════════════════════════════════════════════════════════════
+
+class _BreakAlertsTab extends StatefulWidget {
+  const _BreakAlertsTab();
+  @override
+  State<_BreakAlertsTab> createState() => _BreakAlertsTabState();
+}
+
+class _BreakAlertsTabState extends State<_BreakAlertsTab> {
+  final _supabase = SupabaseService.client;
+  List<Map<String, dynamic>> _alerts = [];
+  List<Map<String, dynamic>> _staff = [];
+  bool _isLoading = true;
+  String? _selectedStaffId;
+  String? _selectedAlertType;
+  Map<String, Map<String, int>> _monthlySummary = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
+    try {
+      final staffData = await _supabase
+          .from('staff_profiles')
+          .select('id, full_name')
+          .eq('is_active', true)
+          .order('full_name');
+
+      var query = _supabase
+          .from('staff_alerts')
+          .select('*, staff_profiles!staff_alerts_staff_id_fkey(full_name)');
+
+      if (_selectedStaffId != null) {
+        query = query.eq('staff_id', _selectedStaffId!);
+      }
+      if (_selectedAlertType != null) {
+        query = query.eq('alert_type', _selectedAlertType!);
+      }
+
+      final alertsData = List<Map<String, dynamic>>.from(
+        await query.order('triggered_at', ascending: false),
+      );
+
+      _buildMonthlySummary(alertsData);
+
+      if (!mounted) return;
+      setState(() {
+        _staff = List<Map<String, dynamic>>.from(staffData);
+        _alerts = alertsData;
+        _isLoading = false;
+      });
+    } catch (e) {
+      debugPrint('[BREAK ALERTS TAB] load error: $e');
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  void _buildMonthlySummary(List<Map<String, dynamic>> alerts) {
+    _monthlySummary = {};
+    final firstOfMonth =
+        DateTime(DateTime.now().year, DateTime.now().month);
+    for (final a in alerts) {
+      final raw = a['triggered_at'] as String?;
+      if (raw == null) continue;
+      final dt = DateTime.tryParse(raw)?.toLocal();
+      if (dt == null || dt.isBefore(firstOfMonth)) continue;
+      final name =
+          (a['staff_profiles'] as Map?)?['full_name'] as String? ?? '?';
+      final type = a['alert_type'] as String? ?? '';
+      _monthlySummary.putIfAbsent(name, () => {});
+      _monthlySummary[name]!
+          .update(type, (c) => c + 1, ifAbsent: () => 1);
+    }
+  }
+
+  String _typeLabel(String t) => switch (t) {
+        'short_break' => 'Short Break',
+        'break_overrun' => 'Break Overrun',
+        'missed_clockout' => 'Missed Clock-Out',
+        _ => t,
+      };
+
+  Color _statusColor(String s) => switch (s) {
+        'pending' => AppColors.warning,
+        'acknowledged' => AppColors.info,
+        'dismissed' => AppColors.textSecondary,
+        'expired' => AppColors.error,
+        _ => AppColors.textSecondary,
+      };
+
+  String _fmtDt(String? raw) {
+    if (raw == null) return '—';
+    final dt = DateTime.tryParse(raw)?.toLocal();
+    if (dt == null) return '—';
+    return '${dt.day.toString().padLeft(2, '0')}/'
+        '${dt.month.toString().padLeft(2, '0')}/'
+        '${dt.year} '
+        '${dt.hour.toString().padLeft(2, '0')}:'
+        '${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Monthly summary
+        if (_monthlySummary.isNotEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: AppColors.surfaceBg,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('This Month',
+                    style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                ..._monthlySummary.entries.map((e) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text(
+                        '${e.key}: '
+                        '${e.value['short_break'] ?? 0} short  '
+                        '${e.value['break_overrun'] ?? 0} overrun  '
+                        '${e.value['missed_clockout'] ?? 0} missed',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    )),
+              ],
+            ),
+          ),
+
+        // Filters
+        Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: 16, vertical: 10),
+          child: Row(children: [
+            SizedBox(
+              width: 200,
+              child: DropdownButtonFormField<String?>(
+                value: _selectedStaffId,
+                decoration: const InputDecoration(
+                    labelText: 'Staff', isDense: true),
+                items: [
+                  const DropdownMenuItem(
+                      value: null, child: Text('All Staff')),
+                  ..._staff.map((s) => DropdownMenuItem(
+                        value: s['id'] as String,
+                        child: Text(
+                            s['full_name'] as String? ?? '—',
+                            overflow: TextOverflow.ellipsis),
+                      )),
+                ],
+                onChanged: (v) {
+                  setState(() => _selectedStaffId = v);
+                  _loadData();
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            SizedBox(
+              width: 200,
+              child: DropdownButtonFormField<String?>(
+                value: _selectedAlertType,
+                decoration: const InputDecoration(
+                    labelText: 'Alert Type', isDense: true),
+                items: const [
+                  DropdownMenuItem(
+                      value: null, child: Text('All Types')),
+                  DropdownMenuItem(
+                      value: 'short_break',
+                      child: Text('Short Break')),
+                  DropdownMenuItem(
+                      value: 'break_overrun',
+                      child: Text('Break Overrun')),
+                  DropdownMenuItem(
+                      value: 'missed_clockout',
+                      child: Text('Missed Clock-Out')),
+                ],
+                onChanged: (v) {
+                  setState(() => _selectedAlertType = v);
+                  _loadData();
+                },
+              ),
+            ),
+            const SizedBox(width: 16),
+            TextButton.icon(
+              onPressed: _loadData,
+              icon: const Icon(Icons.refresh, size: 16),
+              label: const Text('Refresh'),
+            ),
+          ]),
+        ),
+
+        // Table
+        Expanded(
+          child: _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _alerts.isEmpty
+                  ? const Center(
+                      child: Text('No break alerts found',
+                          style: TextStyle(
+                              color: AppColors.textSecondary)))
+                  : SingleChildScrollView(
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: DataTable(
+                          headingRowHeight: 36,
+                          dataRowMinHeight: 40,
+                          dataRowMaxHeight: 56,
+                          columns: const [
+                            DataColumn(
+                                label: Text('DATE',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            AppColors.textSecondary))),
+                            DataColumn(
+                                label: Text('STAFF',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            AppColors.textSecondary))),
+                            DataColumn(
+                                label: Text('TYPE',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            AppColors.textSecondary))),
+                            DataColumn(
+                                label: Text('DETAILS',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            AppColors.textSecondary))),
+                            DataColumn(
+                                label: Text('STATUS',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                        color:
+                                            AppColors.textSecondary))),
+                          ],
+                          rows: _alerts.map((a) {
+                            final staffName =
+                                (a['staff_profiles'] as Map?)?[
+                                        'full_name'] as String? ??
+                                    '—';
+                            final alertType =
+                                a['alert_type'] as String? ?? '';
+                            final status =
+                                a['status'] as String? ?? '';
+                            return DataRow(cells: [
+                              DataCell(Text(
+                                  _fmtDt(
+                                      a['triggered_at'] as String?),
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color:
+                                          AppColors.textSecondary))),
+                              DataCell(Text(staffName,
+                                  style: const TextStyle(
+                                      fontSize: 13,
+                                      fontWeight:
+                                          FontWeight.w600))),
+                              DataCell(Text(
+                                  _typeLabel(alertType),
+                                  style: const TextStyle(
+                                      fontSize: 13))),
+                              DataCell(SizedBox(
+                                width: 260,
+                                child: Text(
+                                    a['body'] as String? ?? '—',
+                                    style: const TextStyle(
+                                        fontSize: 12),
+                                    overflow:
+                                        TextOverflow.ellipsis,
+                                    maxLines: 2),
+                              )),
+                              DataCell(Container(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: _statusColor(status)
+                                      .withValues(alpha: 0.15),
+                                  borderRadius:
+                                      BorderRadius.circular(8),
+                                ),
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: _statusColor(status)),
+                                ),
+                              )),
+                            ]);
+                          }).toList(),
+                        ),
+                      ),
+                    ),
+        ),
+      ],
+    );
+  }
 }

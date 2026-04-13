@@ -61,9 +61,8 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('created_at, printed, print_type, last_error, count(*)')
-          .gte('created_at', daysAgo)
-          .group('created_at::date, printed, print_type, last_error');
+          .select('created_at, printed, print_type, last_error')
+          .gte('created_at', daysAgo);
 
       // Process daily trends
       final dailyData = <String, Map<String, dynamic>>{};
@@ -121,11 +120,10 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('created_at::date, last_error, count(*)')
-          .is('last_error', 'not', null)
+          .select('created_at, last_error')
+          .not('last_error', 'is', null)
           .gte('created_at', daysAgo)
-          .group('created_at::date, last_error')
-          .order('count', ascending: false);
+          .order('created_at', ascending: false);
 
       // Process error trends by date and error type
       final errorData = <String, Map<String, int>>{};
@@ -166,10 +164,9 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       
       final response = await _supabase
           .from('online_order_print_queue')
-          .select('created_at::date, print_type, printed, count(*)')
+          .select('created_at, print_type, printed')
           .gte('created_at', daysAgo)
-          .group('created_at::date, print_type, printed')
-          .order('created_at::date');
+          .order('created_at');
 
       // Process print type performance by date
       final performanceData = <String, Map<String, dynamic>>{};
@@ -634,10 +631,10 @@ class MultiLineChartPainter extends CustomPainter {
     final stepX = chartWidth / (data.length - 1);
 
     // Draw POS line
-    _drawLine(canvas, data.map((d) => d['pos_rate']).toList(), stepX, Colors.blue);
+    _drawLine(canvas, data.map((d) => d['pos_rate'] as double?).toList(), stepX, Colors.blue);
     
     // Draw Delivery line
-    _drawLine(canvas, data.map((d) => d['delivery_rate']).toList(), stepX, Colors.orange);
+    _drawLine(canvas, data.map((d) => d['delivery_rate'] as double?).toList(), stepX, Colors.orange);
 
     // Draw legend
     _drawLegend(canvas);

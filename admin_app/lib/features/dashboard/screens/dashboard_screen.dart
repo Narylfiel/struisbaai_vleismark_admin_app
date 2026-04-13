@@ -356,72 +356,80 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadClockInStatus() async {
+    // Drop the broken RPC call entirely — go straight to direct query.
     try {
-      final data = await _supabase.rpc('get_today_clock_status').select();
-      
+      final data = await _supabase
+          .from('timecards')
+          .select('''
+            id,
+            staff_id,
+            clock_in,
+            clock_out,
+            status,
+            staff_profiles!timecards_staff_id_fkey(full_name, role)
+          ''')
+          .eq('shift_date', DateTime.now().toIso8601String().substring(0, 10))
+          .order('clock_in', ascending: true);
+
+      // Fetch all active breaks in one query (no N+1)
+      final allTimecardIds = (data as List)
+          .map((t) => t['id'] as String?)
+          .whereType<String>()
+          .toList();
+
+      Map<String, String> activeBreakStarts = {};
+      if (allTimecardIds.isNotEmpty) {
+        final breaks = await _supabase
+            .from('timecard_breaks')
+            .select('timecard_id, break_start')
+            .inFilter('timecard_id', allTimecardIds)
+            .isFilter('break_end', null);
+        for (final b in breaks as List) {
+          activeBreakStarts[b['timecard_id'] as String] =
+              b['break_start'] as String;
+        }
+      }
+
+      // Split into active (clocked_in / on_break) and clocked_out
+      final List<Map<String, dynamic>> active = [];
+      final List<Map<String, dynamic>> out = [];
+
+      for (final timecard in data) {
+        final timecardId = timecard['id'] as String? ?? '';
+        final staffProfile = timecard['staff_profiles'];
+        if (staffProfile == null) continue;
+
+        final status = timecard['status'] as String? ?? '';
+        final entry = {
+          'full_name': staffProfile['full_name'],
+          'role': staffProfile['role'],
+          'clock_in': timecard['clock_in'],
+          'clock_out': timecard['clock_out'],
+          'break_start': activeBreakStarts[timecardId],
+          'status': status,
+        };
+
+        if (status == 'clocked_out') {
+          out.add(entry);
+        } else {
+          active.add(entry);
+        }
+      }
+
+      // Show active staff first, then clocked-out staff below
       if (mounted) {
         setState(() {
-          _clockedIn = List<Map<String, dynamic>>.from(data as List);
+          _clockedIn = [...active, ...out];
           _notClockedIn = [];
         });
       }
     } catch (e) {
-      debugPrint('Clock-in status (trying direct query): $e');
-      // Fallback to direct query if RPC doesn't exist
-      try {
-        final data = await _supabase
-            .from('timecards')
-            .select('''
-              id,
-              staff_id,
-              clock_in,
-              clock_out,
-              status,
-              staff_profiles!timecards_staff_id_fkey(full_name, role)
-            ''')
-            .eq('shift_date', DateTime.now().toIso8601String().substring(0, 10))
-            .order('clock_in', ascending: true);
-
-        final List<Map<String, dynamic>> statusList = [];
-
-        for (final timecard in (data as List)) {
-          final timecardId = timecard['id'] as String?;
-          if (timecardId == null) continue;
-
-          final staffProfile = timecard['staff_profiles'];
-          if (staffProfile == null) continue;
-
-          // Check for active break
-          final breakData = await _supabase
-              .from('timecard_breaks')
-              .select('break_start, break_end')
-              .eq('timecard_id', timecardId)
-              .is_('break_end', null)
-              .maybeSingle();
-
-          statusList.add({
-            'full_name': staffProfile['full_name'],
-            'role': staffProfile['role'],
-            'clock_in': timecard['clock_in'],
-            'clock_out': timecard['clock_out'],
-            'break_start': breakData?['break_start'],
-          });
-        }
-
-        if (mounted) {
-          setState(() {
-            _clockedIn = statusList;
-            _notClockedIn = [];
-          });
-        }
-      } catch (e2) {
-        debugPrint('Clock-in status fallback: $e2');
-        if (mounted) {
-          setState(() {
-            _clockedIn = [];
-            _notClockedIn = [];
-          });
-        }
+      debugPrint('Clock-in status error: $e');
+      if (mounted) {
+        setState(() {
+          _clockedIn = [];
+          _notClockedIn = [];
+        });
       }
     }
   }
