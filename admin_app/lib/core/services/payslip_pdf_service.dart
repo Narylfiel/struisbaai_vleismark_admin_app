@@ -13,7 +13,56 @@ class PayslipPdfService {
     Map<String, dynamic>? leaveBalances,
     required DateTime periodStart,
     required DateTime periodEnd,
+    bool recalculateDeductions = true,
   }) async {
+    // Recalculate deductions from staff_credit for accurate totals
+    double meatDeduction = _num(entry['meat_purchase_deduction']);
+    double advanceDeduction = _num(entry['advance_deduction']);
+
+    if (recalculateDeductions) {
+      final client = SupabaseService.client;
+      final staffId = entry['staff_id'] as String?;
+      final startStr =
+          periodStart.toIso8601String().substring(0, 10);
+      final endStr = periodEnd.toIso8601String().substring(0, 10);
+
+      if (staffId != null) {
+        try {
+          final meatReq = await client
+              .from('staff_credit')
+              .select('credit_amount')
+              .eq('staff_id', staffId)
+              .eq('credit_type', 'meat_purchase')
+              .inFilter('status',
+                  ['pending', 'partial', 'owing', 'deducted'])
+              .gte('deduct_from', startStr)
+              .lte('deduct_from', endStr);
+          meatDeduction = (meatReq as List).fold(
+            0.0,
+            (sum, row) =>
+                sum + (row['credit_amount'] as num).toDouble(),
+          );
+
+          final advReq = await client
+              .from('staff_credit')
+              .select('credit_amount')
+              .eq('staff_id', staffId)
+              .eq('credit_type', 'salary_advance')
+              .inFilter(
+                  'status', ['pending', 'owing', 'deducted'])
+              .gte('deduct_from', startStr)
+              .lte('deduct_from', endStr);
+          advanceDeduction = (advReq as List).fold(
+            0.0,
+            (sum, row) =>
+                sum + (row['credit_amount'] as num).toDouble(),
+          );
+        } catch (_) {
+          // Fall back to stored values if query fails
+        }
+      }
+    }
+
     final fetchedBusiness = await _fetchBusinessSettings();
     final biz = <String, dynamic>{
       ...fetchedBusiness,
@@ -51,14 +100,13 @@ class PayslipPdfService {
 
     final uifEmployee = _num(entry['uif_employee']);
     final uifEmployer = _num(entry['uif_employer']);
-    final meatDeduction = _num(entry['meat_purchase_deduction']);
-    final advanceDeduction = _num(entry['advance_deduction']);
+    // meatDeduction and advanceDeduction already calculated above
     final otherDeductions = _num(entry['other_deductions']);
     final totalDeductions = uifEmployee + meatDeduction + advanceDeduction + otherDeductions;
     final netPay = _num(entry['net_pay']);
 
     final status = _string(entry['status'], fallback: 'draft');
-    final payDate = _dateString(entry['paid_at'], fallback: _fmtDate(periodEnd));
+    final payDate = _fmtDate(periodEnd);
     final payPeriod = '${_fmtDate(periodStart)} to ${_fmtDate(periodEnd)}';
 
     final earningsRows = isSalaried

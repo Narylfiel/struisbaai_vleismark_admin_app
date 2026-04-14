@@ -321,6 +321,108 @@ class _MappingCardState extends State<_MappingCard> {
     }
   }
 
+  Future<Map<String, dynamic>?> _showQuickAddInventoryDialog(
+      BuildContext context, String suggestedName) async {
+    final nameCtrl = TextEditingController(text: suggestedName);
+    String selectedUnit = 'kg';
+
+    return showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx2, setDlg) => AlertDialog(
+          title: const Text('Quick Add Product'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Product name',
+                    isDense: true,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: selectedUnit,
+                  decoration: const InputDecoration(
+                    labelText: 'Unit',
+                    isDense: true,
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                        value: 'kg', child: Text('kg')),
+                    DropdownMenuItem(
+                        value: 'units',
+                        child: Text('units')),
+                    DropdownMenuItem(
+                        value: 'packs',
+                        child: Text('packs')),
+                  ],
+                  onChanged: (v) =>
+                      setDlg(() => selectedUnit = v ?? 'kg'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, null),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final name = nameCtrl.text.trim();
+                if (name.isEmpty) return;
+                try {
+                  // Get next available PLU code
+                  final maxPlu = await Supabase.instance.client
+                      .from('inventory_items')
+                      .select('plu_code')
+                      .order('plu_code', ascending: false)
+                      .limit(1)
+                      .single();
+                  final nextPlu =
+                      ((maxPlu['plu_code'] as int?) ?? 9000) + 1;
+
+                  final result = await Supabase.instance.client
+                      .from('inventory_items')
+                      .insert({
+                        'name': name,
+                        'plu_code': nextPlu,
+                        'unit_type': selectedUnit,
+                        'item_type': 'internal',
+                        'stock_control_type': 'use_stock_control',
+                        'is_active': true,
+                        'available_pos': false,
+                        'available_online': false,
+                      })
+                      .select('id, name, plu_code')
+                      .single();
+
+                  if (ctx.mounted) {
+                    Navigator.pop(
+                        ctx, Map<String, dynamic>.from(result));
+                  }
+                } catch (e) {
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
+                      SnackBar(
+                        content: Text('Failed to create: $e'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                }
+              },
+              child: const Text('Create'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isInventoryAccount = _selectedAccount != null &&
@@ -363,6 +465,76 @@ class _MappingCardState extends State<_MappingCard> {
                   fontSize: 12, color: Color(0xFF666666)),
             ),
             const SizedBox(height: 12),
+            // Suggestions from past mappings
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: widget.mappingService.findSimilarMappings(
+                description: widget.item.description,
+                supplierId: widget.supplierId,
+              ),
+              builder: (ctx, snap) {
+                if (!snap.hasData || snap.data!.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Similar items mapped before:',
+                        style: TextStyle(
+                            fontSize: 11,
+                            color: Color(0xFF666666),
+                            fontWeight: FontWeight.w500)),
+                    const SizedBox(height: 4),
+                    ...snap.data!.map((m) {
+                      final desc =
+                          m['supplier_description'] as String? ?? '';
+                      final acct = (m['chart_of_accounts']
+                                  as Map?)?['name']
+                              as String? ??
+                          m['account_code'] as String? ?? '';
+                      return InkWell(
+                        onTap: () {
+                          // Apply this suggestion
+                          final accountCode =
+                              m['account_code'] as String?;
+                          if (accountCode != null) {
+                            setState(() {
+                              _selectedAccount = widget.accounts
+                                  .firstWhere(
+                                (a) => a.code == accountCode,
+                                orElse: () => widget.accounts.first,
+                              );
+                            });
+                          }
+                        },
+                        child: Padding(
+                          padding:
+                              const EdgeInsets.symmetric(vertical: 4),
+                          child: Row(children: [
+                            const Icon(Icons.history,
+                                size: 14,
+                                color: Color(0xFF666666)),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '$desc → $acct',
+                                style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Color(0xFF666666)),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios,
+                                size: 10,
+                                color: Color(0xFF666666)),
+                          ]),
+                        ),
+                      );
+                    }),
+                    const Divider(height: 16),
+                  ],
+                );
+              },
+            ),
             const Text('Post to account:',
                 style: TextStyle(
                     fontSize: 12, fontWeight: FontWeight.w600)),
@@ -390,6 +562,46 @@ class _MappingCardState extends State<_MappingCard> {
                 }
               }),
             ),
+            const SizedBox(height: 10),
+            const Text('Quick category:',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                    color: Color(0xFF666666))),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 8,
+              children: [
+                _QuickCategoryChip(
+                  label: 'Raw Ingredient',
+                  onTap: () => setState(() {
+                    _selectedAccount = widget.accounts
+                        .firstWhere((a) => a.code == '1200');
+                  }),
+                ),
+                _QuickCategoryChip(
+                  label: 'Spice / Seasoning',
+                  onTap: () => setState(() {
+                    _selectedAccount = widget.accounts
+                        .firstWhere((a) => a.code == '5200');
+                  }),
+                ),
+                _QuickCategoryChip(
+                  label: 'Packaging',
+                  onTap: () => setState(() {
+                    _selectedAccount = widget.accounts
+                        .firstWhere((a) => a.code == '5100');
+                  }),
+                ),
+                _QuickCategoryChip(
+                  label: 'Cleaning Supply',
+                  onTap: () => setState(() {
+                    _selectedAccount = widget.accounts
+                        .firstWhere((a) => a.code == '6700');
+                  }),
+                ),
+              ],
+            ),
             if (isInventoryAccount) ...[
               const SizedBox(height: 10),
               const Text('Link to inventory product:',
@@ -415,6 +627,22 @@ class _MappingCardState extends State<_MappingCard> {
                     .toList(),
                 onChanged: (v) =>
                     setState(() => _selectedInventoryItem = v),
+              ),
+              const SizedBox(height: 8),
+              TextButton.icon(
+                onPressed: () async {
+                  final newItem = await _showQuickAddInventoryDialog(
+                      context, widget.item.description);
+                  if (newItem != null && mounted) {
+                    setState(() {
+                      _selectedInventoryItem = newItem;
+                      _updateStock = true;
+                    });
+                  }
+                },
+                icon: const Icon(Icons.add, size: 14),
+                label: const Text('Create new product',
+                    style: TextStyle(fontSize: 12)),
               ),
               if (_selectedInventoryItem != null)
                 CheckboxListTile(
@@ -569,6 +797,28 @@ class _AllMappingsTab extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Quick Category Chip Widget ─────────────────────────────────────
+
+class _QuickCategoryChip extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+
+  const _QuickCategoryChip({
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ActionChip(
+      label: Text(label, style: const TextStyle(fontSize: 11)),
+      onPressed: onTap,
+      backgroundColor: const Color(0xFFF5F5F5),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
     );
   }
 }

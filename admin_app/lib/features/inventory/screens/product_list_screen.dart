@@ -2221,35 +2221,38 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     }
     setState(() => _recipeCostLoading = true);
     try {
-      final recipe = await _supabase.from('recipes').select('id, name, batch_size_kg').eq('id', recipeId).maybeSingle();
+      final recipe = await _supabase
+          .from('recipes')
+          .select('id, name, cost_per_unit')
+          .eq('id', recipeId)
+          .maybeSingle();
+
       if (recipe == null) {
-        if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
+        if (mounted) {
+          setState(() {
+            _recipeCostPerKg = null;
+            _recipeCostLoading = false;
+          });
+        }
         return;
       }
-      final batchSize = (recipe['batch_size_kg'] as num?)?.toDouble() ?? 1.0;
-      if (batchSize <= 0) {
-        if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
-        return;
+
+      final costPerUnit =
+          (recipe['cost_per_unit'] as num?)?.toDouble();
+
+      if (mounted) {
+        setState(() {
+          _recipeCostPerKg = costPerUnit;
+          _recipeCostLoading = false;
+        });
       }
-      final ingredients = await _supabase
-          .from('recipe_ingredients')
-          .select('inventory_item_id, quantity')
-          .eq('recipe_id', recipeId);
-      double totalCost = 0;
-      for (final ing in ingredients as List) {
-        final itemId = (ing as Map)['inventory_item_id']?.toString();
-        final qty = ((ing['quantity'] as num?)?.toDouble()) ?? 0;
-        if (itemId == null || qty <= 0) continue;
-        final item = await _supabase.from('inventory_items').select('cost_price').eq('id', itemId).maybeSingle();
-        final cp = (item?['cost_price'] as num?)?.toDouble();
-        if (cp != null) totalCost += qty * cp;
-      }
-      if (mounted) setState(() {
-        _recipeCostPerKg = totalCost / batchSize;
-        _recipeCostLoading = false;
-      });
     } catch (_) {
-      if (mounted) setState(() { _recipeCostPerKg = null; _recipeCostLoading = false; });
+      if (mounted) {
+        setState(() {
+          _recipeCostPerKg = null;
+          _recipeCostLoading = false;
+        });
+      }
     }
   }
 

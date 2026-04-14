@@ -290,7 +290,9 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         // kg, l, units, or anything else — use as-is
         qtyInKg = qty;
       }
-      ingredientTotal += qtyInKg * cp;
+      final yieldFactor = row.yieldPct / 100.0;
+      final effectiveCost = cp / yieldFactor;
+      ingredientTotal += qtyInKg * effectiveCost;
     }
 
     final labourCost =
@@ -430,6 +432,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     unit: ri.unit,
                     isOptional: ri.isOptional,
                     recipeIngredientId: ri.id,
+                    yieldPct: ri.yieldPct,
                   ))
               .toList();
         });
@@ -603,6 +606,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
             quantity: row.quantity,
             unit: row.unit.trim().isEmpty ? 'kg' : row.unit.trim(),
             isOptional: row.isOptional,
+            yieldPct: row.yieldPct,
           );
           await _repo.createIngredient(ing);
         }
@@ -912,7 +916,9 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                             } else {
                               qtyInKg = row.quantity;
                             }
-                            final lineCost = qtyInKg * cp;
+                            final yieldFactor = row.yieldPct / 100.0;
+                            final effectiveCost = cp / yieldFactor;
+                            final lineCost = qtyInKg * effectiveCost;
                             return Padding(
                               padding:
                                   const EdgeInsets.only(bottom: 4),
@@ -935,12 +941,27 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                                         color: AppColors.textSecondary),
                                   ),
                                   const SizedBox(width: 8),
-                                  Text(
-                                    '× R${cp.toStringAsFixed(2)}/kg',
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textSecondary),
-                                  ),
+                                  if (row.yieldPct < 100) ...[
+                                    Text(
+                                      '÷ ${(row.yieldPct / 100).toStringAsFixed(2)} yield',
+                                      style: const TextStyle(
+                                          fontSize: 11, color: Colors.orange),
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '= R${effectiveCost.toStringAsFixed(2)}/kg',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.orange),
+                                    ),
+                                  ] else
+                                    Text(
+                                      '× R${cp.toStringAsFixed(2)}/kg',
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary),
+                                    ),
                                   const Spacer(),
                                   Text(
                                     'R${lineCost.toStringAsFixed(2)}',
@@ -1197,76 +1218,150 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Row(
+        child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Expanded(
-              flex: 2,
-              child: TextFormField(
-                initialValue: row.ingredientName,
-                decoration: const InputDecoration(labelText: 'Name', isDense: true),
-                onChanged: (v) => row.ingredientName = v,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: InkWell(
-                onTap: () async {
-                  final id = await _showProductPicker(currentValue: row.inventoryItemId);
-                  if (id == null || !mounted) return;
-                  setState(() => row.inventoryItemId = id.isEmpty ? null : id);
-                  _calculateCost();
-                },
-                child: InputDecorator(
-                  decoration: const InputDecoration(
-                    labelText: 'Linked item',
-                    isDense: true,
-                    suffixIcon: Icon(Icons.arrow_drop_down, size: 20),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  flex: 2,
+                  child: TextFormField(
+                    initialValue: row.ingredientName,
+                    decoration: const InputDecoration(labelText: 'Name', isDense: true),
+                    onChanged: (v) => row.ingredientName = v,
                   ),
-                  child: Text(
-                    row.inventoryItemId == null || row.inventoryItemId!.isEmpty
-                        ? '—'
-                        : _productLabel(_inventoryItems.firstWhere(
-                            (e) => e['id'] == row.inventoryItemId,
-                            orElse: () => {'plu_code': '—', 'name': row.inventoryItemId ?? ''},
-                          )),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: (row.inventoryItemId == null || row.inventoryItemId!.isEmpty) ? AppColors.textSecondary : null,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: InkWell(
+                    onTap: () async {
+                      final id = await _showProductPicker(currentValue: row.inventoryItemId);
+                      if (id == null || !mounted) return;
+                      setState(() => row.inventoryItemId = id.isEmpty ? null : id);
+                      _calculateCost();
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Linked item',
+                        isDense: true,
+                        suffixIcon: Icon(Icons.arrow_drop_down, size: 20),
+                      ),
+                      child: Text(
+                        row.inventoryItemId == null || row.inventoryItemId!.isEmpty
+                            ? '—'
+                            : _productLabel(_inventoryItems.firstWhere(
+                                (e) => e['id'] == row.inventoryItemId,
+                                orElse: () => {'plu_code': '—', 'name': row.inventoryItemId ?? ''},
+                              )),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: (row.inventoryItemId == null || row.inventoryItemId!.isEmpty) ? AppColors.textSecondary : null,
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 80,
+                  child: TextFormField(
+                    initialValue: row.quantity > 0 ? row.quantity.toString() : '',
+                    decoration: const InputDecoration(labelText: 'Qty', isDense: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    onChanged: (v) {
+                      row.quantity = double.tryParse(v) ?? 0;
+                      _calculateCost();
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 60,
+                  child: TextFormField(
+                    initialValue: row.unit,
+                    decoration: const InputDecoration(labelText: 'Unit', isDense: true),
+                    onChanged: (v) {
+                      row.unit = v;
+                      _calculateCost();
+                    },
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
+                  onPressed: () => _removeIngredient(index),
+                  tooltip: 'Remove',
+                ),
+              ],
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 80,
-              child: TextFormField(
-                initialValue: row.quantity > 0 ? row.quantity.toString() : '',
-                decoration: const InputDecoration(labelText: 'Qty', isDense: true),
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                onChanged: (v) {
-                  row.quantity = double.tryParse(v) ?? 0;
-                  _calculateCost();
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            SizedBox(
-              width: 60,
-              child: TextFormField(
-                initialValue: row.unit,
-                decoration: const InputDecoration(labelText: 'Unit', isDense: true),
-                onChanged: (v) {
-                  row.unit = v;
-                  _calculateCost();
-                },
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.remove_circle_outline, color: AppColors.danger),
-              onPressed: () => _removeIngredient(index),
-              tooltip: 'Remove',
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                SizedBox(
+                  width: 130,
+                  child: StatefulBuilder(
+                    builder: (ctx, setRow) => TextFormField(
+                      initialValue: row.yieldPct == 100.0
+                          ? '100'
+                          : row.yieldPct.toStringAsFixed(0),
+                      decoration: const InputDecoration(
+                        labelText: 'Yield %',
+                        isDense: true,
+                        suffixText: '%',
+                        helperText: '100 = no loss',
+                        helperStyle: TextStyle(fontSize: 10),
+                      ),
+                      keyboardType:
+                          const TextInputType.numberWithOptions(
+                              decimal: true),
+                      onChanged: (v) {
+                        final val =
+                            double.tryParse(v) ?? 100.0;
+                        setState(() {
+                          row.yieldPct = val.clamp(1.0, 100.0);
+                        });
+                        _calculateCost();
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (row.yieldPct < 99.9 &&
+                    row.inventoryItemId != null &&
+                    row.inventoryItemId!.isNotEmpty)
+                  Builder(builder: (ctx) {
+                    final cp =
+                        _costPriceCache[row.inventoryItemId];
+                    if (cp == null || cp <= 0) {
+                      return const SizedBox.shrink();
+                    }
+                    final effectiveCost =
+                        cp / (row.yieldPct / 100.0);
+                    final lossPercent =
+                        (100 - row.yieldPct).toStringAsFixed(0);
+                    return Expanded(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade50,
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                              color: Colors.orange.shade200),
+                        ),
+                        child: Text(
+                          'Effective: R${effectiveCost.toStringAsFixed(2)}/kg '
+                          '(after $lossPercent% loss)',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ),
+                    );
+                  }),
+              ],
             ),
           ],
         ),
@@ -1282,6 +1377,7 @@ class _IngredientRow {
   String unit;
   bool isOptional;
   String? recipeIngredientId;
+  double yieldPct;
 
   _IngredientRow({
     this.ingredientName = '',
@@ -1290,5 +1386,6 @@ class _IngredientRow {
     this.unit = 'kg',
     this.isOptional = false,
     this.recipeIngredientId,
+    this.yieldPct = 100.0,
   });
 }

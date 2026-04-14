@@ -10,6 +10,7 @@ class RecipeIngredient extends BaseModel {
   final int sortOrder;
   final bool isOptional;
   final String? notes;
+  final double yieldPct;
 
   const RecipeIngredient({
     required super.id,
@@ -21,6 +22,7 @@ class RecipeIngredient extends BaseModel {
     this.sortOrder = 0,
     this.isOptional = false,
     this.notes,
+    this.yieldPct = 100.0,
     super.createdAt,
     super.updatedAt,
   });
@@ -37,6 +39,7 @@ class RecipeIngredient extends BaseModel {
       'sort_order': sortOrder,
       'is_optional': isOptional,
       'notes': notes,
+      'yield_pct': yieldPct,
       'created_at': createdAt?.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
     };
@@ -53,6 +56,7 @@ class RecipeIngredient extends BaseModel {
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
       isOptional: json['is_optional'] as bool? ?? false,
       notes: json['notes'] as String?,
+      yieldPct: (json['yield_pct'] as num?)?.toDouble() ?? 100.0,
       createdAt: json['created_at'] != null
           ? DateTime.tryParse(json['created_at'] as String)
           : null,
@@ -67,7 +71,8 @@ class RecipeIngredient extends BaseModel {
       recipeId.isNotEmpty &&
       ingredientName.trim().isNotEmpty &&
       quantity >= 0 &&
-      unit.trim().isNotEmpty;
+      unit.trim().isNotEmpty &&
+      yieldPct > 0 && yieldPct <= 100;
 
   @override
   List<String> getValidationErrors() {

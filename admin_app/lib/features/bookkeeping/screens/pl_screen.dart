@@ -306,16 +306,20 @@ class _PLScreenState extends State<PLScreen> {
                     ],
                   ),
                   const SizedBox(width: 8),
-                  OutlinedButton.icon(
-                    onPressed: _exportPdf,
-                    icon: const Icon(Icons.picture_as_pdf, size: 18),
-                    label: const Text('Export PDF'),
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: _exportPdf,
+                      icon: const Icon(Icons.picture_as_pdf, size: 18),
+                      label: const Text('Export PDF', overflow: TextOverflow.ellipsis),
+                    ),
                   ),
                   const SizedBox(width: 4),
-                  OutlinedButton.icon(
-                    onPressed: _exportExcel,
-                    icon: const Icon(Icons.table_chart, size: 18),
-                    label: const Text('Export Excel'),
+                  Flexible(
+                    child: OutlinedButton.icon(
+                      onPressed: _exportExcel,
+                      icon: const Icon(Icons.table_chart, size: 18),
+                      label: const Text('Export Excel', overflow: TextOverflow.ellipsis),
+                    ),
                   ),
                 ],
               );
@@ -346,8 +350,8 @@ class _PLScreenState extends State<PLScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('PROFIT & LOSS STATEMENT', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-                  Text('Period: $_periodLabel', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                  if (_compareWithPrev) Text('vs $_prevPeriodLabel', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
+                  Text('Period: ${_periodLabel()}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  if (_compareWithPrev) Text('vs ${_prevPeriodLabel()}', style: const TextStyle(color: AppColors.textSecondary, fontSize: 11)),
                   const Divider(height: 32),
                   if (_compareWithPrev)
                     Padding(

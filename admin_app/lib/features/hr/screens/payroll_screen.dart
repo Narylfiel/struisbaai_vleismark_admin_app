@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/services/payslip_pdf_service.dart';
@@ -298,8 +299,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'meat_purchase')
-            .inFilter('status', ['pending', 'partial', 'owing'])
-            .lte('granted_date', endStr);
+            .inFilter('status', ['pending', 'partial', 'owing', 'deducted'])
+            .gte('deduct_from', startStr)
+            .lte('deduct_from', endStr);
         double meatDed = (meatReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
         // 2h. Advances
@@ -307,9 +309,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'salary_advance')
-            .inFilter('status', ['pending', 'owing'])
-            .gte('granted_date', startStr)
-            .lte('granted_date', endStr);
+            .inFilter('status', ['pending', 'owing', 'deducted'])
+            .gte('deduct_from', startStr)
+            .lte('deduct_from', endStr);
         double advDed = (advReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
         // 2i. Totals
@@ -435,6 +437,100 @@ class _PayrollScreenState extends State<PayrollScreen> {
     }
   }
 
+  Future<void> _uploadPayslipsToStorage(
+    List<Map<String, dynamic>> entries,
+    DateTime periodStart,
+    DateTime periodEnd,
+  ) async {
+    final pdfService = PayslipPdfService();
+    final businessSettings = await _client
+        .from('business_settings')
+        .select()
+        .limit(1)
+        .single();
+
+    for (final entry in entries) {
+      try {
+        final staffId = entry['staff_id'] as String?;
+        if (staffId == null) continue;
+
+        final staffData = await _client
+            .from('staff_profiles')
+            .select('*')
+            .eq('id', staffId)
+            .single();
+
+        final file = await pdfService.generatePayslip(
+          entry: entry,
+          staffMap: staffData,
+          businessSettings: businessSettings,
+          periodStart: periodStart,
+          periodEnd: periodEnd,
+          recalculateDeductions: true,
+        );
+
+        final period =
+            '${periodStart.year}-${periodStart.month.toString().padLeft(2, '0')}';
+        final storagePath = '$staffId/$period.pdf';
+
+        final bytes = await file.readAsBytes();
+        await _client.storage
+            .from('payslips')
+            .uploadBinary(
+              storagePath,
+              bytes,
+              fileOptions: const FileOptions(
+                contentType: 'application/pdf',
+                upsert: true,
+              ),
+            );
+
+        debugPrint('[PAYROLL] Uploaded payslip: $storagePath');
+      } catch (e) {
+        debugPrint('[PAYROLL] Failed to upload payslip for '
+            '${entry['staff_id']}: $e');
+      }
+    }
+  }
+
+  Future<void> _generatePayslipsForPeriod() async {
+    if (_periodStart == null ||
+        _periodEnd == null ||
+        _calculatedEntries.isEmpty) return;
+
+    setState(() => _isGeneratingAllPayslips = true);
+
+    try {
+      await _uploadPayslipsToStorage(
+        _calculatedEntries,
+        _periodStart!,
+        _periodEnd!,
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+                'Payslips generated and uploaded successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to generate payslips: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGeneratingAllPayslips = false);
+      }
+    }
+  }
+
   Future<void> _approvePayroll() async {
     final startStr = _periodStart!.toIso8601String().substring(0, 10);
     final endStr = _periodEnd!.toIso8601String().substring(0, 10);
@@ -475,7 +571,8 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .update({'status': 'deducted'})
           .eq('credit_type', 'meat_purchase')
           .inFilter('status', ['pending', 'partial', 'owing'])
-          .lte('granted_date', endStr)
+          .gte('deduct_from', startStr)
+          .lte('deduct_from', endStr)
           .inFilter('staff_id', staffIds);
 
         // 3. UPDATE Salary Advances
@@ -483,15 +580,15 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .update({'status': 'deducted'})
           .eq('credit_type', 'salary_advance')
           .inFilter('status', ['pending', 'owing'])
-          .gte('granted_date', startStr)
-          .lte('granted_date', endStr)
+          .gte('deduct_from', startStr)
+          .lte('deduct_from', endStr)
           .inFilter('staff_id', staffIds);
       }
 
       // 4. Update period
       await _client.from('payroll_periods')
         .update({
-          'status': 'approved',
+          'status': 'completed',
           'processed_at': DateTime.now().toIso8601String(),
           'processed_by': currentUserId,
         })
@@ -501,6 +598,13 @@ class _PayrollScreenState extends State<PayrollScreen> {
       await _loadExistingPeriod();
 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payroll approved'), backgroundColor: AppColors.success));
+
+      // Upload payslips to storage for clock-in app access
+      await _uploadPayslipsToStorage(
+        _calculatedEntries,
+        _periodStart!,
+        _periodEnd!,
+      );
     } catch (e, stack) {
       debugPrint('=== APPROVE PAYROLL ERROR ===');
       debugPrint('Error: $e');
@@ -586,6 +690,13 @@ class _PayrollScreenState extends State<PayrollScreen> {
       await _loadExistingPeriod();
 
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Payroll marked as paid'), backgroundColor: AppColors.success));
+
+      // Upload payslips to storage for clock-in app access
+      await _uploadPayslipsToStorage(
+        _calculatedEntries,
+        _periodStart!,
+        _periodEnd!,
+      );
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
     } finally {
@@ -1185,6 +1296,42 @@ class _PayrollScreenState extends State<PayrollScreen> {
                                       style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.1),
                                     ),
                             ),
+                    ],
+                    if (isOwner &&
+                        _calculatedEntries.isNotEmpty &&
+                        _calculatedEntries
+                            .every((e) => e['status'] == 'paid')) ...[
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _isGeneratingAllPayslips
+                              ? null
+                              : _generatePayslipsForPeriod,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.info,
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 16),
+                          ),
+                          child: _isGeneratingAllPayslips
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  'GENERATE PAYSLIPS',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 1.1,
+                                  ),
+                                ),
+                        ),
+                      ),
                     ],
                   ],
                 ),

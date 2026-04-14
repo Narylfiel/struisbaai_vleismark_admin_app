@@ -266,8 +266,22 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                       DataCell(
                         ActionButtonsWidget(
                           actions: [
-                            ActionButtons.edit(onPressed: () => _navigateToForm(recipe: r), iconOnly: true),
-                            ActionButtons.delete(onPressed: () => _confirmDelete(r), iconOnly: true),
+                            ActionButton(
+                              label: 'Edit',
+                              icon: Icons.edit,
+                              type: ActionType.ghost,
+                              onPressed: () => _navigateToForm(recipe: r),
+                              iconOnly: true,
+                              tooltip: 'Edit recipe',
+                            ),
+                            ActionButton(
+                              label: 'Delete',
+                              icon: Icons.delete,
+                              type: ActionType.warning,
+                              onPressed: () => _confirmDelete(r),
+                              iconOnly: true,
+                              tooltip: 'Delete recipe',
+                            ),
                           ],
                           compact: true,
                           spacing: 8,

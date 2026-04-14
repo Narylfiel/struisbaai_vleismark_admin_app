@@ -146,6 +146,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     final amountController = TextEditingController();
     bool chargeToStaff = true; // true = [+] staff owes company, false = [-] company owes staff
     final notesController = TextEditingController();
+    DateTime selectedDate = DateTime.now();
 
     final saved = await showDialog<bool>(
       context: context,
@@ -183,6 +184,37 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                   label: 'Amount (R)',
                   controller: amountController,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ),
+                const SizedBox(height: 12),
+                StatefulBuilder(
+                  builder: (ctx2, setDate) => InkWell(
+                    onTap: () async {
+                      final picked = await showDatePicker(
+                        context: ctx2,
+                        initialDate: selectedDate,
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime.now(),
+                      );
+                      if (picked != null) {
+                        setDialog(() => selectedDate = picked);
+                        setDate(() {});
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Date',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.calendar_today),
+                        isDense: true,
+                      ),
+                      child: Text(
+                        '${selectedDate.year}-'
+                        '${selectedDate.month.toString().padLeft(2, '0')}-'
+                        '${selectedDate.day.toString().padLeft(2, '0')}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 12),
                 const Text('Direction', style: TextStyle(color: AppColors.textPrimary, fontSize: 14, fontWeight: FontWeight.w500)),
@@ -244,7 +276,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
           'credit_type': type.dbValue,
           'credit_amount': signedAmount,
           'reason': reason,
-          'granted_date': DateTime.now().toIso8601String(),
+          'granted_date': selectedDate.toIso8601String(),
           'granted_by': userId,
           'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
         });
@@ -254,14 +286,25 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         }
         return;
       }
+      final selectedStaff = _staffList.firstWhere(
+        (s) => s['id'] == selectedStaffId,
+        orElse: () => <String, dynamic>{},
+      );
+      final payFrequency =
+          selectedStaff['pay_frequency'] as String?;
+      final deductFrom = _calculateDeductionDate(selectedDate, payFrequency)
+          .toIso8601String()
+          .substring(0, 10);
+
       await _repo.create(
         staffId: selectedStaffId,
         creditType: type,
         amount: signedAmount,
         reason: reason,
-        grantedDate: DateTime.now(),
+        grantedDate: selectedDate,
         grantedBy: userId,
         notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
+        deductFrom: deductFrom,
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Credit entry saved'), backgroundColor: AppColors.success));
@@ -321,14 +364,27 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         'reviewed_at': DateTime.now().toIso8601String(),
       }).eq('id', request['id']);
 
+      final staffPayData = await _client
+          .from('staff_profiles')
+          .select('pay_frequency')
+          .eq('id', request['staff_id'].toString())
+          .single();
+      final advancePayFreq =
+          staffPayData['pay_frequency'] as String?;
+      final advanceGrantedDate = DateTime.now();
+      final advanceDeductFrom =
+          _calculateDeductionDate(advanceGrantedDate, advancePayFreq)
+              .toIso8601String()
+              .substring(0, 10);
+
       await _repo.create(
         staffId: request['staff_id'],
         creditType: StaffCreditType.salaryAdvance,
         amount: approvedAmt,
         reason: request['advance_reason']?.toString() ?? 'Salary advance',
-        grantedDate: DateTime.now(),
+        grantedDate: advanceGrantedDate,
         grantedBy: currentUserId,
-        deductFrom: 'next_payroll',
+        deductFrom: advanceDeductFrom,
       );
 
       _loadAdvances();
@@ -494,6 +550,126 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     }
   }
 
+  Future<void> _editDeductFrom(StaffCredit credit) async {
+    final staffData = _staffList.firstWhere(
+      (s) => s['id'] == credit.staffId,
+      orElse: () => <String, dynamic>{},
+    );
+    final staffName =
+        staffData['full_name'] as String? ?? 'Unknown';
+    final payFrequency =
+        staffData['pay_frequency'] as String?;
+
+    DateTime initialDate = credit.grantedDate;
+
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      helpText: payFrequency == 'weekly'
+          ? 'Select any date in the target pay week'
+          : 'Select any date in the target month',
+    );
+
+    if (picked == null || !mounted) return;
+
+    final newDeductFrom =
+        _calculateDeductionDate(picked, payFrequency)
+            .toIso8601String()
+            .substring(0, 10);
+
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Update Deduction Period'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Staff: $staffName'),
+            const SizedBox(height: 8),
+            Text('Change deduction period to:'),
+            const SizedBox(height: 4),
+            Text(
+              _formatDeductFrom(newDeductFrom),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, fontSize: 16),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirm != true || !mounted) return;
+
+    try {
+      await _client
+          .from('staff_credit')
+          .update({'deduct_from': newDeductFrom})
+          .eq('id', credit.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Deduction period updated to: $newDeductFrom'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+        _loadCredits();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
+  }
+
+  String _formatDeductFrom(String? raw) {
+    if (raw == null || raw.isEmpty) return '—';
+    final date = DateTime.tryParse(raw);
+    if (date == null) return raw;
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    return '${date.day.toString().padLeft(2, '0')} '
+        '${months[date.month]} ${date.year}';
+  }
+
+  DateTime _calculateDeductionDate(
+      DateTime grantedDate, String? payFrequency) {
+    if (payFrequency == 'weekly') {
+      // Next Saturday. If granted ON Saturday, use following Saturday.
+      final dow = grantedDate.weekday; // 1=Mon ... 6=Sat, 7=Sun
+      final daysToSat = dow == 6 ? 7 : (6 - dow);
+      return DateTime(
+        grantedDate.year,
+        grantedDate.month,
+        grantedDate.day,
+      ).add(Duration(days: daysToSat));
+    } else {
+      // Monthly: first day of granted month
+      return DateTime(grantedDate.year, grantedDate.month, 1);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final entries = _entriesWithRunningBalance;
@@ -651,6 +827,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                   Expanded(flex: 2, child: Text('Reason', style: _headerStyle)),
                   SizedBox(width: 110, child: Text('Type', style: _headerStyle)),
                   SizedBox(width: 90, child: Text('Status', style: _headerStyle)),
+                  SizedBox(width: 130, child: Text('Deduct from', style: _headerStyle)),
                   SizedBox(width: 100, child: Text('Amount', style: _headerStyle)),
                   SizedBox(width: 110, child: Text('Running balance', style: _headerStyle)),
                 ],
@@ -686,6 +863,40 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                                 Expanded(flex: 2, child: Text(e.credit.reason, overflow: TextOverflow.ellipsis)),
                                 SizedBox(width: 110, child: Text(e.credit.creditType.displayLabel, style: TextStyle(color: _typeColor(e.credit.creditType), fontSize: 12))),
                                 SizedBox(width: 90, child: Align(alignment: Alignment.centerLeft, child: _StatusChip(status: e.credit.status))),
+                                SizedBox(
+                                  width: 130,
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _formatDeductFrom(e.credit.deductFrom),
+                                          style: TextStyle(
+                                            color: e.credit.status == StaffCreditStatus.pending
+                                                ? const Color(0xFFFFB300)
+                                                : AppColors.textSecondary,
+                                            fontSize: 11,
+                                            fontWeight:
+                                                e.credit.status == StaffCreditStatus.pending
+                                                    ? FontWeight.w600
+                                                    : FontWeight.normal,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      InkWell(
+                                        onTap: () => _editDeductFrom(e.credit),
+                                        child: const Padding(
+                                          padding: EdgeInsets.only(left: 4),
+                                          child: Icon(
+                                            Icons.edit,
+                                            size: 13,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                                 SizedBox(width: 100, child: Text(amtStr, style: TextStyle(color: amtColor, fontWeight: FontWeight.w600))),
                                 SizedBox(width: 110, child: Text('R ${e.runningBalance.toStringAsFixed(2)}', style: TextStyle(color: runColor, fontWeight: FontWeight.w500))),
                               ],

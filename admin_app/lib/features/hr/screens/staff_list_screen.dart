@@ -739,12 +739,30 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                         const Divider(height: 1, color: AppColors.border),
                     itemBuilder: (_, i) {
                       final t = _timecards[i];
-                      final b1Start = t['break_1_start'] as String?;
-                      final b1End   = t['break_1_end']   as String?;
-                      final b2Start = t['break_2_start'] as String?;
-                      final b2End   = t['break_2_end']   as String?;
-                      final b3Start = t['break_3_start'] as String?;
-                      final b3End   = t['break_3_end']   as String?;
+                      // Read from timecard_breaks (source of truth)
+                      // Legacy columns are not written by clock-in app
+                      final breaks = (t['timecard_breaks'] as List?)
+                              ?.cast<Map<String, dynamic>>()
+                              .toList() ??
+                          [];
+                      final b1Start = breaks.isNotEmpty
+                          ? breaks[0]['break_start'] as String?
+                          : null;
+                      final b1End = breaks.isNotEmpty
+                          ? breaks[0]['break_end'] as String?
+                          : null;
+                      final b2Start = breaks.length > 1
+                          ? breaks[1]['break_start'] as String?
+                          : null;
+                      final b2End = breaks.length > 1
+                          ? breaks[1]['break_end'] as String?
+                          : null;
+                      final b3Start = breaks.length > 2
+                          ? breaks[2]['break_start'] as String?
+                          : null;
+                      final b3End = breaks.length > 2
+                          ? breaks[2]['break_end'] as String?
+                          : null;
 
                       final totalBreakMins = (t['break_minutes'] as num?)?.toInt() ?? 0;
 

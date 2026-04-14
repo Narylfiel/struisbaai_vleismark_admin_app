@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Manages supplier item mappings — remembers how each supplier
@@ -42,6 +43,53 @@ class SupplierMappingService {
     if (result != null) return SupplierItemMapping.fromJson(result);
 
     return null;
+  }
+
+  /// Find similar existing mappings using word overlap scoring.
+  Future<List<Map<String, dynamic>>> findSimilarMappings({
+    required String description,
+    String? supplierId,
+    int limit = 3,
+  }) async {
+    try {
+      final normalized = description.toLowerCase().trim();
+
+      var query = _client
+          .from('supplier_item_mappings')
+          .select('*, chart_of_accounts!inner(code, name)');
+
+      final all = List<Map<String, dynamic>>.from(await query);
+
+      double score(String a, String b) {
+        final aWords = a.toLowerCase().split(' ').toSet();
+        final bWords = b.toLowerCase().split(' ').toSet();
+        final intersection = aWords.intersection(bWords).length;
+        final union = aWords.union(bWords).length;
+        return union == 0 ? 0 : intersection / union;
+      }
+
+      final scored = all
+          .map((row) => {
+                'mapping': row,
+                'score': score(
+                    normalized,
+                    (row['description_normalized'] as String? ??
+                        '')),
+              })
+          .where((e) => (e['score'] as double) > 0.3)
+          .toList();
+
+      scored.sort((a, b) => (b['score'] as double)
+          .compareTo(a['score'] as double));
+
+      return scored
+          .take(limit)
+          .map((e) => e['mapping'] as Map<String, dynamic>)
+          .toList();
+    } catch (e) {
+      debugPrint('[MAPPING] findSimilarMappings error: $e');
+      return [];
+    }
   }
 
   /// Apply mappings to all line items in an invoice.

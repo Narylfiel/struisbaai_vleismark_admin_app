@@ -968,6 +968,38 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
             .eq('id', invoiceId);
       }
 
+      // Auto-save any line item mappings not yet remembered
+      try {
+        for (final line in lineItems) {
+          final invId =
+              line['inventory_item_id']?.toString() ?? '';
+          final desc =
+              line['description']?.toString() ?? '';
+          if (invId.isEmpty || desc.isEmpty) continue;
+
+          final existing =
+              await _mappingService.findMapping(
+            description: desc,
+            supplierId: supplierId,
+          );
+
+          if (existing == null) {
+            await _mappingService.saveMapping(
+              supplierDescription: desc,
+              accountCode: '1200',
+              supplierId: supplierId,
+              inventoryItemId: invId,
+              updateStock: true,
+            );
+            debugPrint(
+                '[INVOICE] Auto-saved mapping for: $desc');
+          }
+        }
+      } catch (e) {
+        debugPrint(
+            '[INVOICE] Auto-save mappings error (non-fatal): $e');
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -1345,11 +1377,25 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                                 SizedBox(width: 120, child: Text(inv.status.displayLabel, style: TextStyle(color: inv.canApprove ? AppColors.warning : (inv.canReceive ? AppColors.info : AppColors.textSecondary)))),
                                 if (inv.canApprove)
                                   TextButton(
-                                    onPressed: () {
+                                    onPressed: () async {
                                       final m = inv.toJson();
                                       m['supplier_name'] = inv.supplierName;
-                                      m['suppliers'] = inv.supplierName != null ? {'name': inv.supplierName} : null;
-                                      _openMappingScreen(m);
+                                      m['suppliers'] = inv.supplierName != null
+                                          ? {'name': inv.supplierName}
+                                          : null;
+                                      
+                                      // Check if items are mapped
+                                      final mapped = await _mappingService.applyMappings(
+                                        lineItems: inv.lineItems,
+                                        supplierId: inv.supplierId,
+                                      );
+                                      final pending = mapped.where((i) => i.isPending).toList();
+                                      
+                                      if (pending.isEmpty) {
+                                        _approveInvoice(m);
+                                      } else {
+                                        _openMappingScreen(m);
+                                      }
                                     },
                                     child: const Text('Approve'),
                                   ),
