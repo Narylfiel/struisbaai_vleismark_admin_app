@@ -844,7 +844,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 80),
                       itemCount: entries.length,
                       itemBuilder: (_, i) {
                         final e = entries[i];

@@ -652,14 +652,15 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
   }
 
   double get _openingBalance {
-    // Rough: current balance minus sum of period transactions
     final current =
         (_selectedAccount?['balance'] as num?)?.toDouble() ?? 0;
-    final periodNet = _transactions.fold<double>(0, (s, t) {
-      final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-      return t['transaction_type'] == 'sale' ? s + amt : s - amt;
-    });
-    return current - periodNet;
+    final periodPurchases = _transactions
+        .where((t) => t['transaction_type']?.toString() == 'sale')
+        .fold<double>(0, (s, t) => s + ((t['amount'] as num?)?.toDouble() ?? 0));
+    final periodPayments = _transactions
+        .where((t) => t['transaction_type']?.toString() == 'payment')
+        .fold<double>(0, (s, t) => s + ((t['amount'] as num?)?.toDouble() ?? 0).abs());
+    return current - periodPurchases + periodPayments;
   }
 
   double get _periodPurchases => _transactions
@@ -668,7 +669,7 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
 
   double get _periodPayments => _transactions
       .where((t) => t['transaction_type'] == 'payment')
-      .fold(0, (s, t) => s + ((t['amount'] as num?)?.toDouble() ?? 0));
+      .fold(0, (s, t) => s + ((t['amount'] as num?)?.toDouble() ?? 0).abs());
 
   double get _closingBalance => _openingBalance + _periodPurchases - _periodPayments;
 

@@ -391,8 +391,8 @@ class _TransactionsTabState extends State<_TransactionsTab> {
                     final t = _rows[i];
                     final type = t['transaction_type']?.toString() ?? '';
                     final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-                    final debit = type == 'payment' ? 0.0 : amt;
-                    final credit = type == 'payment' ? amt : 0.0;
+                    final debit = type == 'payment' ? 0.0 : amt.abs();
+                    final credit = type == 'payment' ? amt.abs() : 0.0;
                     final run = (t['running_balance'] as num?)?.toDouble();
                     final dateStr = t['transaction_date']?.toString().substring(0, 10) ?? '—';
                     return Padding(
@@ -1033,8 +1033,7 @@ class _StatementTab extends StatefulWidget {
 
 class _StatementTabState extends State<_StatementTab> {
   final _client = SupabaseService.client;
-  DateTime _from = DateTime(DateTime.now().year, DateTime.now().month, 1);
-  DateTime _to = DateTime.now();
+  DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<Map<String, dynamic>> _rows = [];
   bool _loading = false;
 
@@ -1044,6 +1043,9 @@ class _StatementTabState extends State<_StatementTab> {
     _load();
   }
 
+  DateTime get _monthStart => DateTime(_selectedMonth.year, _selectedMonth.month, 1);
+  DateTime get _monthEnd => DateTime(_selectedMonth.year, _selectedMonth.month + 1, 0);
+
   Future<void> _load() async {
     setState(() => _loading = true);
     try {
@@ -1051,8 +1053,8 @@ class _StatementTabState extends State<_StatementTab> {
           .from('account_transactions')
           .select('*')
           .eq('account_id', widget.accountId)
-          .gte('transaction_date', _from.toIso8601String().substring(0, 10))
-          .lte('transaction_date', _to.toIso8601String().substring(0, 10))
+          .gte('transaction_date', _monthStart.toIso8601String().substring(0, 10))
+          .lte('transaction_date', _monthEnd.toIso8601String().substring(0, 10))
           .order('transaction_date', ascending: true)
           .order('created_at', ascending: true);
       if (mounted) setState(() => _rows = List<Map<String, dynamic>>.from(data));
@@ -1060,78 +1062,224 @@ class _StatementTabState extends State<_StatementTab> {
     if (mounted) setState(() => _loading = false);
   }
 
-  double get _closingBalance {
-    if (_rows.isEmpty) return (widget.account['balance'] as num?)?.toDouble() ?? 0;
-    final last = _rows.last;
-    return (last['running_balance'] as num?)?.toDouble() ?? (widget.account['balance'] as num?)?.toDouble() ?? 0;
+  double get _totalPurchases {
+    return _rows
+        .where((r) => r['transaction_type']?.toString() == 'sale')
+        .fold(0.0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0));
+  }
+
+  double get _totalPayments {
+    return _rows
+        .where((r) => r['transaction_type']?.toString() == 'payment')
+        .fold(0.0, (sum, r) => sum + ((r['amount'] as num?)?.toDouble() ?? 0).abs());
+  }
+
+  double get _outstanding {
+    return _totalPurchases - _totalPayments;
+  }
+
+  String get _monthDisplay {
+    final months = ['January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'];
+    return '${months[_selectedMonth.month - 1]} ${_selectedMonth.year}';
+  }
+
+  void _previousMonth() {
+    setState(() {
+      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month - 1);
+    });
+    _load();
+  }
+
+  void _nextMonth() {
+    final now = DateTime.now();
+    final nextMonth = DateTime(_selectedMonth.year, _selectedMonth.month + 1);
+    if (nextMonth.year < now.year ||
+        (nextMonth.year == now.year && nextMonth.month <= now.month)) {
+      setState(() => _selectedMonth = nextMonth);
+      _load();
+    }
   }
 
   Future<void> _exportPdf() async {
     final pdf = pw.Document();
     final name = widget.account['name'] ?? 'Account';
-    final addr = widget.account['address'] ?? widget.account['phone'] ?? '';
+    final contact = widget.account['contact_person']?.toString() ?? '-';
+    final now = DateTime.now();
+    final today = '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year}';
+    final accountIdShort = widget.accountId.substring(0, 8).toUpperCase();
+    
+    final totalPurchases = _totalPurchases;
+    final totalPayments = _totalPayments;
+    final outstanding = _outstanding;
+
     pdf.addPage(
       pw.MultiPage(
         build: (context) => [
-          pw.Text(widget.businessName ?? 'Business', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
-          pw.SizedBox(height: 8),
-          pw.Text('Statement of Account', style: pw.TextStyle(fontSize: 14)),
-          pw.SizedBox(height: 8),
-          pw.Text('Account: $name'),
-          if (addr.isNotEmpty) pw.Text('Address: $addr'),
-          pw.Text('Period: ${_from.toIso8601String().substring(0, 10)} to ${_to.toIso8601String().substring(0, 10)}'),
+          // Header section
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              // Left side - Business details
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text('Struisbaai Vleismark (Pty) Ltd',
+                        style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
+                    pw.SizedBox(height: 4),
+                    pw.Text('Unit 6b Struisbaai Business Centre', style: pw.TextStyle(fontSize: 10)),
+                    pw.Text('Malvern Drive, Struisbaai, 7285', style: pw.TextStyle(fontSize: 10)),
+                    pw.Text('Tel: 082 696 2940', style: pw.TextStyle(fontSize: 10)),
+                  ],
+                ),
+              ),
+              // Right side - Statement details
+              pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.end,
+                children: [
+                  pw.Text('STATEMENT',
+                      style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
+                  pw.SizedBox(height: 8),
+                  pw.Text('Account: $name', style: pw.TextStyle(fontSize: 10)),
+                  pw.Text('Contact: $contact', style: pw.TextStyle(fontSize: 10)),
+                  pw.Text('Period: $_monthDisplay', style: pw.TextStyle(fontSize: 10)),
+                  pw.Text('Date Issued: $today', style: pw.TextStyle(fontSize: 10)),
+                  pw.Text('Account Ref: $accountIdShort', style: pw.TextStyle(fontSize: 10)),
+                ],
+              ),
+            ],
+          ),
+          pw.Divider(thickness: 1),
           pw.SizedBox(height: 12),
+          // Table
           pw.Table(
-            border: pw.TableBorder.all(width: 0.5),
+            border: pw.TableBorder.all(width: 0.5, color: PdfColors.grey400),
             columnWidths: {
-              0: const pw.FlexColumnWidth(1.2),
-              1: const pw.FlexColumnWidth(2),
+              0: const pw.FlexColumnWidth(1),
+              1: const pw.FlexColumnWidth(2.5),
               2: const pw.FlexColumnWidth(1.2),
               3: const pw.FlexColumnWidth(1),
               4: const pw.FlexColumnWidth(1),
-              5: const pw.FlexColumnWidth(1.2),
+              5: const pw.FlexColumnWidth(1),
             },
             children: [
+              // Header row
               pw.TableRow(
-                decoration: const pw.BoxDecoration(color: PdfColors.grey300),
+                decoration: const pw.BoxDecoration(color: PdfColors.grey200),
                 children: [
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Date', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Description', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Reference', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Debit', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Credit', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
-                  pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text('Balance', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9))),
+                  _pdfHeaderCell('Date'),
+                  _pdfHeaderCell('Description'),
+                  _pdfHeaderCell('Reference'),
+                  _pdfHeaderCell('Debit'),
+                  _pdfHeaderCell('Credit'),
+                  _pdfHeaderCell('Balance'),
                 ],
               ),
+              // Data rows
               ..._rows.map((t) {
-                final type = t['transaction_type']?.toString() ?? '';
                 final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-                final debit = type == 'payment' ? 0.0 : amt;
-                final credit = type == 'payment' ? amt : 0.0;
+                final date = t['transaction_date']?.toString() ?? '';
+                final formattedDate = date.length >= 10 
+                    ? '${date.substring(8, 10)}/${date.substring(5, 7)}/${date.substring(0, 4)}'
+                    : '-';
+                final pdfType = t['transaction_type']?.toString() ?? '';
+                final debit = pdfType == 'payment' ? '' : 'R ${amt.abs().toStringAsFixed(2)}';
+                final credit = pdfType == 'payment' ? 'R ${amt.abs().toStringAsFixed(2)}' : '';
                 final run = (t['running_balance'] as num?)?.toDouble();
+                final balance = run != null ? 'R ${run.toStringAsFixed(2)}' : '';
                 return pw.TableRow(
                   children: [
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(t['transaction_date']?.toString().substring(0, 10) ?? '—', style: const pw.TextStyle(fontSize: 8))),
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text((t['description'] ?? '—').toString(), style: const pw.TextStyle(fontSize: 8))),
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text((t['reference'] ?? '—').toString(), style: const pw.TextStyle(fontSize: 8))),
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(debit > 0 ? '${debit.toStringAsFixed(2)}' : '', style: const pw.TextStyle(fontSize: 8))),
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(credit > 0 ? '${credit.toStringAsFixed(2)}' : '', style: const pw.TextStyle(fontSize: 8))),
-                    pw.Padding(padding: const pw.EdgeInsets.all(4), child: pw.Text(run != null ? run.toStringAsFixed(2) : '', style: const pw.TextStyle(fontSize: 8))),
+                    _pdfCell(formattedDate),
+                    _pdfCell((t['description'] ?? '-').toString().replaceAll('\u2014', '-').replaceAll('\u2013', '-')),
+                    _pdfCell((t['reference'] ?? '-').toString().replaceAll('\u2014', '-').replaceAll('\u2013', '-')),
+                    _pdfCell(debit),
+                    _pdfCell(credit),
+                    _pdfCell(balance, align: pw.TextAlign.right),
                   ],
                 );
               }),
+              // Totals row
+              pw.TableRow(
+                decoration: const pw.BoxDecoration(color: PdfColors.grey100),
+                children: [
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text('TOTALS', style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                  ),
+                  pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('')),
+                  pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('')),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text('R ${totalPurchases.toStringAsFixed(2)}',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                  ),
+                  pw.Padding(
+                    padding: const pw.EdgeInsets.all(6),
+                    child: pw.Text('R ${totalPayments.toStringAsFixed(2)}',
+                        style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+                  ),
+                  pw.Padding(padding: const pw.EdgeInsets.all(6), child: pw.Text('')),
+                ],
+              ),
             ],
           ),
-          pw.SizedBox(height: 12),
-          pw.Text('Closing balance: R ${_closingBalance.toStringAsFixed(2)}', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 16),
-          pw.Text('Thank you for your business.', style: pw.TextStyle(fontSize: 10, color: PdfColors.grey700)),
+          // Outstanding balance box
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.end,
+            children: [
+              pw.Container(
+                padding: const pw.EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: pw.BoxDecoration(
+                  color: outstanding > 0 ? PdfColors.red100 : outstanding < 0 ? PdfColors.blue100 : PdfColors.green100,
+                  border: pw.Border.all(
+                    color: outstanding > 0 ? PdfColors.red : outstanding < 0 ? PdfColors.blue : PdfColors.green,
+                    width: 1,
+                  ),
+                  borderRadius: const pw.BorderRadius.all(pw.Radius.circular(4)),
+                ),
+                child: pw.Text(
+                  outstanding > 0
+                      ? 'OUTSTANDING: R ${outstanding.toStringAsFixed(2)}'
+                      : outstanding < 0
+                          ? 'CREDIT: R ${outstanding.abs().toStringAsFixed(2)}'
+                          : 'FULLY PAID',
+                  style: pw.TextStyle(
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 12,
+                    color: outstanding > 0 ? PdfColors.red : outstanding < 0 ? PdfColors.blue : PdfColors.green,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.Spacer(),
+          // Footer
+          pw.Divider(thickness: 0.5),
           pw.SizedBox(height: 8),
-          pw.Text('Generated: ${DateTime.now().toIso8601String().substring(0, 19)}', style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          pw.Text('This statement was generated on $today',
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+          pw.Text('Struisbaai Vleismark (Pty) Ltd - Reg No: 2026/069883/07',
+              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
         ],
       ),
     );
-    await Printing.layoutPdf(onLayout: (_) async => pdf.save());
+    await Printing.sharePdf(bytes: await pdf.save(), filename: 'statement_${name.replaceAll(' ', '_')}_${_selectedMonth.year}-${_selectedMonth.month.toString().padLeft(2, '0')}.pdf');
+  }
+
+  pw.Widget _pdfHeaderCell(String text) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(text, style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 9)),
+    );
+  }
+
+  pw.Widget _pdfCell(String text, {pw.TextAlign align = pw.TextAlign.left}) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.all(6),
+      child: pw.Text(text, style: const pw.TextStyle(fontSize: 9), textAlign: align),
+    );
   }
 
   Future<void> _sendWhatsApp() async {
@@ -1151,72 +1299,212 @@ class _StatementTabState extends State<_StatementTab> {
   Widget build(BuildContext context) {
     return Column(
       children: [
+        // Month selector
         Padding(
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              const Text('From:', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () async {
-                  final d = await showDatePicker(context: context, initialDate: _from, firstDate: DateTime(2020), lastDate: _to);
-                  if (d != null) setState(() => _from = d);
-                  _load();
-                },
-                child: Text(_from.toIso8601String().substring(0, 10)),
+              IconButton(
+                onPressed: _previousMonth,
+                icon: const Icon(Icons.chevron_left, color: AppColors.primary),
               ),
-              const SizedBox(width: 16),
-              const Text('To:', style: TextStyle(fontWeight: FontWeight.w600)),
-              const SizedBox(width: 8),
-              TextButton(
-                onPressed: () async {
-                  final d = await showDatePicker(context: context, initialDate: _to, firstDate: _from, lastDate: DateTime.now().add(const Duration(days: 365)));
-                  if (d != null) setState(() => _to = d);
-                  _load();
-                },
-                child: Text(_to.toIso8601String().substring(0, 10)),
+              Text(_monthDisplay, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+              IconButton(
+                onPressed: _nextMonth,
+                icon: const Icon(Icons.chevron_right, color: AppColors.primary),
+                disabledColor: AppColors.textSecondary,
               ),
-              const SizedBox(width: 16),
-              ElevatedButton(onPressed: _loading ? null : _load, child: const Text('Apply')),
               const Spacer(),
-              OutlinedButton.icon(onPressed: _exportPdf, icon: const Icon(Icons.picture_as_pdf, size: 18), label: const Text('Export PDF')),
+              ElevatedButton.icon(
+                onPressed: _exportPdf,
+                icon: const Icon(Icons.picture_as_pdf, size: 18),
+                label: const Text('Export Statement'),
+              ),
               const SizedBox(width: 8),
-              OutlinedButton.icon(onPressed: _sendWhatsApp, icon: const Icon(Icons.chat, size: 18), label: const Text('Send WhatsApp')),
+              OutlinedButton.icon(
+                onPressed: _sendWhatsApp,
+                icon: const Icon(Icons.chat, size: 18),
+                label: const Text('WhatsApp'),
+              ),
             ],
           ),
         ),
+        // Summary cards
+        if (!_loading)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _SummaryCard(
+                    label: 'Purchases',
+                    amount: _totalPurchases,
+                    color: AppColors.error,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SummaryCard(
+                    label: 'Paid',
+                    amount: _totalPayments,
+                    color: AppColors.success,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _SummaryCard(
+                    label: _outstanding >= 0 ? 'Outstanding' : 'Credit',
+                    amount: _outstanding.abs(),
+                    color: _outstanding > 0
+                        ? AppColors.error
+                        : _outstanding < 0
+                            ? Colors.blue
+                            : AppColors.success,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        // Transaction list header
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          color: AppColors.surfaceBg,
+          child: const Row(
+            children: [
+              SizedBox(width: 70, child: Text('Date', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
+              Expanded(child: Text('Description', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
+              SizedBox(width: 100, child: Text('Reference', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
+              SizedBox(width: 90, child: Text('Amount', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary), textAlign: TextAlign.right)),
+              SizedBox(width: 100, child: Text('Balance', style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: AppColors.textSecondary), textAlign: TextAlign.right)),
+            ],
+          ),
+        ),
+        // Transaction list
         if (_loading)
           const Expanded(child: Center(child: CircularProgressIndicator(color: AppColors.primary)))
         else
           Expanded(
             child: _rows.isEmpty
-                ? const Center(child: Text('No transactions in range'))
+                ? const Center(child: Text('No transactions in selected month'))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     itemCount: _rows.length,
                     itemBuilder: (_, i) {
                       final t = _rows[i];
-                      final type = t['transaction_type']?.toString() ?? '';
                       final amt = (t['amount'] as num?)?.toDouble() ?? 0;
-                      final debit = type == 'payment' ? 0.0 : amt;
-                      final credit = type == 'payment' ? amt : 0.0;
                       final run = (t['running_balance'] as num?)?.toDouble();
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        child: Row(
-                          children: [
-                            SizedBox(width: 100, child: Text(t['transaction_date']?.toString().substring(0, 10) ?? '—')),
-                            Expanded(child: Text(t['description']?.toString() ?? '—', overflow: TextOverflow.ellipsis)),
-                            SizedBox(width: 70, child: Text(debit > 0 ? 'R ${debit.toStringAsFixed(2)}' : '—')),
-                            SizedBox(width: 70, child: Text(credit > 0 ? 'R ${credit.toStringAsFixed(2)}' : '—')),
-                            SizedBox(width: 90, child: Text(run != null ? 'R ${run.toStringAsFixed(2)}' : '—')),
-                          ],
+                      final type = t['transaction_type']?.toString() ?? '';
+                      final isSale = type == 'sale' || amt > 0;
+                      final date = t['transaction_date']?.toString() ?? '';
+                      final displayDate = date.length >= 10
+                          ? '${date.substring(8, 10)} ${['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'][int.parse(date.substring(5, 7)) - 1]}'
+                          : '—';
+                      return Card(
+                        margin: const EdgeInsets.symmetric(vertical: 4),
+                        elevation: 0,
+                        color: AppColors.surfaceBg,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 70,
+                                child: Text(displayDate, style: const TextStyle(fontSize: 12)),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      t['description']?.toString() ?? '—',
+                                      style: const TextStyle(fontSize: 13),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: isSale ? AppColors.error.withOpacity(0.15) : AppColors.success.withOpacity(0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        isSale ? 'SALE' : 'PAYMENT',
+                                        style: TextStyle(
+                                          fontSize: 9,
+                                          fontWeight: FontWeight.w600,
+                                          color: isSale ? AppColors.error : AppColors.success,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  t['reference']?.toString() ?? '—',
+                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 90,
+                                child: Text(
+                                  amt > 0 ? 'R ${amt.toStringAsFixed(2)}' : '-R ${amt.abs().toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: amt > 0 ? AppColors.error : AppColors.success,
+                                  ),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                              SizedBox(
+                                width: 100,
+                                child: Text(
+                                  run != null ? 'R ${run.toStringAsFixed(2)}' : '—',
+                                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                                  textAlign: TextAlign.right,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
                   ),
           ),
       ],
+    );
+  }
+}
+
+class _SummaryCard extends StatelessWidget {
+  final String label;
+  final double amount;
+  final Color color;
+
+  const _SummaryCard({required this.label, required this.amount, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Text(label, style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 4),
+          Text(
+            'R ${amount.toStringAsFixed(2)}',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color),
+          ),
+        ],
+      ),
     );
   }
 }

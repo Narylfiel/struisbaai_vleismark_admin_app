@@ -10,6 +10,8 @@ import 'package:admin_app/features/settings/screens/user_management_screen.dart'
 import '../../../core/services/email_service.dart';
 import '../../../core/services/ai_service.dart';
 import '../../../core/services/google_drive_service.dart';
+import '../../../core/services/local_invoice_service.dart';
+import 'package:file_picker/file_picker.dart';
 
 class BusinessSettingsScreen extends StatefulWidget {
   const BusinessSettingsScreen({super.key});
@@ -648,11 +650,14 @@ class _DriveSettingsTab extends StatefulWidget {
 
 class _DriveSettingsTabState extends State<_DriveSettingsTab> {
   final _driveService = GoogleDriveService();
+  final _localService = LocalInvoiceService();
   final _folderIdController = TextEditingController();
   bool _loading = true;
   bool _saving = false;
   bool _testing = false;
   bool _enabled = false;
+  String _importSource = 'drive';
+  String? _localFolderPath;
 
   @override
   void initState() {
@@ -669,10 +674,14 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
   Future<void> _load() async {
     final folderId = await _driveService.loadFolderId();
     final enabled = await _driveService.isEnabled();
+    final importSource = await _driveService.getImportSource();
+    final localPath = await _localService.getFolderPath();
     if (mounted) {
       setState(() {
         _folderIdController.text = folderId ?? '';
         _enabled = enabled;
+        _importSource = importSource;
+        _localFolderPath = localPath;
         _loading = false;
       });
     }
@@ -684,6 +693,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
       await _driveService.saveFolderId(
           _folderIdController.text.trim());
       await _driveService.setEnabled(_enabled);
+      await _driveService.setImportSource(_importSource);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -703,6 +713,26 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _browseFolder() async {
+    final path = await FilePicker.platform.getDirectoryPath();
+    if (path != null && path.isNotEmpty) {
+      await _localService.setFolderPath(path);
+      setState(() => _localFolderPath = path);
+    }
+  }
+
+  Future<void> _clearProcessedFiles() async {
+    await _localService.clearProcessed();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Processed file list cleared'),
+          backgroundColor: Color(0xFF2E7D32),
+        ),
+      );
     }
   }
 
@@ -735,88 +765,205 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Text('Google Drive Sync',
+        // ── Invoice Import Source Toggle ─────────────────────────────
+        const Text('Invoice Import Source',
             style: TextStyle(
                 fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 4),
-        const Text(
-          'Drop supplier invoice PDFs or photos into a shared '
-          'Google Drive folder. The app will scan the folder '
-          'automatically, extract invoice data using Gemini AI, '
-          'and create pending supplier invoices for review.',
-          style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
-        ),
-        const SizedBox(height: 24),
-        SwitchListTile(
-          title: const Text('Enable Drive sync'),
-          subtitle: const Text(
-              'Scan folder for new invoices when Bookkeeping opens'),
-          value: _enabled,
-          onChanged: (v) => setState(() => _enabled = v),
-          contentPadding: EdgeInsets.zero,
-        ),
-        const SizedBox(height: 16),
-        TextFormField(
-          controller: _folderIdController,
-          decoration: const InputDecoration(
-            labelText: 'Google Drive Folder ID',
-            border: OutlineInputBorder(),
-            isDense: true,
-            hintText: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs',
-            helperText:
-                'Copy from Drive URL: drive.google.com/drive/folders/FOLDER_ID',
-          ),
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            OutlinedButton.icon(
-              onPressed: _testing ? null : _test,
-              icon: _testing
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2))
-                  : const Icon(Icons.wifi_tethering, size: 16),
-              label: Text(_testing ? 'Testing…' : 'Test connection'),
-            ),
-            const SizedBox(width: 12),
-            FilledButton.icon(
-              onPressed: _saving ? null : _save,
-              icon: _saving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white))
-                  : const Icon(Icons.save, size: 16),
-              label: Text(_saving ? 'Saving…' : 'Save settings'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        const Divider(),
-        const SizedBox(height: 16),
-        const Text('Setup instructions',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         const Text(
-          '1. Create a folder in Google Drive named "Supplier Invoices"\n'
-          '2. Share the folder with the service account email '
-          '(found in assets/secrets/google_service_account.json → client_email)\n'
-          '3. Give the service account Viewer access\n'
-          '4. Copy the folder ID from the Drive URL and paste above\n'
-          '5. Enable sync and save\n'
-          '6. Drop PDF or image invoices into the folder — '
-          'they will be scanned next time Bookkeeping opens',
-          style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF444444),
-              height: 1.7),
+          'Choose where to scan for supplier invoices.',
+          style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
         ),
+        const SizedBox(height: 16),
+        RadioListTile<String>(
+          title: const Text('Google Drive'),
+          subtitle: const Text('Scan a Google Drive folder automatically'),
+          value: 'drive',
+          groupValue: _importSource,
+          onChanged: (v) {
+            if (v != null) {
+              setState(() => _importSource = v);
+              _driveService.setImportSource(v);
+            }
+          },
+          contentPadding: EdgeInsets.zero,
+        ),
+        RadioListTile<String>(
+          title: const Text('Local Folder on this PC'),
+          subtitle: const Text('Scan a folder on this computer'),
+          value: 'local',
+          groupValue: _importSource,
+          onChanged: (v) {
+            if (v != null) {
+              setState(() => _importSource = v);
+              _driveService.setImportSource(v);
+            }
+          },
+          contentPadding: EdgeInsets.zero,
+        ),
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 24),
+
+        // ── Drive Settings (shown only when drive selected) ─────────────
+        if (_importSource == 'drive') ...[
+          const Text('Google Drive Sync',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          const Text(
+            'Drop supplier invoice PDFs or photos into a shared '
+            'Google Drive folder. The app will scan the folder '
+            'automatically, extract invoice data using Gemini AI, '
+            'and create pending supplier invoices for review.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+          ),
+          const SizedBox(height: 24),
+          SwitchListTile(
+            title: const Text('Enable Drive sync'),
+            subtitle: const Text(
+                'Scan folder for new invoices when Bookkeeping opens'),
+            value: _enabled,
+            onChanged: (v) => setState(() => _enabled = v),
+            contentPadding: EdgeInsets.zero,
+          ),
+          const SizedBox(height: 16),
+          TextFormField(
+            controller: _folderIdController,
+            decoration: const InputDecoration(
+              labelText: 'Google Drive Folder ID',
+              border: OutlineInputBorder(),
+              isDense: true,
+              hintText: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs',
+              helperText:
+                  'Copy from Drive URL: drive.google.com/drive/folders/FOLDER_ID',
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              OutlinedButton.icon(
+                onPressed: _testing ? null : _test,
+                icon: _testing
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2))
+                    : const Icon(Icons.wifi_tethering, size: 16),
+                label: Text(_testing ? 'Testing…' : 'Test connection'),
+              ),
+              const SizedBox(width: 12),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white))
+                    : const Icon(Icons.save, size: 16),
+                label: Text(_saving ? 'Saving…' : 'Save settings'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 32),
+          const Divider(),
+          const SizedBox(height: 16),
+          const Text('Setup instructions',
+              style: TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          const Text(
+            '1. Create a folder in Google Drive named "Supplier Invoices"\n'
+            '2. Share the folder with the service account email '
+            '(found in assets/secrets/google_service_account.json → client_email)\n'
+            '3. Give the service account Viewer access\n'
+            '4. Copy the folder ID from the Drive URL and paste above\n'
+            '5. Enable sync and save\n'
+            '6. Drop PDF or image invoices into the folder — '
+            'they will be scanned next time Bookkeeping opens',
+            style: TextStyle(
+                fontSize: 12,
+                color: Color(0xFF444444),
+                height: 1.7),
+          ),
+        ],
+
+        // ── Local Folder Settings (shown only when local selected) ───────
+        if (_importSource == 'local') ...[
+          const Text('Local Folder Settings',
+              style: TextStyle(
+                  fontSize: 16, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 4),
+          const Text(
+            'Scan a local folder on this computer for supplier invoice PDFs.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+          ),
+          const SizedBox(height: 24),
+          if (_localFolderPath != null && _localFolderPath!.isNotEmpty) ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                border: Border.all(color: Colors.green),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _localFolderPath!,
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                border: Border.all(color: Colors.orange),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text(
+                    'No folder selected',
+                    style: TextStyle(fontSize: 12, color: Colors.orange),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+          ElevatedButton.icon(
+            onPressed: _browseFolder,
+            icon: const Icon(Icons.folder_open, size: 18),
+            label: const Text('Browse...'),
+          ),
+          const SizedBox(height: 24),
+          const Divider(),
+          const SizedBox(height: 16),
+          TextButton.icon(
+            onPressed: _clearProcessedFiles,
+            icon: const Icon(Icons.clear_all, size: 16),
+            label: const Text('Clear processed files list'),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'This will allow previously processed invoices to be scanned again.',
+            style: TextStyle(fontSize: 11, color: Color(0xFF666666)),
+          ),
+        ],
       ],
     );
   }

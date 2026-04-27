@@ -50,7 +50,7 @@ class CommercialRepository {
   Future<Set<String>> getPendingActionInventoryItemIds() async {
     final res = await _client
         .from('commercial_actions')
-        .select('inventory_item_id')
+        .select('item_id')
         .eq('status', 'pending_review');
     final out = <String>{};
     for (final row in res as List) {

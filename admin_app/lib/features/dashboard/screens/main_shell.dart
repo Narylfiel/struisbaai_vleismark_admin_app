@@ -7,6 +7,7 @@ import 'package:admin_app/core/constants/permissions.dart';
 import 'package:admin_app/core/screens/pending_syncs_screen.dart';
 import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/widgets/session_scope.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:admin_app/features/auth/screens/pin_screen.dart';
 import 'package:admin_app/features/dashboard/screens/dashboard_screen.dart';
 import 'package:admin_app/features/inventory/screens/inventory_navigation_screen.dart';
@@ -186,11 +187,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  void didChangeAppLifecycleState(AppLifecycleState state) async {
     if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
       _lastPausedAt = DateTime.now();
     } else if (state == AppLifecycleState.resumed) {
-      if (_lastPausedAt != null && DateTime.now().difference(_lastPausedAt!) > const Duration(minutes: 5)) {
+      final lockMinutes = await _getLockTimeoutMinutes();
+      if (lockMinutes > 0 &&
+          _lastPausedAt != null &&
+          DateTime.now().difference(_lastPausedAt!) >
+              Duration(minutes: lockMinutes)) {
         AuthService().logout();
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
@@ -200,6 +205,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         }
       }
     }
+  }
+
+  Future<int> _getLockTimeoutMinutes() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('admin_lock_timeout_minutes') ?? 0;
   }
 
   void _logout() {

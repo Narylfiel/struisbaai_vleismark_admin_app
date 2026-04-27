@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/settings/services/settings_repository.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Utilities & Costs — electricity rate for dryer cost tracking.
 class UtilitiesSettingsScreen extends StatefulWidget {
@@ -20,6 +21,7 @@ class _UtilitiesSettingsScreenState extends State<UtilitiesSettingsScreen> {
   bool _saving = false;
   String? _lastUpdated;
   String? _error;
+  int? _lockTimeoutMinutes = 0;
 
   @override
   void initState() {
@@ -42,7 +44,11 @@ class _UtilitiesSettingsScreenState extends State<UtilitiesSettingsScreen> {
         _rateController.text = rate.toString();
         final updated = config?['updated_at']?.toString();
         _lastUpdated = updated != null ? _formatUpdated(updated) : null;
-        setState(() => _loading = false);
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _lockTimeoutMinutes = prefs.getInt('admin_lock_timeout_minutes') ?? 0;
+          _loading = false;
+        });
       }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
@@ -72,6 +78,8 @@ class _UtilitiesSettingsScreenState extends State<UtilitiesSettingsScreen> {
     });
     try {
       await _repo.updateElectricityRate(rate);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('admin_lock_timeout_minutes', _lockTimeoutMinutes ?? 0);
       if (mounted) {
         _lastUpdated = _formatUpdated(DateTime.now().toIso8601String());
         setState(() => _saving = false);
@@ -129,6 +137,44 @@ class _UtilitiesSettingsScreenState extends State<UtilitiesSettingsScreen> {
             style: const TextStyle(fontSize: 12, color: AppColors.danger),
           ),
         ],
+        const SizedBox(height: 24),
+        const Divider(),
+        const SizedBox(height: 16),
+        const Text(
+          'App Lock Timeout',
+          style: TextStyle(
+              fontWeight: FontWeight.bold, fontSize: 15),
+        ),
+        const SizedBox(height: 6),
+        const Text(
+          'How long the app can be backgrounded before '
+          'requiring PIN re-entry.',
+          style: TextStyle(
+              fontSize: 12, color: AppColors.textSecondary),
+        ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<int>(
+          initialValue: _lockTimeoutMinutes ?? 0,
+          decoration: const InputDecoration(
+            labelText: 'Lock after backgrounded for',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+          items: const [
+            DropdownMenuItem(
+                value: 0, child: Text('Never lock')),
+            DropdownMenuItem(
+                value: 15, child: Text('15 minutes')),
+            DropdownMenuItem(
+                value: 30, child: Text('30 minutes')),
+            DropdownMenuItem(
+                value: 60, child: Text('1 hour')),
+            DropdownMenuItem(
+                value: 120, child: Text('2 hours')),
+          ],
+          onChanged: (v) =>
+              setState(() => _lockTimeoutMinutes = v ?? 0),
+        ),
         const SizedBox(height: 24),
         ElevatedButton(
           onPressed: _saving ? null : _save,

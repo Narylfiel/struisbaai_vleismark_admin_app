@@ -152,7 +152,7 @@ class AiService {
         ],
         'generationConfig': {
           'temperature': 0.1,
-          'maxOutputTokens': 8192,
+          'maxOutputTokens': 32768,
         },
       },
     );
@@ -174,44 +174,78 @@ class AiService {
   }) async {
     const invoicePrompt = '''
 You are an invoice data extraction assistant for a South African butchery.
-Extract all invoice data from this document and return ONLY valid JSON.
-No explanation, no markdown, no code blocks — raw JSON only.
+Return ONLY raw valid JSON — no markdown, no explanation, no code fences.
 
-IMPORTANT: If the document contains MORE THAN ONE invoice, return a JSON ARRAY
-of invoice objects. If it contains exactly one invoice, you may return either
-a single JSON object or a single-element array — both are accepted.
+=== SPLITTING ===
+Scan the entire document for multiple invoices. A new invoice starts when you see:
+- A new invoice/document/reference number
+- A new supplier letterhead or company name
+- A new heading: "Tax Invoice", "Invoice", "Statement", "Delivery Note"
+Always return an array of invoices inside the "invoices" key, even if only one exists.
 
-Each invoice object must have this structure:
+=== MERGING ===
+If two pages share the SAME invoice number, treat them as ONE invoice.
+Combine all line items from both pages into a single invoice object.
+
+=== INVOICE NUMBER EXTRACTION ===
+The invoice number is the document reference number on the invoice itself.
+Look for labels: "Invoice No", "Invoice Number", "Tax Invoice", "Document No",
+"Doc No", "Invoice #", "Ref No", "Reference", "Order No".
+NEVER use the filename as the invoice number.
+If no invoice number is found anywhere on the document, use null.
+
+=== RETURN STRUCTURE ===
 {
-  "supplier_name": "string or null",
-  "invoice_number": "string or null",
-  "invoice_date": "YYYY-MM-DD or null",
-  "due_date": "YYYY-MM-DD or null",
-  "line_items": [
+  "invoices": [
     {
-      "description": "string",
-      "supplier_code": "string or null",
-      "quantity": number,
-      "unit": "string or null",
-      "unit_price": number,
-      "line_total": number
+      "invoice_number": "string or null — from document only, never filename",
+      "invoice_date": "YYYY-MM-DD or null",
+      "supplier_name": "string or null",
+      "supplier_vat_number": "string or null",
+      "is_vat_invoice": true or false,
+      "line_items": [
+        {
+          "description": "string",
+          "supplier_code": "string or null",
+          "quantity": number,
+          "unit": "string or null",
+          "unit_price": number,
+          "line_total": number,
+          "vat_amount": number or null
+        }
+      ],
+      "subtotal_excl": number or null,
+      "vat_total": number or null,
+      "grand_total": number or null,
+      "currency": "ZAR",
+      "confidence": "high|medium|low",
+      "warnings": [
+        {
+          "field": "string",
+          "expected": "number or string",
+          "actual": "number or string",
+          "message": "plain English description"
+        }
+      ]
     }
-  ],
-  "subtotal": number or null,
-  "tax_rate": number or null,
-  "tax_amount": number or null,
-  "total": number or null,
-  "currency": "ZAR",
-  "confidence": "high|medium|low"
+  ]
 }
 
-Rules:
-- All amounts in numeric format, no currency symbols
+=== VALIDATION — check each invoice and add to warnings ===
+1. Each line: quantity × unit_price = line_total? Flag if difference > 0.02.
+2. Sum of line_totals = subtotal_excl? Flag if difference > 0.02.
+3. If is_vat_invoice=true: subtotal_excl × 0.15 = vat_total? Flag if difference > 0.02.
+4. subtotal_excl + vat_total = grand_total? Flag if difference > 0.02.
+5. If is_vat_invoice=true and supplier_vat_number is null: flag as missing.
+6. If invoice_date is null: flag as missing.
+Each warning must include field, expected value, actual value, plain English message.
+
+=== RULES ===
+- All amounts numeric, no currency symbols
 - Dates in YYYY-MM-DD format
-- If a field is not found, use null
-- confidence: high = all fields found clearly, medium = some fields unclear, low = poor quality image
-- South African VAT is 15% — if you see VAT use 15 as tax_rate
-- supplier_code is the supplier's own product/item code if visible
+- Null for any field not found
+- confidence: high = all fields clear, medium = some unclear, low = poor quality
+- South African VAT rate is 15%
 ''';
 
     final result = await promptWithBytes(
@@ -276,18 +310,25 @@ Rules:
   /// or concatenated JSON objects (multiple invoices in one PDF).
   /// Always returns a list; never throws.
   List<Map<String, dynamic>> _parseInvoiceResponse(String raw) {
-    try {
-      String cleaned = raw.trim();
-      // Strip markdown fences
-      if (cleaned.startsWith('```')) {
-        cleaned = cleaned
-            .replaceFirst(RegExp(r'^```json?\s*'), '')
-            .replaceFirst(RegExp(r'```\s*$'), '')
-            .trim();
-      }
+    // Hoist cleaned so it is available for truncation recovery below
+    String cleaned = raw.trim();
+    if (cleaned.startsWith('```')) {
+      cleaned = cleaned
+          .replaceFirst(RegExp(r'^```json?\s*'), '')
+          .replaceFirst(RegExp(r'```\s*$'), '')
+          .trim();
+    }
 
+    try {
       // Try parsing as-is first
       final decoded = jsonDecode(cleaned);
+      if (decoded is Map<String, dynamic> &&
+          decoded.containsKey('invoices')) {
+        final list = decoded['invoices'];
+        if (list is List) {
+          return list.whereType<Map<String, dynamic>>().toList();
+        }
+      }
       if (decoded is List) {
         return decoded
             .whereType<Map<String, dynamic>>()
@@ -307,6 +348,31 @@ Rules:
       debugPrint('_parseInvoiceResponse: split into '
           '${objects.length} JSON object(s)');
       return objects;
+    }
+
+    // Attempt truncation recovery
+    try {
+      final lastComplete = cleaned.lastIndexOf('},');
+      if (lastComplete > 0) {
+        final arrayStart = cleaned.indexOf('"invoices"');
+        if (arrayStart > 0) {
+          final recovered =
+              '${cleaned.substring(0, lastComplete + 1)}]}';
+          final recoveredJson = jsonDecode(recovered);
+          if (recoveredJson is Map &&
+              recoveredJson.containsKey('invoices')) {
+            final list = recoveredJson['invoices'];
+            if (list is List && list.isNotEmpty) {
+              debugPrint(
+                '_parseInvoiceResponse: recovered '
+                '${list.length} invoices from truncated response');
+              return list.whereType<Map<String, dynamic>>().toList();
+            }
+          }
+        }
+      }
+    } catch (_) {
+      // Recovery failed, fall through to original error
     }
 
     debugPrint('_parseInvoiceResponse: all parsing failed\nRaw: $raw');

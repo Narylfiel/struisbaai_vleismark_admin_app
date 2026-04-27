@@ -18,6 +18,7 @@ class InventoryItem extends BaseModel {
   final List<String>? supplierIds;
   final bool isActive;
   final bool scaleItem;
+  final bool isBundle;
 
   // B: Pricing
   final double? sellPrice;
@@ -80,6 +81,7 @@ class InventoryItem extends BaseModel {
     this.supplierIds,
     this.isActive = true,
     this.scaleItem = false,
+    this.isBundle = false,
     this.sellPrice,
     this.costPrice,
     this.averageCost,
@@ -148,6 +150,7 @@ class InventoryItem extends BaseModel {
       'supplier_ids': supplierIds,
       'is_active': isActive,
       'scale_item': scaleItem,
+      'is_bundle': isBundle,
       'sell_price': sellPrice,
       'cost_price': costPrice,
       'target_margin_pct': targetMarginPct,
@@ -218,6 +221,7 @@ class InventoryItem extends BaseModel {
       supplierIds: _toStringList(json['supplier_ids']),
       isActive: json['is_active'] as bool? ?? true,
       scaleItem: json['scale_item'] as bool? ?? false,
+      isBundle: json['is_bundle'] as bool? ?? false,
       sellPrice: _toDouble(json['sell_price']),
       costPrice: _toDouble(json['cost_price']),
       averageCost: _toDouble(json['average_cost']),

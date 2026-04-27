@@ -18,6 +18,7 @@ class GoogleDriveService {
   static const _keyLastScan = 'drive_last_scan';
   static const _keyEnabled = 'drive_sync_enabled';
   static const _keyProcessedFiles = 'drive_processed_file_ids';
+  static const _keyImportSource = 'invoice_import_source';
   static const _scopes = [drive.DriveApi.driveReadonlyScope];
   static const _serviceAccountAsset =
       'assets/secrets/google_service_account.json';
@@ -96,6 +97,15 @@ class GoogleDriveService {
   Future<void> clearProcessedFileIds() async {
     await _storage.delete(key: _keyProcessedFiles);
     debugPrint('[DRIVE] Cleared all processed file IDs');
+  }
+
+  Future<String> getImportSource() async {
+    final val = await _storage.read(key: _keyImportSource);
+    return val ?? 'drive';
+  }
+
+  Future<void> setImportSource(String source) async {
+    await _storage.write(key: _keyImportSource, value: source);
   }
 
   // ── Authentication ────────────────────────────────────────────

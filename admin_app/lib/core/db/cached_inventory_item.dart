@@ -22,6 +22,7 @@ class CachedInventoryItem {
   String? categoryId;
   late bool isActive;
   bool? scaleItem;
+  bool? isBundle;
   bool? availablePos;
   bool? availableLoyaltyApp;
   bool? availableOnline;
@@ -65,6 +66,7 @@ class CachedInventoryItem {
     c.categoryId = row['category_id']?.toString();
     c.isActive = row['is_active'] == true || row['is_active'] == 'true';
     c.scaleItem = row['scale_item'] == true || row['scale_item'] == 'true';
+    c.isBundle = row['is_bundle'] == true || row['is_bundle'] == 'true';
     c.availablePos = row['available_pos'] == true || row['available_pos'] == 'true';
     c.availableLoyaltyApp = row['available_loyalty_app'] == true || row['available_loyalty_app'] == 'true';
     c.availableOnline = row['available_online'] == true || row['available_online'] == 'true';
@@ -107,6 +109,7 @@ class CachedInventoryItem {
         'category_id': categoryId,
         'is_active': isActive,
         'scale_item': scaleItem,
+        'is_bundle': isBundle,
         'available_pos': availablePos,
         'available_loyalty_app': availableLoyaltyApp,
         'available_online': availableOnline,

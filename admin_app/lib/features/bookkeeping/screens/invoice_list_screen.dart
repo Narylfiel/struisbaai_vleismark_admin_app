@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:csv/csv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
@@ -28,6 +30,8 @@ import '../../../core/services/email_service.dart';
 import '../services/invoice_pdf_service.dart';
 import '../../../core/services/google_drive_service.dart';
 import '../../../core/services/ai_service.dart';
+import '../../../core/services/local_invoice_service.dart';
+import '../services/csv_sales_import_service.dart';
 import 'supplier_mapping_screen.dart';
 import '../../../core/services/supplier_mapping_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -48,7 +52,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 10, vsync: this);
   }
 
   @override
@@ -80,6 +84,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 Tab(icon: Icon(Icons.build, size: 18), text: 'Equipment'),
                 Tab(icon: Icon(Icons.business, size: 18), text: 'PTY Conversion'),
                 Tab(icon: Icon(Icons.account_balance, size: 18), text: 'Bank Recon'),
+                Tab(icon: Icon(Icons.upload_file, size: 18), text: 'Sales Import'),
               ],
             ),
           ),
@@ -97,6 +102,7 @@ class _InvoiceListScreenState extends State<InvoiceListScreen>
                 EquipmentRegisterScreen(embedded: true),
                 PtyConversionScreen(embedded: true),
                 BankReconciliationScreen(embedded: true),
+                _CsvSalesImportTab(),
               ],
             ),
           ),
@@ -670,20 +676,28 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
         );
         return;
       }
-      String? supplierId;
-      final vendorName = result.supplierName?.trim();
-      if (vendorName != null && vendorName.isNotEmpty) {
-        final suppliers = await _supplierRepo.getSuppliers(activeOnly: true);
-        final matched = suppliers.where((s) => s.name.toLowerCase().contains(vendorName.toLowerCase())).toList();
-        if (matched.isNotEmpty) supplierId = matched.first.id;
+      if (result.invoices.isNotEmpty) {
+        await _showOcrPreviewDialog(result.invoices);
+      } else if (result.supplierName != null ||
+          result.invoiceNumber != null) {
+        await _showOcrPreviewDialog([
+          <String, dynamic>{
+            'supplier_name': result.supplierName,
+            'invoice_number': result.invoiceNumber,
+            'invoice_date': result.invoiceDate,
+            'grand_total': result.total,
+            'line_items': result.lineItems
+                .map((li) => <String, dynamic>{
+                      'description': li.description,
+                      'quantity': li.quantity,
+                      'unit_price': li.unitPrice,
+                      'line_total': li.lineTotal,
+                    })
+                .toList(),
+            'warnings': <dynamic>[],
+          }
+        ]);
       }
-      final invoice = await _repo.createFromOcrResult(ocrResult: result.rawData, createdBy: userId, supplierId: supplierId);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Invoice created from photo (pending review)'), backgroundColor: AppColors.success),
-      );
-      _load();
-      _openForm(invoice: invoice);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -693,6 +707,27 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     } finally {
       if (mounted) setState(() => _ocrLoading = false);
     }
+  }
+
+  Future<void> _showOcrPreviewDialog(
+      List<Map<String, dynamic>> invoices) async {
+    final userId = AuthService().getCurrentStaffId();
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _OcrPreviewDialog(
+        invoices: invoices,
+        onApproveOne: (invoice) async {
+          await _repo.createFromOcrResult(
+            ocrResult: invoice,
+            createdBy: userId,
+          );
+          if (mounted) {
+            _load();
+          }
+        },
+      ),
+    );
   }
 
   Future<void> _receiveGoods(SupplierInvoice inv) async {
@@ -1069,6 +1104,12 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
   }
 
   Future<void> _scanDriveFolder() async {
+    final source = await _driveService.getImportSource();
+    if (source == 'local') {
+      await _scanLocalFolder();
+      return;
+    }
+
     final enabled = await _driveService.isEnabled();
     final configured = await _driveService.isConfigured();
     final aiConfigured = await _aiService.isConfigured();
@@ -1182,6 +1223,7 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
               ocrResult: extracted,
               createdBy: userId,
               supplierId: supplierId,
+              silentIfDuplicate: true,
             );
             debugPrint('DRIVE SCAN: Created invoice — '
                 'supplier: $supplierName, '
@@ -1216,15 +1258,182 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(
-                  '$failed file${failed == 1 ? '' : 's'} '
-                  'could not be processed — check file quality'),
-              backgroundColor: Colors.orange,
+                  'Failed to import $failed invoice${failed == 1 ? '' : 's'}'),
+              backgroundColor: Colors.red,
             ),
           );
         }
       }
     } catch (e) {
       debugPrint('Drive scan error: $e');
+      if (mounted) setState(() => _driveScanRunning = false);
+    }
+  }
+
+  Future<void> _scanLocalFolder() async {
+    final localService = LocalInvoiceService();
+    final path = await localService.getFolderPath();
+
+    if (path == null || path.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No local folder configured. '
+              'Go to Settings → Drive & Import to set a folder.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+
+    final aiConfigured = await _aiService.isConfigured();
+    if (!aiConfigured) return;
+    if (_driveScanRunning) return;
+
+    setState(() => _driveScanRunning = true);
+
+    try {
+      debugPrint('LOCAL SCAN: Starting scan from $path');
+      final files = await localService.scanForInvoices();
+      debugPrint('LOCAL SCAN: Found ${files.length} new files');
+
+      if (files.isEmpty) {
+        debugPrint('LOCAL SCAN: No new files found');
+        setState(() => _driveScanRunning = false);
+        return;
+      }
+
+      int created = 0;
+      int failed = 0;
+
+      for (final file in files) {
+        try {
+          debugPrint('LOCAL SCAN: Processing ${file.filename}...');
+          final extractedList = await _aiService.extractInvoiceData(
+            imageBytes: file.bytes,
+            mimeType: 'application/pdf',
+          );
+
+          final validInvoices = extractedList
+              .where((e) => !e.containsKey('error'))
+              .toList();
+
+          if (validInvoices.isEmpty) {
+            final err = extractedList.isNotEmpty
+                ? extractedList.first['error']
+                : 'no data';
+            debugPrint('LOCAL SCAN: Extraction failed for '
+                '${file.filename}: $err');
+            failed++;
+            continue;
+          }
+
+          debugPrint('LOCAL SCAN: Extracted ${validInvoices.length} '
+              'invoice(s) from ${file.filename}');
+
+          final userId = AuthService().getCurrentStaffId();
+          final suppliers =
+              await _supplierRepo.getSuppliers(activeOnly: true);
+
+          for (final extracted in validInvoices) {
+            String? supplierId;
+            final supplierName =
+                extracted['supplier_name']?.toString().trim();
+            if (supplierName != null && supplierName.isNotEmpty) {
+              final exactMatched = suppliers
+                  .where((s) => s.name
+                      .toLowerCase()
+                      .contains(supplierName.toLowerCase()))
+                  .toList();
+
+              if (exactMatched.isNotEmpty) {
+                supplierId = exactMatched.first.id;
+                debugPrint('LOCAL SCAN: Exact match for supplier '
+                    '"$supplierName" → ${exactMatched.first.name}');
+              } else {
+                final fuzzyId =
+                    _fuzzyMatchSupplier(supplierName, suppliers);
+                if (fuzzyId != null) {
+                  supplierId = fuzzyId;
+                  final fuzzyName =
+                      suppliers.firstWhere((s) => s.id == fuzzyId).name;
+                  debugPrint('LOCAL SCAN: Fuzzy match for supplier '
+                      '"$supplierName" → "$fuzzyName"');
+                } else {
+                  try {
+                    final newSupplier = await Supabase.instance.client
+                        .from('suppliers')
+                        .insert({
+                          'name': supplierName,
+                          'contact_name': null,
+                          'phone': null,
+                          'email': null,
+                          'account_number': null,
+                          'notes':
+                              'Auto-created from supplier invoice scan',
+                          'is_active': true,
+                        })
+                        .select('id')
+                        .single();
+                    supplierId = newSupplier['id']?.toString();
+                    debugPrint('LOCAL SCAN: Auto-created supplier: '
+                        '"$supplierName" ($supplierId)');
+                  } catch (e) {
+                    debugPrint('LOCAL SCAN: Failed to auto-create '
+                        'supplier "$supplierName": $e');
+                  }
+                }
+              }
+            }
+
+            await _repo.createFromOcrResult(
+              ocrResult: extracted,
+              createdBy: userId,
+              supplierId: supplierId,
+              silentIfDuplicate: true,
+            );
+            debugPrint('LOCAL SCAN: Created invoice — '
+                'supplier: $supplierName, '
+                'number: ${extracted['invoice_number']}');
+          }
+
+          await localService.markProcessed(file.filename, file.size);
+          created += validInvoices.length;
+        } catch (e) {
+          debugPrint('Local invoice create error for '
+              '${file.filename}: $e');
+          failed++;
+        }
+      }
+
+      if (mounted) {
+        setState(() => _driveScanRunning = false);
+        if (created > 0) {
+          _load();
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  '$created invoice${created == 1 ? '' : 's'} '
+                  'imported from local folder'
+                  '${failed > 0 ? ' ($failed failed)' : ''}'),
+              backgroundColor: const Color(0xFF2E7D32),
+              duration: const Duration(seconds: 5),
+            ),
+          );
+        } else if (failed > 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                  'Failed to import $failed invoice${failed == 1 ? '' : 's'}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      debugPrint('Local scan error: $e');
       if (mounted) setState(() => _driveScanRunning = false);
     }
   }
@@ -1238,7 +1447,11 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
           color: AppColors.cardBg,
           child: Row(
             children: [
-              const Text('Supplier Invoices', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              const Flexible(
+              child: Text('Supplier Invoices',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis),
+            ),
               const SizedBox(width: 16),
               DropdownButton<String>(
                 value: _statusFilter ?? '',
@@ -1476,3 +1689,470 @@ class _ReportsHubTabState extends State<_ReportsHubTab>
   }
 }
 
+class _OcrPreviewDialog extends StatefulWidget {
+  final List<Map<String, dynamic>> invoices;
+  final Future<void> Function(Map<String, dynamic>) onApproveOne;
+
+  const _OcrPreviewDialog({
+    required this.invoices,
+    required this.onApproveOne,
+  });
+
+  @override
+  State<_OcrPreviewDialog> createState() => _OcrPreviewDialogState();
+}
+
+class _OcrPreviewDialogState extends State<_OcrPreviewDialog> {
+  final Set<int> _approved = {};
+  bool _isApproving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.invoices.length;
+    return AlertDialog(
+      title: Text(
+        count == 1
+            ? '1 invoice detected'
+            : '$count invoices detected',
+      ),
+      content: SizedBox(
+        width: 600,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(count, (i) {
+              final inv = widget.invoices[i];
+              final warnings =
+                  (inv['warnings'] as List<dynamic>? ?? []);
+              final hasWarnings = warnings.isNotEmpty;
+              return Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: hasWarnings
+                        ? Colors.orange
+                        : Colors.grey.shade300,
+                    width: hasWarnings ? 2 : 1,
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ListTile(
+                      title: Text(
+                        inv['supplier_name']?.toString() ??
+                            'Unknown supplier',
+                        style: const TextStyle(
+                            fontWeight: FontWeight.bold),
+                      ),
+                      subtitle: Text(
+                        '${inv['invoice_number'] ?? 'No invoice number'}'
+                        ' · ${inv['invoice_date'] ?? 'No date'}'
+                        ' · R${(inv['grand_total'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                      ),
+                      trailing: _approved.contains(i)
+                          ? const Icon(Icons.check_circle,
+                              color: Colors.green)
+                          : TextButton(
+                              onPressed: _isApproving
+                                  ? null
+                                  : () async {
+                                      setState(
+                                          () => _isApproving = true);
+                                      await widget.onApproveOne(
+                                          widget.invoices[i]);
+                                      setState(() {
+                                        _approved.add(i);
+                                        _isApproving = false;
+                                      });
+                                    },
+                              child: const Text('Approve'),
+                            ),
+                    ),
+                    if (hasWarnings) ...[
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            Row(children: [
+                              const Icon(Icons.warning_amber,
+                                  color: Colors.orange, size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                '${warnings.length} warning${warnings.length == 1 ? '' : 's'} — please verify',
+                                style: const TextStyle(
+                                  color: Colors.orange,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ]),
+                            const SizedBox(height: 8),
+                            ...warnings.map((w) {
+                              final wm = w as Map<String, dynamic>;
+                              return Padding(
+                                padding: const EdgeInsets.only(
+                                    bottom: 4),
+                                child: Text(
+                                  '⚠️ ${wm['message']}',
+                                  style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.orange),
+                                ),
+                              );
+                            }),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            }),
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+        if (_approved.length < count)
+          FilledButton(
+            onPressed: _isApproving
+                ? null
+                : () async {
+                    final navigator = Navigator.of(context);
+                    setState(() => _isApproving = true);
+                    for (var i = 0;
+                        i < widget.invoices.length;
+                        i++) {
+                      if (!_approved.contains(i)) {
+                        await widget.onApproveOne(
+                            widget.invoices[i]);
+                        if (!mounted) return;
+                        setState(() => _approved.add(i));
+                      }
+                    }
+                    if (!mounted) return;
+                    setState(() => _isApproving = false);
+                    navigator.pop();
+                  },
+            child: Text(
+              _isApproving
+                  ? 'Approving...'
+                  : 'Approve All ($count)',
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════
+// TAB 10: CSV SALES IMPORT
+// ══════════════════════════════════════════════════════════════════
+class _CsvSalesImportTab extends StatefulWidget {
+  const _CsvSalesImportTab();
+
+  @override
+  State<_CsvSalesImportTab> createState() => _CsvSalesImportTabState();
+}
+
+class _CsvSalesImportTabState extends State<_CsvSalesImportTab> {
+  final _service = CsvSalesImportService();
+  bool _importing = false;
+  String? _selectedFile;
+  List<CsvSalesLine>? _lines;
+  List<CsvSalesLine>? _skippedLines;
+  DateTime? _importDate;
+  int _importedCount = 0;
+  DateTime? _alreadyImportedDate;
+  String? _lastImportedFile;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLastImportedFile();
+  }
+
+  Future<void> _loadLastImportedFile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getString('csv_last_imported_file');
+    if (last != null && mounted) {
+      setState(() => _lastImportedFile = last);
+    }
+  }
+
+  Future<void> _pickFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+    );
+
+    if (result != null && result.files.single.path != null) {
+      final path = result.files.single.path!;
+      final file = File(path);
+      final content = await file.readAsString();
+      final filename = result.files.single.name;
+
+      final parsed = _service.parseCsv(content);
+      final matched = await _service.matchPlus(parsed);
+
+      final date = _service.parseDateFromFilename(filename);
+      final refId = filename.contains('.')
+          ? filename.substring(0, filename.lastIndexOf('.'))
+          : filename;
+      final existingDate = await _service.checkAlreadyImported(refId);
+
+      if (mounted) {
+        setState(() {
+          _selectedFile = filename;
+          _lines = matched;
+          _importDate = date;
+          _alreadyImportedDate = existingDate;
+          _skippedLines = matched.where((l) => !l.matched).toList();
+        });
+      }
+    }
+  }
+
+  Future<void> _runImport() async {
+    if (_lines == null || _importDate == null || _selectedFile == null) return;
+
+    setState(() => _importing = true);
+    try {
+      final result = await _service.importLines(
+        lines: _lines!,
+        date: _importDate!,
+        filename: _selectedFile!,
+      );
+
+      if (mounted) {
+        setState(() {
+          _importedCount = result.imported;
+          _skippedLines = result.skippedLines;
+          _importing = false;
+          _lastImportedFile = _selectedFile;
+        });
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('csv_last_imported_file', _selectedFile!);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Imported ${result.imported} movements, '
+                '${result.skipped} skipped',
+              ),
+              backgroundColor: const Color(0xFF2E7D32),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _importing = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('CSV Sales Import',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          const Text(
+            'Import sales data from POS CSV files with backdating support.',
+            style: TextStyle(fontSize: 12, color: Color(0xFF666666)),
+          ),
+          const SizedBox(height: 24),
+          if (_selectedFile == null) ...[
+            ElevatedButton.icon(
+              onPressed: _importing ? null : _pickFile,
+              icon: const Icon(Icons.file_upload),
+              label: const Text('Select CSV file'),
+            ),
+          ] else ...[
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.blue.shade50,
+                border: Border.all(color: Colors.blue),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.description, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(_selectedFile!)),
+                  TextButton(
+                    onPressed: _importing ? null : _pickFile,
+                    child: const Text('Change'),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+            if (_alreadyImportedDate != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  border: Border.all(color: Colors.orange),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.warning_amber, color: Colors.orange),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'This file was already imported on ${_alreadyImportedDate!.day}/${_alreadyImportedDate!.month}/${_alreadyImportedDate!.year}. Select a different file.',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            if (_importDate != null) ...[
+              Text('Import date: ${_importDate!.day}/${_importDate!.month}/${_importDate!.year}'),
+              const SizedBox(height: 8),
+            ],
+            if (_lines != null) ...[
+              Text('Total lines: ${_lines!.length}'),
+              const SizedBox(height: 8),
+              Text('Matched: ${_lines!.where((l) => l.matched).length}'),
+              const SizedBox(height: 8),
+              Text('Unmatched: ${_lines!.where((l) => !l.matched).length}'),
+              const SizedBox(height: 16),
+            ],
+            Row(
+              children: [
+                FilledButton.icon(
+                  onPressed: (_importing || _alreadyImportedDate != null)
+                      ? null
+                      : _runImport,
+                  icon: _importing
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white))
+                      : const Icon(Icons.check),
+                  label: Text(_importing ? 'Importing...' : 'Import'),
+                ),
+                const SizedBox(width: 12),
+                TextButton.icon(
+                  onPressed: () {
+                    setState(() {
+                      _selectedFile = null;
+                      _lines = null;
+                      _importDate = null;
+                      _skippedLines = null;
+                      _importedCount = 0;
+                      _alreadyImportedDate = null;
+                      // Note: _lastImportedFile is NOT cleared - it persists
+                    });
+                  },
+                  icon: const Icon(Icons.clear),
+                  label: const Text('Clear'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            if (_skippedLines != null && _skippedLines!.isNotEmpty) ...[
+              const Divider(),
+              const SizedBox(height: 16),
+              const Text('Unmatched PLU codes:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              const SizedBox(height: 8),
+              Container(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: _skippedLines?.length ?? 0,
+                  itemBuilder: (context, index) {
+                    final line = _skippedLines![index];
+                    return ListTile(
+                      dense: true,
+                      leading: const Icon(
+                        Icons.warning_amber,
+                        color: Colors.orange,
+                        size: 18,
+                      ),
+                      title: Text(
+                        '${line.pluCode} - ${line.pluName}',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      subtitle: Text('Qty: ${line.qty.toStringAsFixed(3)}'),
+                    );
+                  },
+                ),
+              ),
+            ],
+            if (_lastImportedFile != null) ...[
+              const Divider(),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  border: Border.all(color: Colors.green),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text('Last import: $_lastImportedFile')),
+                  ],
+                ),
+              ),
+            ],
+            if (_importedCount > 0) ...[
+              const Divider(),
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  border: Border.all(color: Colors.green),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.check_circle, color: Colors.green),
+                    const SizedBox(width: 8),
+                    Text('Successfully imported $_importedCount movements'),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}

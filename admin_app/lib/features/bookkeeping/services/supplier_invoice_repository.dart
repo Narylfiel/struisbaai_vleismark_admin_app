@@ -1,6 +1,5 @@
 import 'dart:math' show Random;
 
-import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -126,7 +125,7 @@ class SupplierInvoiceRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return SupplierInvoice.fromJson(row as Map<String, dynamic>);
+    return SupplierInvoice.fromJson(row);
   }
 
   Future<String> nextInvoiceNumber() async {
@@ -187,14 +186,13 @@ class SupplierInvoiceRepository {
     final totalVal = _money((data['total'] as num?)?.toDouble() ?? 0);
     data['total'] = totalVal;
     data['amount_paid'] = 0;
-    data['balance_due'] = totalVal;
     final row = await _client
         .from('supplier_invoices')
         .insert(data)
         .select()
         .single();
     
-    final created = SupplierInvoice.fromJson(row as Map<String, dynamic>);
+    final created = SupplierInvoice.fromJson(row);
     
     // Audit log - invoice creation
     await AuditService.log(
@@ -226,13 +224,12 @@ class SupplierInvoiceRepository {
     final totalVal = _money((payloadCopy['total'] as num?)?.toDouble() ?? 0);
     payloadCopy['total'] = totalVal;
     payloadCopy['amount_paid'] = 0;
-    payloadCopy['balance_due'] = totalVal;
     final row = await _client
         .from('supplier_invoices')
         .insert(payloadCopy)
         .select()
         .single();
-    return row as Map<String, dynamic>;
+    return row;
   }
 
   Future<SupplierInvoice> update(SupplierInvoice invoice) async {
@@ -260,7 +257,6 @@ class SupplierInvoiceRepository {
     data['invoice_number'] = invoiceNum;
     data['total'] = newTotal;
     data['amount_paid'] = balances['amount_paid']!;
-    data['balance_due'] = balances['balance_due']!;
     final row = await _client
         .from('supplier_invoices')
         .update(data)
@@ -278,7 +274,7 @@ class SupplierInvoiceRepository {
       newValues: data,
     );
     
-    return SupplierInvoice.fromJson(row as Map<String, dynamic>);
+    return SupplierInvoice.fromJson(row);
   }
 
   Future<void> delete(String id) async {
@@ -301,16 +297,42 @@ class SupplierInvoiceRepository {
   }
 
   /// Create supplier invoice from OCR result (status pending_review).
-  Future<SupplierInvoice> createFromOcrResult({
+  /// If [silentIfDuplicate] is true and the invoice number already exists,
+  /// returns null instead of throwing (used for Drive auto-scan).
+  Future<SupplierInvoice?> createFromOcrResult({
     required Map<String, dynamic> ocrResult,
     required String createdBy,
     String? supplierId,
+    bool silentIfDuplicate = false,
   }) async {
-    // Map Gemini response fields to invoice fields
-    final total = (ocrResult['total'] as num?)?.toDouble() ?? 0;
-    final subtotal = (ocrResult['subtotal'] as num?)?.toDouble() ?? total;
-    final taxAmount = (ocrResult['tax_amount'] as num?)?.toDouble() ?? 0;
-    final taxRate = (ocrResult['tax_rate'] as num?)?.toDouble() ?? 0;
+    // Map Gemini response fields — support new format (grand_total/subtotal_excl/vat_total)
+    // and old format (total/subtotal/tax_amount) as fallback.
+    final grandTotal = (ocrResult['grand_total'] as num?)?.toDouble();
+    final subtotalExcl = (ocrResult['subtotal_excl'] as num?)?.toDouble();
+    final vatTotal = (ocrResult['vat_total'] as num?)?.toDouble();
+    final isVatInvoice = ocrResult['is_vat_invoice'] as bool? ?? false;
+    final supplierVatNumber =
+        ocrResult['supplier_vat_number']?.toString();
+
+    final total = (ocrResult['total'] as num?)?.toDouble() ?? grandTotal ?? 0;
+    final subtotal =
+        (ocrResult['subtotal'] as num?)?.toDouble() ?? subtotalExcl ?? total;
+    final taxAmount = (ocrResult['tax_amount'] as num?)?.toDouble() ??
+        vatTotal ??
+        0;
+    final taxRate = isVatInvoice
+        ? ((ocrResult['tax_rate'] as num?)?.toDouble() ?? 15.0)
+        : ((ocrResult['tax_rate'] as num?)?.toDouble() ?? 0);
+
+    final warnings =
+        ocrResult['warnings'] as List<dynamic>? ?? [];
+    String? warningNotes;
+    if (warnings.isNotEmpty) {
+      final lines = warnings
+          .map((w) => '\u26a0\ufe0f ${(w as Map)["message"]}')
+          .join('\n');
+      warningNotes = 'OCR Warnings:\n$lines';
+    }
 
     DateTime invoiceDate = DateTime.now();
     if (ocrResult['invoice_date'] != null) {
@@ -359,6 +381,7 @@ class SupplierInvoiceRepository {
     final trimmedExtracted = extractedInvoiceNumber?.trim();
     if (trimmedExtracted != null && trimmedExtracted.isNotEmpty) {
       if (await invoiceNumberExists(trimmedExtracted)) {
+        if (silentIfDuplicate) return null;
         throw StateError(
           'Invoice number already exists. Please verify the document.',
         );
@@ -383,7 +406,11 @@ class SupplierInvoiceRepository {
     if (extractedSupplierName != null && supplierId == null) {
       noteParts.add('Supplier from invoice: $extractedSupplierName');
     }
+    if (supplierVatNumber != null) {
+      noteParts.add('Supplier VAT: $supplierVatNumber');
+    }
     if (extraNotes != null) noteParts.add(extraNotes);
+    if (warningNotes != null) noteParts.add(warningNotes);
     final combinedNotes = noteParts.isEmpty ? null : noteParts.join('\n');
 
     final invoice = SupplierInvoice(
@@ -604,7 +631,6 @@ class SupplierInvoiceRepository {
     final today = DateTime.now().toIso8601String().substring(0, 10);
     final updates = <String, dynamic>{
       'amount_paid': newPaidStored,
-      'balance_due': newDue,
       'updated_at': now,
     };
     if (newDue <= 0.005) {

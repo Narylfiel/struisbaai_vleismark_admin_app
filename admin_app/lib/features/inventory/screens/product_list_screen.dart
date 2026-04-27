@@ -1907,6 +1907,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   String _productType = 'raw';
   bool _scaleItem = false;
   bool _ishidaSync = false;
+  bool _isBundle = false;
   // Tab G — Scale/Label fields
   final _scaleShelfLifeController = TextEditingController();
   final _bestByController = TextEditingController();
@@ -2413,6 +2414,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     _productType = p['product_type'] ?? 'raw';
     _scaleItem = p['scale_item'] ?? false;
     _ishidaSync = p['ishida_sync'] ?? false;
+    _isBundle = p['is_bundle'] as bool? ?? false;
     _shelfLifeFreshController.text = p['shelf_life_fresh']?.toString() ?? '';
     _shelfLifeFrozenController.text = p['shelf_life_frozen']?.toString() ?? '';
     _scaleShelfLifeController.text = p['scale_shelf_life']?.toString() ?? '';
@@ -2562,6 +2564,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
       'product_type': _productType,
       'scale_item': _scaleItem,
       'ishida_sync': _ishidaSync,
+      'is_bundle': _isBundle,
       'shelf_life_fresh': int.tryParse(_shelfLifeFreshController.text),
       'shelf_life_frozen': int.tryParse(_shelfLifeFrozenController.text),
       'scale_shelf_life': int.tryParse(_scaleShelfLifeController.text),
@@ -3128,6 +3131,47 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             ],
           ),
           const SizedBox(height: 16),
+          const Divider(),
+          SwitchListTile(
+            title: const Text('Bundle Product'),
+            subtitle: const Text(
+              'When sold at POS, staff will select '
+              'components to deduct from stock. '
+              'This product has no stock of its own.',
+            ),
+            value: _isBundle,
+            onChanged: (val) => setState(() => _isBundle = val ?? false),
+          ),
+          if (_isBundle)
+            Container(
+              margin: const EdgeInsets.symmetric(
+                  horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                border: Border.all(color: Colors.orange),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.info_outline,
+                      color: Colors.orange, size: 18),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Stock fields are not tracked for '
+                      'bundle products. Components will be '
+                      'deducted when sold at POS.',
+                      style: TextStyle(
+                        color: Colors.orange,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: 16),
           const Text('Supplier Link',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
           const SizedBox(height: 6),
@@ -3541,6 +3585,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
           const SizedBox(height: 24),
 
           // ── SECTION: STOCK SETTINGS ─────────────────────────────────────
+          if (!_isBundle) ...[
           const Text('Stock Settings',
               style: TextStyle(
                   fontSize: 13,
@@ -3814,6 +3859,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
               const Expanded(child: SizedBox()),
             ],
           ),
+          ],
 
           const SizedBox(height: 24),
 

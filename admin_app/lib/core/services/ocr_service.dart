@@ -82,21 +82,7 @@ class OcrService {
         return OcrResult.error(
             'AI could not read invoice: $err');
       }
-      final data = valid.first;
-
-      return OcrResult.success(
-        supplierName: data['supplier_name']?.toString(),
-        invoiceNumber: data['invoice_number']?.toString(),
-        invoiceDate: data['invoice_date']?.toString(),
-        dueDate: data['due_date']?.toString(),
-        lineItems: _parseLineItems(data['line_items']),
-        subtotal: _toDouble(data['subtotal']),
-        taxRate: _toDouble(data['tax_rate']),
-        taxAmount: _toDouble(data['tax_amount']),
-        total: _toDouble(data['total']),
-        confidence: data['confidence']?.toString() ?? 'medium',
-        rawData: data,
-      );
+      return OcrResult.successMulti(invoices: valid);
     } catch (e) {
       debugPrint('OCR extraction error: $e');
       return OcrResult.error('Extraction failed: $e');
@@ -104,34 +90,6 @@ class OcrService {
   }
 
   // ── Helpers ───────────────────────────────────────────────────
-
-  List<OcrLineItem> _parseLineItems(dynamic raw) {
-    if (raw == null) return [];
-    try {
-      final list = raw as List;
-      return list.map((item) {
-        final m = item as Map<String, dynamic>;
-        return OcrLineItem(
-          description: m['description']?.toString() ?? '',
-          supplierCode: m['supplier_code']?.toString(),
-          quantity: _toDouble(m['quantity']) ?? 1,
-          unit: m['unit']?.toString(),
-          unitPrice: _toDouble(m['unit_price']) ?? 0,
-          lineTotal: _toDouble(m['line_total']) ?? 0,
-        );
-      }).toList();
-    } catch (e) {
-      debugPrint('Line item parse error: $e');
-      return [];
-    }
-  }
-
-  double? _toDouble(dynamic value) {
-    if (value == null) return null;
-    if (value is double) return value;
-    if (value is int) return value.toDouble();
-    return double.tryParse(value.toString());
-  }
 
   String _mimeFromPath(String path) {
     return _mimeFromExtension(path.split('.').last);
@@ -168,6 +126,8 @@ class OcrResult {
   final double? total;
   final String confidence;
   final Map<String, dynamic> rawData;
+  final List<Map<String, dynamic>> invoices;
+  final bool isMultiInvoice;
 
   OcrResult._({
     required this.success,
@@ -184,6 +144,8 @@ class OcrResult {
     this.total,
     this.confidence = 'medium',
     this.rawData = const {},
+    this.invoices = const [],
+    this.isMultiInvoice = false,
   });
 
   factory OcrResult.success({
@@ -215,6 +177,25 @@ class OcrResult {
         rawData: rawData,
       );
 
+  factory OcrResult.successMulti({
+    required List<Map<String, dynamic>> invoices,
+  }) {
+    final first = invoices.isNotEmpty ? invoices.first : <String, dynamic>{};
+    return OcrResult._(
+      success: true,
+      cancelled: false,
+      invoices: invoices,
+      isMultiInvoice: invoices.length > 1,
+      supplierName: first['supplier_name']?.toString(),
+      invoiceNumber: first['invoice_number']?.toString(),
+      invoiceDate: first['invoice_date']?.toString(),
+      total: (first['grand_total'] as num?)?.toDouble() ?? 0,
+      lineItems: (first['line_items'] as List<dynamic>? ?? [])
+          .map((e) => OcrLineItem.fromJson(e as Map<String, dynamic>))
+          .toList(),
+    );
+  }
+
   factory OcrResult.cancelled() =>
       OcrResult._(success: false, cancelled: true);
 
@@ -233,6 +214,7 @@ class OcrLineItem {
   final String? unit;
   final double unitPrice;
   final double lineTotal;
+  final double? vatAmount;
 
   const OcrLineItem({
     required this.description,
@@ -241,5 +223,18 @@ class OcrLineItem {
     this.unit,
     required this.unitPrice,
     required this.lineTotal,
+    this.vatAmount,
   });
+
+  factory OcrLineItem.fromJson(Map<String, dynamic> json) {
+    return OcrLineItem(
+      description: json['description']?.toString() ?? '',
+      supplierCode: json['supplier_code']?.toString(),
+      quantity: (json['quantity'] as num?)?.toDouble() ?? 1,
+      unit: json['unit']?.toString(),
+      unitPrice: (json['unit_price'] as num?)?.toDouble() ?? 0,
+      lineTotal: (json['line_total'] as num?)?.toDouble() ?? 0,
+      vatAmount: (json['vat_amount'] as num?)?.toDouble(),
+    );
+  }
 }
