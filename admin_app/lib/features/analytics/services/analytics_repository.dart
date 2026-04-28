@@ -335,7 +335,9 @@ class AnalyticsRepository {
           .from('transactions')
           .select('created_at, total_amount')
           .gte('created_at', start.toIso8601String())
-          .lte('created_at', end.toIso8601String());
+          .lte('created_at', end.toIso8601String())
+          .eq('is_voided', false)
+          .eq('is_refund', false);
 
       // Aggregate by ISO week start (Monday)
       final byWeek = <String, Map<String, double>>{};

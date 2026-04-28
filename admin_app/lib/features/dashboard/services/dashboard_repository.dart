@@ -22,6 +22,8 @@ class DashboardRepository {
           .select('id, created_at, total_amount, cost_amount, payment_method, till_session_id, staff_id, account_id')
           .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String())
+          .eq('is_voided', false)
+          .eq('is_refund', false)
           .order('created_at', ascending: true);
       final list = List<Map<String, dynamic>>.from(response);
       return list.map((e) => Transaction.fromJson(e)).toList();

@@ -566,6 +566,8 @@ class ReportRepository {
           .select()
           .gte('created_at', start.toIso8601String())
           .lte('created_at', end.toIso8601String())
+          .eq('is_voided', false)
+          .eq('is_refund', false)
           .order('created_at', ascending: false)
           .limit(500);
       return List<Map<String, dynamic>>.from(response);
@@ -626,7 +628,7 @@ class ReportRepository {
         final name = (r['suppliers'] is Map ? r['suppliers']['name'] : null) ?? r['supplier_id'] ?? 'Unknown';
         final key = name.toString();
         map.putIfAbsent(key, () => {'supplier_name': key, 'total_amount': 0.0, 'invoice_count': 0});
-        map[key]!['total_amount'] = (map[key]!['total_amount'] as num) + ((r['total_amount'] as num?)?.toDouble() ?? 0);
+        map[key]!['total_amount'] = (map[key]!['total_amount'] as num) + ((r['total'] as num?)?.toDouble() ?? 0);
         map[key]!['invoice_count'] = (map[key]!['invoice_count'] as int) + 1;
       }
       return map.values.toList();

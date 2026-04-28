@@ -64,7 +64,7 @@ class _VatReportScreenState extends State<VatReportScreen> {
   }
 
   DateTime get _periodStart => DateTime(_periodYear, _periodMonth, 1);
-  DateTime get _periodEnd => DateTime(_periodYear, _periodMonth + 1, 0);
+  DateTime get _periodEnd => DateTime(_periodYear, _periodMonth + 2, 0);
   String get _periodLabel {
     final pair = _bimonthlyPairs.firstWhere((p) => p.$1 == _periodMonth, orElse: () => (1, 2, 'Jan-Feb'));
     return '${pair.$3} $_periodYear';
