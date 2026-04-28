@@ -186,7 +186,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: selectedRole,
+                  initialValue: selectedRole,
                   decoration: const InputDecoration(
                     labelText: 'Role *',
                     border: OutlineInputBorder(),
@@ -1177,7 +1177,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             Switch(
               value: perms[key] ?? false,
               onChanged: (val) => setState(() => perms[key] = val),
-              activeColor: AppColors.primary,
+              activeThumbColor: AppColors.primary,
             ),
           ],
         ),

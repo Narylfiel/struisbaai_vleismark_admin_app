@@ -34,7 +34,7 @@ class ActionTrackingService {
         final value = entry.value;
         if (value is! Map) continue;
         result[key] = ActionTracking.fromJson(
-          Map<String, dynamic>.from(value as Map),
+          Map<String, dynamic>.from(value),
         );
       }
       return result;

@@ -105,7 +105,9 @@ class PromotionEngine {
     
     // Direct tier match
     if (loyaltyTier != null && 
-        p.audience.contains(loyaltyTier)) return true;
+        p.audience.contains(loyaltyTier)) {
+      return true;
+    }
     
     // Tier hierarchy — higher tiers see lower tier deals
     // e.g. a VIP customer can see Elite+ deals
@@ -160,7 +162,9 @@ class PromotionEngine {
   bool _triggerWeightThreshold(Promotion p, List<BasketItem> items) {
     final minKg = (p.triggerConfig['min_weight_kg'] as num?)?.toDouble() ?? 0;
     double totalKg = 0;
-    for (final i in items) totalKg += i.weightKg * i.quantity;
+    for (final i in items) {
+      totalKg += i.weightKg * i.quantity;
+    }
     return totalKg >= minKg;
   }
 

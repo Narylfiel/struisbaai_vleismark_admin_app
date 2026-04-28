@@ -35,7 +35,8 @@ class _CashFlowScreenState extends State<CashFlowScreen> {
     setState(() => _loading = true);
     try {
       final months = await _ledger.getCashFlowByMonth(_monthCount);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _monthlyData = months;
         _selectedMonthIndex = _selectedMonthIndex.clamp(0, months.length - 1);
         if (months.isNotEmpty) {
@@ -51,6 +52,7 @@ class _CashFlowScreenState extends State<CashFlowScreen> {
         }
         _loading = false;
       });
+      }
     } catch (e) {
       debugPrint('Cash flow load: $e');
       if (mounted) setState(() => _loading = false);
@@ -114,7 +116,7 @@ class _CashFlowScreenState extends State<CashFlowScreen> {
                 SizedBox(
                   width: 100,
                   child: DropdownButtonFormField<int>(
-                    value: _selectedMonthIndex.clamp(0, _monthlyData.length - 1),
+                    initialValue: _selectedMonthIndex.clamp(0, _monthlyData.length - 1),
                     decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
                     items: List.generate(_monthlyData.length, (i) {
                       final m = _monthlyData[i];
@@ -154,18 +156,18 @@ class _CashFlowScreenState extends State<CashFlowScreen> {
                   SizedBox(
                     height: 280,
                     child: SfCartesianChart(
-                      primaryXAxis: CategoryAxis(
-                        labelStyle: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                        majorGridLines: const MajorGridLines(width: 0),
+                      primaryXAxis: const CategoryAxis(
+                        labelStyle: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                        majorGridLines: MajorGridLines(width: 0),
                       ),
-                      primaryYAxis: NumericAxis(
+                      primaryYAxis: const NumericAxis(
                         labelFormat: 'R {value}',
-                        labelStyle: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                        axisLine: const AxisLine(width: 0),
-                        majorTickLines: const MajorTickLines(size: 0),
+                        labelStyle: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                        axisLine: AxisLine(width: 0),
+                        majorTickLines: MajorTickLines(size: 0),
                       ),
                       tooltipBehavior: TooltipBehavior(enable: true),
-                      legend: Legend(
+                      legend: const Legend(
                         isVisible: false,
                         position: LegendPosition.bottom,
                         overflowMode: LegendItemOverflowMode.wrap,
@@ -217,22 +219,22 @@ class _CashFlowScreenState extends State<CashFlowScreen> {
               _cfRow('Net Operating', _summary.cashIn - _summary.cashOut + _summary.bankIn - _summary.bankOut, isBold: true),
             ],
           ),
-          ExpansionTile(
+          const ExpansionTile(
             initiallyExpanded: false,
-            title: const Text('Investing', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text('Investing', style: TextStyle(fontWeight: FontWeight.bold)),
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16),
                 child: Text('No investing activities in selected period.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               ),
             ],
           ),
-          ExpansionTile(
+          const ExpansionTile(
             initiallyExpanded: false,
-            title: const Text('Financing', style: TextStyle(fontWeight: FontWeight.bold)),
+            title: Text('Financing', style: TextStyle(fontWeight: FontWeight.bold)),
             children: [
               Padding(
-                padding: const EdgeInsets.all(16),
+                padding: EdgeInsets.all(16),
                 child: Text('No financing activities in selected period.', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
               ),
             ],

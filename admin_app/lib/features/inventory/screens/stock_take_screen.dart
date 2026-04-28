@@ -294,6 +294,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       if (mounted) {
         await _loadSessionsAndOpen();
         _loadItemsForCount();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Stock-take started')),
         );
@@ -359,6 +361,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       }
       if (mounted) {
         await _loadEntries(sessionId);
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Saved $saved count(s)')),
         );
@@ -383,6 +387,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       );
       if (mounted) {
         await _loadSessionsAndOpen();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Submitted for approval')),
         );
@@ -404,6 +410,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       final count = await _repo.approveSession(_currentSession!.id, _staffId);
       if (mounted) {
         await _loadSessionsAndOpen();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Stock take approved — $count products updated')),
         );
@@ -483,6 +491,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       await _repo.deleteSession(session.id);
       if (mounted) {
         await _loadSessionsAndOpen();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Deleted')));
       }
     } catch (e) {
@@ -544,6 +554,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       await _repo.rejectSession(session.id, reason);
       if (mounted) {
         await _loadSessionsAndOpen();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Rejected — staff can recount')));
       }
     } catch (e) {
@@ -559,6 +571,8 @@ class _StockTakeScreenState extends State<StockTakeScreen> {
       final count = await _repo.approveSession(session.id, _staffId);
       if (mounted) {
         await _loadSessionsAndOpen();
+      }
+      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Stock take approved — $count products updated')),
         );

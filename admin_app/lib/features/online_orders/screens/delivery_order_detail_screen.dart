@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/delivery_label_print_service.dart';
@@ -153,11 +151,11 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.error_outline, color: AppColors.error, size: 48),
+                const Icon(Icons.error_outline, color: AppColors.error, size: 48),
                 const SizedBox(height: 16),
                 Text(
                   _error!,
-                  style: TextStyle(color: AppColors.error),
+                  style: const TextStyle(color: AppColors.error),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
@@ -296,7 +294,7 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
                     ),
                     Text(
                       'Qty: $quantity',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                       ),
@@ -320,12 +318,12 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
     if (_staffId == null) {
       return Card(
         color: AppColors.error.withOpacity(0.1),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
+        child: const Padding(
+          padding: EdgeInsets.all(16),
           child: Row(
             children: [
               Icon(Icons.error_outline, color: AppColors.error),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(
                   // FIX 1: Specific error message
@@ -388,11 +386,11 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const Icon(Icons.check_circle, color: Colors.green, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   'Packed at: ${_formatTimestamp(packedAt)}',
-                  style: TextStyle(color: Colors.green),
+                  style: const TextStyle(color: Colors.green),
                 ),
               ],
             ),
@@ -420,11 +418,11 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.local_shipping, color: Colors.blue, size: 20),
+                const Icon(Icons.local_shipping, color: Colors.blue, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   'Dispatched at: ${_formatTimestamp(dispatchedAt)}',
-                  style: TextStyle(color: Colors.blue),
+                  style: const TextStyle(color: Colors.blue),
                 ),
               ],
             ),
@@ -451,11 +449,11 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                const Icon(Icons.check_circle, color: Colors.green, size: 20),
                 const SizedBox(width: 8),
                 Text(
                   'Delivered at: ${_formatTimestamp(deliveredAt)}',
-                  style: TextStyle(color: Colors.green),
+                  style: const TextStyle(color: Colors.green),
                 ),
               ],
             ),
@@ -529,7 +527,7 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               if (isLoading) ...[
-                SizedBox(
+                const SizedBox(
                   height: 16,
                   width: 16,
                   child: CircularProgressIndicator(
@@ -611,8 +609,8 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
       // IMPROVEMENT 3: Error feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Action failed. Please try again.'),
+          const SnackBar(
+            content: Text('Action failed. Please try again.'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -667,8 +665,8 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
       // IMPROVEMENT 3: Error feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Action failed. Please try again.'),
+          const SnackBar(
+            content: Text('Action failed. Please try again.'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -703,8 +701,8 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
       // IMPROVEMENT 3: Error feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Action failed. Please try again.'),
+          const SnackBar(
+            content: Text('Action failed. Please try again.'),
             backgroundColor: AppColors.error,
           ),
         );
@@ -739,8 +737,8 @@ class _DeliveryOrderDetailScreenState extends State<DeliveryOrderDetailScreen> {
       // IMPROVEMENT 3: Error feedback
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Action failed. Please try again.'),
+          const SnackBar(
+            content: Text('Action failed. Please try again.'),
             backgroundColor: AppColors.error,
           ),
         );

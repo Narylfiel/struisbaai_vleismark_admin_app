@@ -75,7 +75,7 @@ class StaffCreditRepository {
       'notes': notes,
     };
     final row = await _client.from('staff_credit').insert(payload).select().single();
-    return StaffCredit.fromJson(row as Map<String, dynamic>);
+    return StaffCredit.fromJson(row);
   }
 
   Future<void> updateStatus(String id, StaffCreditStatus status, {DateTime? paidDate}) async {

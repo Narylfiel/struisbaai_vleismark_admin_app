@@ -306,7 +306,7 @@ class ShrinkageDetectionService {
         );
       }
       
-      final products = (response as List)
+      final products = (response)
           .map((row) => ProductShrinkage.fromDbRow(
             Map<String, dynamic>.from(row as Map),
             start,

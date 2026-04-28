@@ -28,7 +28,7 @@ class RecipeRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return Recipe.fromJson(row as Map<String, dynamic>);
+    return Recipe.fromJson(row);
   }
 
   Future<Recipe> createRecipe(Recipe recipe) async {
@@ -41,7 +41,7 @@ class RecipeRepository {
         .insert(data)
         .select()
         .single();
-    return Recipe.fromJson(response as Map<String, dynamic>);
+    return Recipe.fromJson(response);
   }
 
   Future<Recipe> updateRecipe(Recipe recipe) async {
@@ -54,7 +54,7 @@ class RecipeRepository {
         .eq('id', recipe.id)
         .select()
         .single();
-    return Recipe.fromJson(response as Map<String, dynamic>);
+    return Recipe.fromJson(response);
   }
 
   Future<void> deleteRecipe(String id) async {
@@ -119,7 +119,7 @@ class RecipeRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return RecipeIngredient.fromJson(row as Map<String, dynamic>);
+    return RecipeIngredient.fromJson(row);
   }
 
   Future<RecipeIngredient> createIngredient(RecipeIngredient ingredient) async {
@@ -132,7 +132,7 @@ class RecipeRepository {
         .insert(data)
         .select()
         .single();
-    return RecipeIngredient.fromJson(response as Map<String, dynamic>);
+    return RecipeIngredient.fromJson(response);
   }
 
   Future<RecipeIngredient> updateIngredient(RecipeIngredient ingredient) async {
@@ -146,7 +146,7 @@ class RecipeRepository {
         .eq('id', ingredient.id)
         .select()
         .single();
-    return RecipeIngredient.fromJson(response as Map<String, dynamic>);
+    return RecipeIngredient.fromJson(response);
   }
 
   Future<void> deleteIngredient(String id) async {

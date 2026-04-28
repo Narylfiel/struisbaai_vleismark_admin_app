@@ -89,7 +89,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error, size: 64, color: AppColors.error),
+                      const Icon(Icons.error, size: 64, color: AppColors.error),
                       const SizedBox(height: 16),
                       Text('Error loading data: $_error'),
                       const SizedBox(height: 16),
@@ -354,7 +354,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
         ),
       ),
       title: Text(
-        '${job['print_type']?.toString().toUpperCase() ?? 'UNKNOWN'}',
+        job['print_type']?.toString().toUpperCase() ?? 'UNKNOWN',
         style: const TextStyle(fontWeight: FontWeight.bold),
       ),
       subtitle: Column(
@@ -365,7 +365,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
             Text('Created: ${_formatDateTime(createdAt)}'),
           if (printedAt != null)
             Text('Printed: ${_formatDateTime(printedAt)}', 
-                 style: TextStyle(color: Colors.green)),
+                 style: const TextStyle(color: Colors.green)),
         ],
       ),
       trailing: job['printed'] 

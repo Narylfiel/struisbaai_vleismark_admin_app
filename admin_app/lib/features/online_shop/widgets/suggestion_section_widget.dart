@@ -52,7 +52,7 @@ class _SuggestionSectionWidgetState extends State<SuggestionSectionWidget> {
             const SizedBox(width: 12),
             Text(
               'No ${widget.title.toLowerCase()} yet',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondary,
                 fontStyle: FontStyle.italic,
@@ -289,7 +289,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
                       if (widget.product!['online_display_name'] != null && widget.product!['online_display_name'] != widget.product!['name'])
                         Text(
                           widget.product!['name'],
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             color: AppColors.textSecondary,
                           ),
@@ -300,7 +300,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
                         children: [
                           Text(
                             'R ${widget.product!['sell_price']?.toStringAsFixed(2) ?? '0.00'}',
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
                               color: AppColors.success,
@@ -353,7 +353,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
               // Move to top
               IconButton(
                 onPressed: () => widget.onMoveToTop(widget.suggestion['id']),
-                icon: Icon(
+                icon: const Icon(
                   Icons.keyboard_double_arrow_up,
                   color: AppColors.info,
                   size: 16,
@@ -364,7 +364,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
               // Move to bottom
               IconButton(
                 onPressed: () => widget.onMoveToBottom(widget.suggestion['id']),
-                icon: Icon(
+                icon: const Icon(
                   Icons.keyboard_double_arrow_down,
                   color: AppColors.info,
                   size: 16,
@@ -388,7 +388,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
             // Delete button (always visible)
             IconButton(
               onPressed: widget.onRemove,
-              icon: Icon(
+              icon: const Icon(
                 Icons.delete_outline,
                 color: AppColors.error,
                 size: 18,
@@ -412,7 +412,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (widget.product!['online_display_name'] != null && widget.product!['online_display_name'] != widget.product!['name']) ...[
-              Text(
+              const Text(
                 'Display Name:',
                 style: TextStyle(
                   fontSize: 12,
@@ -426,7 +426,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
               ),
               const SizedBox(height: 8),
             ],
-            Text(
+            const Text(
               'Price:',
               style: TextStyle(
                 fontSize: 12,
@@ -443,7 +443,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
               ),
             ),
             const SizedBox(height: 8),
-            Text(
+            const Text(
               'Stock Status:',
               style: TextStyle(
                 fontSize: 12,
@@ -461,7 +461,7 @@ class _SuggestionItemState extends State<_SuggestionItem> {
             ),
             if (widget.product!['plu_code'] != null) ...[
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'SKU/PLU:',
                 style: TextStyle(
                   fontSize: 12,

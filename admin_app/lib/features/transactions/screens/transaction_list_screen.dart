@@ -266,8 +266,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
-    if (profiles is Map) cashierName = (profiles['full_name'] as String?) ?? '—';
-    else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) cashierName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
+    if (profiles is Map) {
+      cashierName = (profiles['full_name'] as String?) ?? '—';
+    } else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) cashierName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
     final paymentMethod = t['payment_method'] as String? ?? '—';
     final total = (t['total_amount'] as num?)?.toDouble() ?? 0;
     final isVoided = t['is_voided'] == true;

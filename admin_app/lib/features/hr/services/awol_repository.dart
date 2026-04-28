@@ -69,7 +69,7 @@ class AwolRepository {
       'recorded_by': recordedBy,
     };
     final row = await _client.from('staff_awol_records').insert(payload).select().single();
-    return AwolRecord.fromJson(row as Map<String, dynamic>);
+    return AwolRecord.fromJson(row);
   }
 
   Future<void> updateResolution(String id, AwolResolution resolution, {bool writtenWarningIssued = false, String? notes}) async {

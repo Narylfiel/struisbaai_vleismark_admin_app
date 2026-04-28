@@ -74,12 +74,14 @@ class _VatReportScreenState extends State<VatReportScreen> {
     setState(() => _loading = true);
     try {
       final vat = await _ledger.getVatSummary(_periodStart, _periodEnd);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _outputVat = vat.outputVat;
         _inputVat = vat.inputVat;
         _vatPayable = vat.payable;
         _loading = false;
       });
+      }
     } catch (e) {
       debugPrint('VAT load: $e');
       if (mounted) setState(() => _loading = false);
@@ -138,7 +140,7 @@ class _VatReportScreenState extends State<VatReportScreen> {
               SizedBox(
                 width: 90,
                 child: DropdownButtonFormField<int>(
-                  value: _periodYear,
+                  initialValue: _periodYear,
                   decoration: const InputDecoration(
                     isDense: true,
                     contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -174,7 +176,7 @@ class _VatReportScreenState extends State<VatReportScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('VAT 201 Return — $_periodLabel', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  Text('From ledger entries (account 2100)', style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+                  const Text('From ledger entries (account 2100)', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                   const Divider(height: 32),
                   _vatRow('Output VAT (collected from customers)', _outputVat),
                   _vatRow('Input VAT (paid to suppliers)', _inputVat),

@@ -240,7 +240,7 @@ class DeliveryLabelPrintService {
         if (!_isProcessing) {
           await _pollForLabels();
         }
-      } catch (e, stack) {
+      } catch (e) {
         debugPrint('[PRINT_QUEUE][ADMIN] Poll loop error: $e');
       }
 
@@ -269,10 +269,6 @@ class DeliveryLabelPrintService {
 
       // Process each job with atomic claim
       for (final job in jobs) {
-        if (job == null) {
-          debugPrint('[PRINT_QUEUE][ADMIN] Skipping null job');
-          continue;
-        }
         await _processLabelJob(job);
       }
     } catch (e) {
@@ -284,7 +280,7 @@ class DeliveryLabelPrintService {
 
   /// Process a single label job with atomic claim
   Future<void> _processLabelJob(Map<String, dynamic> job) async {
-    if (job == null || job['id'] == null) {
+    if (job['id'] == null) {
       debugPrint('[PRINT_QUEUE][ADMIN] Skipping invalid job');
       return;
     }

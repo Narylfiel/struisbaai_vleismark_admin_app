@@ -101,7 +101,7 @@ class AuthService extends BaseService {
 
       return null;
     } catch (e) {
-      print('Authentication error: $e');
+      debugPrint('Authentication error: $e');
       
       // Audit log - authentication error
       await AuditService.logLogin(
@@ -127,7 +127,7 @@ class AuthService extends BaseService {
         operationName: 'Online PIN authentication',
       );
 
-      if (response != null && response['pin_hash'] == pinHash) {
+      if (response['pin_hash'] == pinHash) {
         return {
           'id': response['id'],
           'name': response['full_name'],
@@ -139,7 +139,7 @@ class AuthService extends BaseService {
       }
       return null;
     } catch (e) {
-      print('Online auth failed, trying offline: $e');
+      debugPrint('Online auth failed, trying offline: $e');
       return null;
     }
   }
@@ -153,12 +153,12 @@ class AuthService extends BaseService {
       if (!AdminConfig.allowedRoles.contains((profile['role'] as String? ?? '').toLowerCase())) {
         return null;
       }
-      print('✅ Offline authentication successful for: ${profile['name']}');
+      debugPrint('✅ Offline authentication successful for: ${profile['name']}');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_activeSessionKey, jsonEncode(profile));
       return profile;
     } catch (e) {
-      print('❌ Offline auth failed: $e');
+      debugPrint('❌ Offline auth failed: $e');
       return null;
     }
   }
@@ -178,9 +178,9 @@ class AuthService extends BaseService {
         operationName: 'Session validation',
       );
 
-      return response?['is_active'] == true;
+      return response['is_active'] == true;
     } catch (e) {
-      print('Session validation failed: $e');
+      debugPrint('Session validation failed: $e');
       return false;
     }
   }
@@ -251,7 +251,7 @@ class AuthService extends BaseService {
         'role': role,
       };
     } catch (e) {
-      print('Session restore failed: $e');
+      debugPrint('Session restore failed: $e');
       await logout();
       return null;
     }
@@ -266,7 +266,7 @@ class AuthService extends BaseService {
         'role': role,
       }));
     } catch (e) {
-      print('Failed to persist session: $e');
+      debugPrint('Failed to persist session: $e');
     }
   }
 
@@ -288,7 +288,7 @@ class AuthService extends BaseService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_activeSessionKey);
     } catch (e) {
-      print('Failed to clear active session cache: $e');
+      debugPrint('Failed to clear active session cache: $e');
     }
   }
 
@@ -356,7 +356,7 @@ class AuthService extends BaseService {
       final c = CachedStaffProfile.fromSupabase(profile);
       await IsarService.saveStaffProfile(c);
     } catch (e) {
-      print('Failed to cache staff profile: $e');
+      debugPrint('Failed to cache staff profile: $e');
     }
   }
 

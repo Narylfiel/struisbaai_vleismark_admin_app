@@ -4,7 +4,6 @@ import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
-import 'package:admin_app/features/bookkeeping/screens/invoice_form_screen.dart';
 import '../../bookkeeping/screens/customer_invoice_form_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:pdf/pdf.dart';
@@ -370,7 +369,7 @@ class _TransactionsTabState extends State<_TransactionsTab> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           color: AppColors.surfaceBg,
-          child: Row(
+          child: const Row(
             children: [
               SizedBox(width: 90, child: Text('Date', style: hStyle)),
               Expanded(flex: 2, child: Text('Description', style: hStyle)),
@@ -678,7 +677,7 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                     });
                   },
                 ),
-                Text('Select all unpaid',
+                const Text('Select all unpaid',
                     style: TextStyle(
                         fontSize: 12, color: AppColors.textSecondary)),
                 const SizedBox(width: 16),
@@ -787,8 +786,9 @@ class _InvoicesTabState extends State<_InvoicesTab> {
                     final selected = _selectedIds.contains(id);
 
                     Color chipColor = AppColors.textSecondary;
-                    if (status == 'paid') chipColor = AppColors.success;
-                    else if (status == 'overdue') chipColor = AppColors.error;
+                    if (status == 'paid') {
+                      chipColor = AppColors.success;
+                    } else if (status == 'overdue') chipColor = AppColors.error;
                     else if (status == 'sent' || status == 'approved') chipColor = AppColors.warning;
                     else if (status == 'cancelled') chipColor = AppColors.error;
 
@@ -1128,9 +1128,9 @@ class _StatementTabState extends State<_StatementTab> {
                     pw.Text('Struisbaai Vleismark (Pty) Ltd',
                         style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold)),
                     pw.SizedBox(height: 4),
-                    pw.Text('Unit 6b Struisbaai Business Centre', style: pw.TextStyle(fontSize: 10)),
-                    pw.Text('Malvern Drive, Struisbaai, 7285', style: pw.TextStyle(fontSize: 10)),
-                    pw.Text('Tel: 082 696 2940', style: pw.TextStyle(fontSize: 10)),
+                    pw.Text('Unit 6b Struisbaai Business Centre', style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text('Malvern Drive, Struisbaai, 7285', style: const pw.TextStyle(fontSize: 10)),
+                    pw.Text('Tel: 082 696 2940', style: const pw.TextStyle(fontSize: 10)),
                   ],
                 ),
               ),
@@ -1141,11 +1141,11 @@ class _StatementTabState extends State<_StatementTab> {
                   pw.Text('STATEMENT',
                       style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold, color: PdfColors.grey800)),
                   pw.SizedBox(height: 8),
-                  pw.Text('Account: $name', style: pw.TextStyle(fontSize: 10)),
-                  pw.Text('Contact: $contact', style: pw.TextStyle(fontSize: 10)),
-                  pw.Text('Period: $_monthDisplay', style: pw.TextStyle(fontSize: 10)),
-                  pw.Text('Date Issued: $today', style: pw.TextStyle(fontSize: 10)),
-                  pw.Text('Account Ref: $accountIdShort', style: pw.TextStyle(fontSize: 10)),
+                  pw.Text('Account: $name', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text('Contact: $contact', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text('Period: $_monthDisplay', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text('Date Issued: $today', style: const pw.TextStyle(fontSize: 10)),
+                  pw.Text('Account Ref: $accountIdShort', style: const pw.TextStyle(fontSize: 10)),
                 ],
               ),
             ],
@@ -1259,9 +1259,9 @@ class _StatementTabState extends State<_StatementTab> {
           pw.Divider(thickness: 0.5),
           pw.SizedBox(height: 8),
           pw.Text('This statement was generated on $today',
-              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
           pw.Text('Struisbaai Vleismark (Pty) Ltd - Reg No: 2026/069883/07',
-              style: pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
+              style: const pw.TextStyle(fontSize: 8, color: PdfColors.grey600)),
         ],
       ),
     );

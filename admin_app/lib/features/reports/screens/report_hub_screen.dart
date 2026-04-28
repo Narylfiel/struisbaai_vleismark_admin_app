@@ -396,7 +396,7 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
                     label: const Text('View'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.primary,
-                      side: BorderSide(color: AppColors.primary),
+                      side: const BorderSide(color: AppColors.primary),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
@@ -916,7 +916,7 @@ class _ReportPreviewDialog extends StatelessWidget {
                         child: Table(
                           defaultColumnWidth:
                               const IntrinsicColumnWidth(),
-                          border: TableBorder(
+                          border: const TableBorder(
                             horizontalInside: BorderSide(
                                 color: AppColors.border, width: 0.5),
                             bottom: BorderSide(
@@ -1119,12 +1119,12 @@ class _ReportAlertsPanel extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
                 Icon(Icons.notifications_active_outlined,
                     size: 18, color: AppColors.warning),
-                const SizedBox(width: 8),
-                const Text(
+                SizedBox(width: 8),
+                Text(
                   'Automated alerts',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
@@ -1136,7 +1136,7 @@ class _ReportAlertsPanel extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (high.isNotEmpty) ...[
-              Text(
+              const Text(
                 'High severity',
                 style: TextStyle(
                   fontSize: 11,
@@ -1157,7 +1157,7 @@ class _ReportAlertsPanel extends StatelessWidget {
               if (medium.isNotEmpty) const SizedBox(height: 8),
             ],
             if (medium.isNotEmpty) ...[
-              Text(
+              const Text(
                 'Medium severity',
                 style: TextStyle(
                   fontSize: 11,

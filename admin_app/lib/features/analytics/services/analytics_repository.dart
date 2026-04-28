@@ -248,8 +248,9 @@ class AnalyticsRepository {
         double daysRemaining = dailyVelocity > 0 ? stock / dailyVelocity : 999;
         if (daysRemaining > 999) daysRemaining = 999;
         String status = 'OK';
-        if (stock <= reorder || daysRemaining < 2) status = 'URGENT';
-        else if (daysRemaining < 5) status = 'WARNING';
+        if (stock <= reorder || daysRemaining < 2) {
+          status = 'URGENT';
+        } else if (daysRemaining < 5) status = 'WARNING';
         final weeklyAvg = sold7;
         String contextMsg;
         if (dailyVelocity <= 0) {
@@ -353,7 +354,7 @@ class AnalyticsRepository {
         final weekKey = monday.toIso8601String().substring(0, 10);
 
         final amt = (map['total_amount'] as num?)?.toDouble() ?? 0;
-        final txCount = 1.0;
+        const txCount = 1.0;
 
         byWeek[weekKey] ??= {'revenue': 0, 'transactions': 0};
         byWeek[weekKey]!['revenue'] = (byWeek[weekKey]!['revenue'] ?? 0) + amt;

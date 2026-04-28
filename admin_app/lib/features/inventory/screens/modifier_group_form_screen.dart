@@ -221,20 +221,20 @@ class _ModifierGroupFormScreenState extends State<ModifierGroupFormScreen> {
                 subtitle: const Text('Customer must pick at least one (Blueprint: Required?)'),
                 value: _isRequired,
                 onChanged: (v) => setState(() => _isRequired = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               SwitchListTile(
                 title: const Text('Allow multiple'),
                 subtitle: const Text('Customer can select more than one (Blueprint: Allow Multiple?)'),
                 value: _allowMultiple,
                 onChanged: (v) => setState(() => _allowMultiple = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               SwitchListTile(
                 title: const Text('Active'),
                 value: _isActive,
                 onChanged: (v) => setState(() => _isActive = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               const SizedBox(height: 24),
               SizedBox(

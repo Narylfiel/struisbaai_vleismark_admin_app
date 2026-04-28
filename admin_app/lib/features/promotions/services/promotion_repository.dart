@@ -27,8 +27,8 @@ class PromotionRepository {
       'reward_config': promo.rewardConfig,
       'audience': promo.audience,
       'channels': promo.channels,
-      'start_date': promo.startDate != null ? promo.startDate!.toIso8601String().substring(0, 10) : null,
-      'end_date': promo.endDate != null ? promo.endDate!.toIso8601String().substring(0, 10) : null,
+      'start_date': promo.startDate?.toIso8601String().substring(0, 10),
+      'end_date': promo.endDate?.toIso8601String().substring(0, 10),
       'start_time': _formatTimeForDb(promo.startTime),
       'end_time': _formatTimeForDb(promo.endTime),
       'days_of_week': promo.daysOfWeek,
@@ -82,7 +82,7 @@ class PromotionRepository {
   Future<Promotion?> getById(String id) async {
     final response = await _client.from('promotions').select().eq('id', id).maybeSingle();
     if (response == null) return null;
-    final promo = Promotion.fromJson(response as Map<String, dynamic>);
+    final promo = Promotion.fromJson(response);
     promo.products = await getProductsForPromotion(id);
     return promo;
   }
@@ -92,7 +92,7 @@ class PromotionRepository {
     final payload = _promotionPayload(promo, forInsert: true);
     try {
       final response = await _client.from('promotions').insert(payload).select().single();
-      final created = Promotion.fromJson(response as Map<String, dynamic>);
+      final created = Promotion.fromJson(response);
       final promoId = created.id;
       for (final p in products) {
         final row = _productPayload(p, promoId);
@@ -136,17 +136,17 @@ class PromotionRepository {
 
   Future<Promotion> activate(String id) async {
     final response = await _client.from('promotions').update({'status': 'active', 'updated_at': DateTime.now().toIso8601String()}).eq('id', id).select().single();
-    return Promotion.fromJson(response as Map<String, dynamic>);
+    return Promotion.fromJson(response);
   }
 
   Future<Promotion> pause(String id) async {
     final response = await _client.from('promotions').update({'status': 'paused', 'updated_at': DateTime.now().toIso8601String()}).eq('id', id).select().single();
-    return Promotion.fromJson(response as Map<String, dynamic>);
+    return Promotion.fromJson(response);
   }
 
   Future<Promotion> cancel(String id) async {
     final response = await _client.from('promotions').update({'status': 'cancelled', 'updated_at': DateTime.now().toIso8601String()}).eq('id', id).select().single();
-    return Promotion.fromJson(response as Map<String, dynamic>);
+    return Promotion.fromJson(response);
   }
 
   /// Hard delete only if status == draft. Cascade deletes promotion_products.

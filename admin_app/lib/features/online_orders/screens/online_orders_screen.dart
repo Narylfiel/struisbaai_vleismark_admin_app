@@ -116,10 +116,10 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen>
           Container(
             padding: const EdgeInsets.all(16),
             color: AppColors.cardBg,
-            child: Row(
+            child: const Row(
               children: [
-                const Text('Online Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const Spacer(),
+                Text('Online Orders', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Spacer(),
                 // Add any header actions here if needed in the future
               ],
             ),
@@ -393,19 +393,19 @@ class _OrderCard extends StatelessWidget {
     switch (status) {
       case 'pending_cod':
       case 'pending_payment':
-        return _StatusInfo('Pending', AppColors.textSecondary);
+        return const _StatusInfo('Pending', AppColors.textSecondary);
       case 'confirmed':
-        return _StatusInfo('Confirmed', AppColors.info);
+        return const _StatusInfo('Confirmed', AppColors.info);
       case 'packing':
-        return _StatusInfo('Packing', AppColors.warning);
+        return const _StatusInfo('Packing', AppColors.warning);
       case 'ready':
-        return _StatusInfo('Ready', AppColors.success);
+        return const _StatusInfo('Ready', AppColors.success);
       case 'collected':
-        return _StatusInfo('Collected', AppColors.textSecondary);
+        return const _StatusInfo('Collected', AppColors.textSecondary);
       case 'cancelled':
-        return _StatusInfo('Cancelled', AppColors.error);
+        return const _StatusInfo('Cancelled', AppColors.error);
       case 'uncollected':
-        return _StatusInfo('Uncollected', AppColors.error);
+        return const _StatusInfo('Uncollected', AppColors.error);
       default:
         return _StatusInfo(status, AppColors.textSecondary);
     }

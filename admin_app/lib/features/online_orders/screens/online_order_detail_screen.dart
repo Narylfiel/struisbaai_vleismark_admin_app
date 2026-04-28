@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/config/edge_pipeline_config.dart';
 import 'package:admin_app/core/services/edge_pipeline_client.dart';
@@ -903,56 +901,56 @@ class _OnlineOrderDetailScreenState extends State<OnlineOrderDetailScreen> {
   static _StatusInfoFull _statusInfoFull(String status) {
     switch (status) {
       case 'pending_cod':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Pending (COD)',
           'Customer will pay cash on collection',
           Icons.hourglass_empty,
           AppColors.textSecondary,
         );
       case 'pending_payment':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Pending Payment',
           'Waiting for online payment confirmation',
           Icons.hourglass_empty,
           AppColors.warning,
         );
       case 'confirmed':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Confirmed',
           'Order confirmed — ready to start packing',
           Icons.check_circle,
           AppColors.info,
         );
       case 'packing':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Packing',
           'Staff are packing this order',
           Icons.inventory_2,
           AppColors.warning,
         );
       case 'ready':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Ready for Collection',
           'Customer has been notified — waiting for pickup',
           Icons.local_shipping,
           AppColors.success,
         );
       case 'collected':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Collected',
           'Order has been collected by the customer',
           Icons.done_all,
           AppColors.textSecondary,
         );
       case 'cancelled':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Cancelled',
           'This order has been cancelled',
           Icons.cancel,
           AppColors.error,
         );
       case 'uncollected':
-        return _StatusInfoFull(
+        return const _StatusInfoFull(
           'Uncollected',
           'Customer did not collect this order',
           Icons.warning,

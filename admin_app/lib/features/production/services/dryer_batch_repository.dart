@@ -43,7 +43,7 @@ class DryerBatchRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return DryerBatch.fromJson(row as Map<String, dynamic>);
+    return DryerBatch.fromJson(row);
   }
 
   Future<String> _nextBatchNumber() async {
@@ -62,7 +62,7 @@ class DryerBatchRepository {
           : 0;
       return '$prefix${(numPart + 1).toString().padLeft(3, '0')}';
     } catch (_) {
-      return '${prefix}${DateTime.now().millisecondsSinceEpoch % 1000}';
+      return '$prefix${DateTime.now().millisecondsSinceEpoch % 1000}';
     }
   }
 
@@ -101,7 +101,7 @@ class DryerBatchRepository {
       'kwh_per_hour': kwhPerHour ?? 2.5,
       if (plannedHours != null && plannedHours > 0) 'planned_hours': plannedHours,
       'input_product_id': inputProductId?.isEmpty == true ? null : inputProductId,
-      'output_product_id': outputProductId?.isEmpty == true ? null : outputProductId,
+      'output_product_id': outputProductId.isEmpty == true ? null : outputProductId,
       if (recipeId != null && recipeId.isNotEmpty) 'recipe_id': recipeId,
       if (productionBatchId != null && productionBatchId.isNotEmpty) 'production_batch_id': productionBatchId,
       'notes': notes,
@@ -111,7 +111,7 @@ class DryerBatchRepository {
         .insert(data)
         .select()
         .single();
-    final batch = DryerBatch.fromJson(row as Map<String, dynamic>);
+    final batch = DryerBatch.fromJson(row);
 
     if (ingredients != null && ingredients.isNotEmpty) {
       for (final ing in ingredients) {
@@ -234,7 +234,7 @@ class DryerBatchRepository {
       entityId: batchId,
     );
     
-    return DryerBatch.fromJson(response as Map<String, dynamic>);
+    return DryerBatch.fromJson(response);
   }
 
   Future<DryerBatch> cancelBatch(String batchId) async {

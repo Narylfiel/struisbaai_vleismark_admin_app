@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
-import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 /// H7: P&L Screen — period selector, compare toggle, export PDF/Excel.
 class PLScreen extends StatefulWidget {
@@ -63,11 +62,13 @@ class _PLScreenState extends State<PLScreen> {
         final prevEnd = DateTime(_periodStart.year, _periodStart.month, 0);
         prevPnl = await _ledger.getPnLSummary(prevStart, prevEnd);
       }
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _pnlSummary = pnl;
         _prevPnlSummary = prevPnl;
         _loading = false;
       });
+      }
     } catch (e) {
       debugPrint('P&L load: $e');
       if (mounted) setState(() => _loading = false);
@@ -76,37 +77,49 @@ class _PLScreenState extends State<PLScreen> {
 
   double _revenueTotal() {
     double t = 0;
-    for (final code in _incomeCodes) t += _pnlSummary[code]?['credit'] ?? 0;
+    for (final code in _incomeCodes) {
+      t += _pnlSummary[code]?['credit'] ?? 0;
+    }
     return t;
   }
 
   double _cogsTotal() {
     double t = 0;
-    for (final code in _cogsCodes) t += _pnlSummary[code]?['debit'] ?? 0;
+    for (final code in _cogsCodes) {
+      t += _pnlSummary[code]?['debit'] ?? 0;
+    }
     return t;
   }
 
   double _expensesTotal() {
     double t = 0;
-    for (final code in _expenseCodes) t += _pnlSummary[code]?['debit'] ?? 0;
+    for (final code in _expenseCodes) {
+      t += _pnlSummary[code]?['debit'] ?? 0;
+    }
     return t;
   }
 
   double _prevRevenueTotal() {
     double t = 0;
-    for (final code in _incomeCodes) t += _prevPnlSummary[code]?['credit'] ?? 0;
+    for (final code in _incomeCodes) {
+      t += _prevPnlSummary[code]?['credit'] ?? 0;
+    }
     return t;
   }
 
   double _prevCogsTotal() {
     double t = 0;
-    for (final code in _cogsCodes) t += _prevPnlSummary[code]?['debit'] ?? 0;
+    for (final code in _cogsCodes) {
+      t += _prevPnlSummary[code]?['debit'] ?? 0;
+    }
     return t;
   }
 
   double _prevExpensesTotal() {
     double t = 0;
-    for (final code in _expenseCodes) t += _prevPnlSummary[code]?['debit'] ?? 0;
+    for (final code in _expenseCodes) {
+      t += _prevPnlSummary[code]?['debit'] ?? 0;
+    }
     return t;
   }
 
@@ -473,7 +486,7 @@ class _PLScreenState extends State<PLScreen> {
           Row(
             children: [
               if (_compareWithPrev && prevAmount != null)
-                SizedBox(width: 100, child: Text('R ${prevAmount.toStringAsFixed(2)}', style: TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold))),
+                SizedBox(width: 100, child: Text('R ${prevAmount.toStringAsFixed(2)}', style: const TextStyle(color: AppColors.textSecondary, fontWeight: FontWeight.bold))),
               SizedBox(width: 100, child: Text('R ${amount.toStringAsFixed(2)} (${pct.toStringAsFixed(1)}%)', style: TextStyle(fontWeight: FontWeight.bold, color: color))),
             ],
           ),

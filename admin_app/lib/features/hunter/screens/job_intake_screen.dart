@@ -7,7 +7,6 @@ import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
-import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
@@ -415,7 +414,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         await AuditService.log(
           action: 'CREATE',
           module: 'Hunter',
-          description: 'Hunter job created: ${payload['hunter_name'] ?? payload['client_name']} - ${firstSpeciesName} (${totalWeight.toStringAsFixed(1)}kg)',
+          description: 'Hunter job created: ${payload['hunter_name'] ?? payload['client_name']} - $firstSpeciesName (${totalWeight.toStringAsFixed(1)}kg)',
           entityType: 'HunterJob',
           entityId: row['id'],
           newValues: payload,
@@ -432,7 +431,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
         });
       }
     } catch (e) {
-      print('Hunter job save error: $e');
+      debugPrint('Hunter job save error: $e');
       if (mounted) {
         setState(() => _saving = false);
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
@@ -564,8 +563,11 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
                           final selected = _selectedCutOptions.contains(name);
                           return _procCb(name, selected, (v) {
                             setState(() {
-                              if (v) _selectedCutOptions.add(name);
-                              else _selectedCutOptions.remove(name);
+                              if (v) {
+                                _selectedCutOptions.add(name);
+                              } else {
+                                _selectedCutOptions.remove(name);
+                              }
                             });
                           });
                         }).toList(),
@@ -629,7 +631,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
             Expanded(
               flex: 2,
               child: DropdownButtonFormField<String?>(
-                value: speciesId,
+                initialValue: speciesId,
                 decoration: InputDecoration(
                   labelText: 'Species',
                   hintText: weightHint,
@@ -657,8 +659,8 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
             SizedBox(
               width: 100,
               child: TextFormField(
-                key: ValueKey('species_weight_$index\_${row['species_id']}_${row['estimated_weight']}'),
-                initialValue: row['estimated_weight'] != null ? row['estimated_weight'].toString() : null,
+                key: ValueKey('species_weight_${index}_${row['species_id']}_${row['estimated_weight']}'),
+                initialValue: row['estimated_weight']?.toString(),
                 decoration: InputDecoration(
                   labelText: 'Est. weight (kg)',
                   hintText: weightHint,
@@ -707,7 +709,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
             Expanded(
               flex: 2,
               child: DropdownButtonFormField<String?>(
-                value: serviceId,
+                initialValue: serviceId,
                 decoration: const InputDecoration(labelText: 'Service', isDense: true),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('Select service')),
@@ -778,7 +780,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
                 Expanded(
                   flex: 3,
                   child: DropdownButtonFormField<String?>(
-                    value: itemId,
+                    initialValue: itemId,
                     decoration: const InputDecoration(labelText: 'Product', isDense: true),
                     items: [
                       const DropdownMenuItem(value: null, child: Text('Select product')),
@@ -813,7 +815,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
                 SizedBox(
                   width: 90,
                   child: DropdownButtonFormField<String>(
-                    value: row['unit']?.toString() ?? 'kg',
+                    initialValue: row['unit']?.toString() ?? 'kg',
                     decoration: const InputDecoration(labelText: 'Unit', isDense: true),
                     items: _unitOptions.map((u) => DropdownMenuItem(value: u, child: Text(u))).toList(),
                     onChanged: (v) => setState(() => _materialRows[index]['unit'] = v ?? 'kg'),
@@ -830,7 +832,7 @@ class _JobIntakeScreenState extends State<JobIntakeScreen> {
               children: [
                 Expanded(
                   child: TextFormField(
-                    key: ValueKey('material_unit_cost_$index\_${row['item_id']}_${row['unit_cost']}'),
+                    key: ValueKey('material_unit_cost_${index}_${row['item_id']}_${row['unit_cost']}'),
                     initialValue: unitCost.toStringAsFixed(2),
                     decoration: const InputDecoration(
                       labelText: 'Unit Cost (R)',

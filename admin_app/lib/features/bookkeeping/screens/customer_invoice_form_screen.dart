@@ -1,11 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/offline_required_gate.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../models/customer_invoice.dart';
 import '../services/customer_invoice_repository.dart';
 import '../../../core/services/email_service.dart';
@@ -263,7 +261,7 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
                 .limit(1);
             if (list.isNotEmpty && mounted) {
               final saved = CustomerInvoice.fromJson(
-                list.first as Map<String, dynamic>);
+                list.first);
               final invoiceMap = saved.toJson()
                 ..['account_name'] = account['name'];
               final pdfBytes = await _pdfService.generateCustomerInvoice(invoiceMap);
@@ -434,7 +432,9 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
     _taxAmountController.dispose();
     _invoiceDateController.dispose();
     _dueDateController.dispose();
-    for (final row in _lineRows) row.dispose();
+    for (final row in _lineRows) {
+      row.dispose();
+    }
     super.dispose();
   }
 
@@ -500,7 +500,7 @@ class _CustomerInvoiceFormScreenState extends State<CustomerInvoiceFormScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedAccountId,
+                      initialValue: _selectedAccountId,
                       decoration: const InputDecoration(labelText: 'Account (customer)'),
                       items: [
                         const DropdownMenuItem(value: null, child: Text('— None —')),

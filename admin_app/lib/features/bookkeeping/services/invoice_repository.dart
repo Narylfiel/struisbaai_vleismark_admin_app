@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
-import '../../../core/models/ledger_entry.dart';
 import '../models/invoice.dart';
 import '../models/invoice_line_item.dart';
 import 'ledger_repository.dart';
@@ -42,7 +41,7 @@ class InvoiceRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    final invoice = Invoice.fromJson(row as Map<String, dynamic>);
+    final invoice = Invoice.fromJson(row);
     await _attachSupplierNames([invoice]);
     return invoice;
   }
@@ -128,7 +127,7 @@ class InvoiceRepository {
         })
         .select()
         .single();
-    final invoice = Invoice.fromJson(row as Map<String, dynamic>);
+    final invoice = Invoice.fromJson(row);
     if (lineItems != null && lineItems.isNotEmpty) {
       for (var i = 0; i < lineItems.length; i++) {
         await _client.from('invoice_line_items').insert({
@@ -218,7 +217,7 @@ class InvoiceRepository {
         })
         .select()
         .single();
-    final invoice = Invoice.fromJson(row as Map<String, dynamic>);
+    final invoice = Invoice.fromJson(row);
     if (lineItems != null && lineItems.isNotEmpty) {
       for (var i = 0; i < lineItems.length; i++) {
         final li = lineItems[i];
@@ -242,7 +241,7 @@ class InvoiceRepository {
         .eq('id', invoice.id)
         .select()
         .single();
-    return Invoice.fromJson(row as Map<String, dynamic>);
+    return Invoice.fromJson(row);
   }
 
   /// Set status (draft → approved, etc.).

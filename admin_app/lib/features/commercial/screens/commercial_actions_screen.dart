@@ -249,13 +249,13 @@ class _CommercialActionsScreenState extends State<CommercialActionsScreen> {
                       child: CircularProgressIndicator(color: AppColors.primary),
                     )
                   : _offline
-                      ? Center(
+                      ? const Center(
                           child: Padding(
-                            padding: const EdgeInsets.all(24),
+                            padding: EdgeInsets.all(24),
                             child: Text(
                               'Offline — showing cached data',
                               textAlign: TextAlign.center,
-                              style: const TextStyle(color: AppColors.textSecondary),
+                              style: TextStyle(color: AppColors.textSecondary),
                             ),
                           ),
                         )
@@ -358,13 +358,13 @@ class _FilterBar extends StatelessWidget {
           runSpacing: 8,
           crossAxisAlignment: WrapCrossAlignment.center,
           children: [
-            Chip(
-              label: const Text(
+            const Chip(
+              label: Text(
                 'Status: pending_review',
                 overflow: TextOverflow.ellipsis,
               ),
               backgroundColor: AppColors.surfaceBg,
-              side: const BorderSide(color: AppColors.border),
+              side: BorderSide(color: AppColors.border),
             ),
             DropdownButton<_ValidationFilter>(
               value: validation,

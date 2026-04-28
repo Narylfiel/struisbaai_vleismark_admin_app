@@ -589,7 +589,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
           children: [
             Text('Staff: $staffName'),
             const SizedBox(height: 8),
-            Text('Change deduction period to:'),
+            const Text('Change deduction period to:'),
             const SizedBox(height: 4),
             Text(
               _formatDeductFrom(newDeductFrom),
@@ -755,7 +755,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
                 const Text('Staff', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: _selectedStaffId,
+                  initialValue: _selectedStaffId,
                   decoration: const InputDecoration(
                     filled: true,
                     fillColor: Colors.white,
@@ -821,7 +821,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               color: AppColors.surfaceBg,
-              child: Row(
+              child: const Row(
                 children: [
                   SizedBox(width: 100, child: Text('Date', style: _headerStyle)),
                   Expanded(flex: 2, child: Text('Reason', style: _headerStyle)),

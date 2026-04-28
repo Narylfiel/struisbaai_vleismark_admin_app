@@ -27,7 +27,7 @@ class SupplierRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return Supplier.fromJson(row as Map<String, dynamic>);
+    return Supplier.fromJson(row);
   }
 
   Future<Supplier> createSupplier(Supplier supplier) async {
@@ -42,7 +42,7 @@ class SupplierRepository {
         .insert(data)
         .select()
         .single();
-    return Supplier.fromJson(response as Map<String, dynamic>);
+    return Supplier.fromJson(response);
   }
 
   Future<Supplier> updateSupplier(Supplier supplier) async {
@@ -57,7 +57,7 @@ class SupplierRepository {
         .eq('id', supplier.id)
         .select()
         .single();
-    return Supplier.fromJson(response as Map<String, dynamic>);
+    return Supplier.fromJson(response);
   }
 
   /// Soft delete: set is_active = false (suppliers table has is_active).

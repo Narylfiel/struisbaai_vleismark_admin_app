@@ -31,7 +31,7 @@ class ModifierRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return ModifierGroup.fromJson(row as Map<String, dynamic>);
+    return ModifierGroup.fromJson(row);
   }
 
   Future<ModifierGroup> createGroup(ModifierGroup group) async {
@@ -45,7 +45,7 @@ class ModifierRepository {
         .insert(data)
         .select()
         .single();
-    return ModifierGroup.fromJson(response as Map<String, dynamic>);
+    return ModifierGroup.fromJson(response);
   }
 
   Future<ModifierGroup> updateGroup(ModifierGroup group) async {
@@ -59,7 +59,7 @@ class ModifierRepository {
         .eq('id', group.id)
         .select()
         .single();
-    return ModifierGroup.fromJson(response as Map<String, dynamic>);
+    return ModifierGroup.fromJson(response);
   }
 
   /// Soft delete: set active = false on group and all items in that group.
@@ -93,7 +93,7 @@ class ModifierRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return ModifierItem.fromJson(row as Map<String, dynamic>);
+    return ModifierItem.fromJson(row);
   }
 
   Future<ModifierItem> createItem(ModifierItem item) async {
@@ -106,7 +106,7 @@ class ModifierRepository {
         .insert(data)
         .select()
         .single();
-    return ModifierItem.fromJson(response as Map<String, dynamic>);
+    return ModifierItem.fromJson(response);
   }
 
   Future<ModifierItem> updateItem(ModifierItem item) async {
@@ -119,7 +119,7 @@ class ModifierRepository {
         .eq('id', item.id)
         .select()
         .single();
-    return ModifierItem.fromJson(response as Map<String, dynamic>);
+    return ModifierItem.fromJson(response);
   }
 
   Future<void> deleteItem(String id) async {

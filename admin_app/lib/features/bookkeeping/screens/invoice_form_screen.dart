@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/supabase_service.dart';
 import '../../../core/widgets/offline_required_gate.dart';
 import '../../../shared/widgets/form_widgets.dart';
 import '../../inventory/models/supplier.dart';
@@ -226,7 +224,9 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
     _taxAmountController.dispose();
     _invoiceDateController.dispose();
     _dueDateController.dispose();
-    for (final row in _lineRows) row.dispose();
+    for (final row in _lineRows) {
+      row.dispose();
+    }
     super.dispose();
   }
 
@@ -365,12 +365,12 @@ class _InvoiceFormScreenState extends State<InvoiceFormScreen> {
                     Container(
                       color: AppColors.surfaceBg,
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      child: Row(
+                      child: const Row(
                         children: [
-                          const Expanded(flex: 3, child: Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                          Expanded(flex: 3, child: Text('Description', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                           SizedBox(width: 100, child: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
                           SizedBox(width: 100, child: Text('Unit price', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppColors.textSecondary))),
-                          const SizedBox(width: 48),
+                          SizedBox(width: 48),
                         ],
                       ),
                     ),

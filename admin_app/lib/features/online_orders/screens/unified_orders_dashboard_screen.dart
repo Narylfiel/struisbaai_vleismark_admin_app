@@ -194,12 +194,12 @@ class _UnifiedOrdersDashboardScreenState
               color: AppColors.error.withOpacity(0.1),
               child: Row(
                 children: [
-                  Icon(Icons.error_outline, color: AppColors.error),
+                  const Icon(Icons.error_outline, color: AppColors.error),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'Error: $_error',
-                      style: TextStyle(color: AppColors.error),
+                      style: const TextStyle(color: AppColors.error),
                     ),
                   ),
                   TextButton(
@@ -246,7 +246,7 @@ class _UnifiedOrdersDashboardScreenState
               ),
               child: Text(
                 count.toString(),
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.bold,
                   color: AppColors.primary,
@@ -263,7 +263,7 @@ class _UnifiedOrdersDashboardScreenState
     final orders = _getFilteredOrders(tabIndex);
 
     if (orders.isEmpty) {
-      return Center(
+      return const Center(
         child: Text(
           'No orders found',
           style: TextStyle(
@@ -408,7 +408,7 @@ class _UnifiedOrderCard extends StatelessWidget {
                       const SizedBox(height: 4),
                       Text(
                         '${order.relevantDate}${order.zoneDisplay.isNotEmpty ? ' · Zone: ${order.zoneDisplay}' : ''}',
-                        style: TextStyle(
+                        style: const TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
                         ),

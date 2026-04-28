@@ -20,7 +20,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -807,7 +806,9 @@ class _EventTabState extends State<_EventTab> {
 
   @override
   void dispose() {
-    for (final c in _nameControllers.values) c.dispose();
+    for (final c in _nameControllers.values) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -955,7 +956,7 @@ class _EventTabState extends State<_EventTab> {
                       children: [
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: _selectedTypes[weekStart],
+                            initialValue: _selectedTypes[weekStart],
                             isExpanded: true,
                             decoration: const InputDecoration(
                                 isDense: true,
@@ -1341,7 +1342,7 @@ class _EventTabState extends State<_EventTab> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 DropdownButtonFormField<String>(
-                  value: selectedType,
+                  initialValue: selectedType,
                   isExpanded: true,
                   decoration:
                       const InputDecoration(labelText: 'Event Type'),
@@ -1562,7 +1563,9 @@ class _CreatePODialogState extends State<_CreatePODialog> {
   /// C4: Load ONLY that supplier's products (inventory_items JOIN product_suppliers).
   Future<void> _loadProductsForSupplier(String supplierId) async {
     setState(() {
-      for (final row in _productRows) row.qtyController.dispose();
+      for (final row in _productRows) {
+        row.qtyController.dispose();
+      }
       _productRows = [];
       _loadingProducts = true;
     });
@@ -1590,7 +1593,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
       final psByItem = <String, Map<String, dynamic>>{};
       for (final r in psRows as List) {
         final id = (r as Map)['inventory_item_id']?.toString();
-        if (id != null) psByItem[id] = Map<String, dynamic>.from(r as Map);
+        if (id != null) psByItem[id] = Map<String, dynamic>.from(r);
       }
       final rows = <_POLineRow>[];
       for (final r in iiRows as List) {
@@ -1617,10 +1620,12 @@ class _CreatePODialogState extends State<_CreatePODialog> {
           qtyController: ctrl,
         ));
       }
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _productRows = rows;
         _loadingProducts = false;
       });
+      }
     } catch (_) {
       if (mounted) setState(() => _loadingProducts = false);
     }
@@ -1665,7 +1670,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
           .select('po_number')
           .like('po_number', '$prefix%');
       final count = (existing as List).length;
-      final poNumber = '${prefix}${(count + 1).toString().padLeft(3, '0')}';
+      final poNumber = '$prefix${(count + 1).toString().padLeft(3, '0')}';
 
       final poRow = await _client
           .from('purchase_orders')
@@ -1677,7 +1682,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
           })
           .select('id')
           .single();
-      final poId = (poRow as Map<String, dynamic>)['id'] as String;
+      final poId = (poRow)['id'] as String;
 
       for (final line in lines) {
         await _client.from('purchase_order_lines').insert({
@@ -1760,7 +1765,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
 
   Future<void> _sendWhatsApp() async {
     if (_savedSupplier == null || _savedLines == null || _savedGrandTotal == null) return;
-    final phone = _savedSupplier!['phone']?.toString()?.replaceAll(RegExp(r'[^\d+]'), '') ?? '';
+    final phone = _savedSupplier!['phone']?.toString().replaceAll(RegExp(r'[^\d+]'), '') ?? '';
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No phone number for supplier.')));
       return;
@@ -1806,7 +1811,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                     const Text('Step 1: Select supplier', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _selectedSupplierId,
+                      initialValue: _selectedSupplierId,
                       isExpanded: true,
                       decoration: const InputDecoration(border: OutlineInputBorder()),
                       items: _suppliers
@@ -1858,7 +1863,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                                   Padding(padding: const EdgeInsets.all(4), child: Text(row.name, overflow: TextOverflow.ellipsis)),
                                   Padding(padding: const EdgeInsets.all(4), child: Text(row.supplierCode ?? '—')),
                                   Padding(padding: const EdgeInsets.all(4), child: Text('${row.currentStock.toStringAsFixed(1)} ${row.unit}')),
-                                  Padding(padding: const EdgeInsets.all(4), child: Text('${row.reorderLevel.toStringAsFixed(1)}')),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.reorderLevel.toStringAsFixed(1))),
                                   Padding(padding: const EdgeInsets.all(4), child: Text('R ${row.unitPrice.toStringAsFixed(2)}')),
                                   Padding(
                                     padding: const EdgeInsets.all(4),

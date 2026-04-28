@@ -103,7 +103,7 @@ class GapMatchResult {
     required List<Opportunity> opportunities,
   }) {
     if (gap <= 0) {
-      return GapMatchResult(
+      return const GapMatchResult(
         targetGap: 0,
         selectedOpportunities: [],
         totalImpact: 0,

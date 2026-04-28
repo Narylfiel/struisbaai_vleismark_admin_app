@@ -1,6 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
-import '../../../core/models/stock_movement.dart';
 import '../models/stock_take_entry.dart';
 import '../models/stock_take_session.dart';
 import 'inventory_repository.dart';
@@ -36,7 +35,7 @@ class StockTakeRepository {
         .order('started_at', ascending: false)
         .limit(1);
     if (list.isEmpty) return null;
-    return StockTakeSession.fromJson(list.first as Map<String, dynamic>);
+    return StockTakeSession.fromJson(list.first);
   }
 
   Future<StockTakeSession?> getSession(String id) async {
@@ -46,7 +45,7 @@ class StockTakeRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return StockTakeSession.fromJson(row as Map<String, dynamic>);
+    return StockTakeSession.fromJson(row);
   }
 
   Future<StockTakeSession> createSession({String? startedBy, String? notes}) async {
@@ -61,7 +60,7 @@ class StockTakeRepository {
         .insert(data)
         .select()
         .single();
-    return StockTakeSession.fromJson(response as Map<String, dynamic>);
+    return StockTakeSession.fromJson(response);
   }
 
   Future<void> setSessionStatus(String sessionId, String status) async {
@@ -116,7 +115,7 @@ class StockTakeRepository {
           .eq('id', existing['id'])
           .select()
           .single();
-      return StockTakeEntry.fromJson(row as Map<String, dynamic>);
+      return StockTakeEntry.fromJson(row);
     }
     final data = {
       'session_id': sessionId,
@@ -132,7 +131,7 @@ class StockTakeRepository {
         .insert(data)
         .select()
         .single();
-    return StockTakeEntry.fromJson(response as Map<String, dynamic>);
+    return StockTakeEntry.fromJson(response);
   }
 
   /// Blueprint §4.7 step 9: On approval — stock adjusted to physical counts; variances logged to stock_movements.
@@ -210,7 +209,7 @@ class StockTakeRepository {
           .inFilter('id', ids.toList());
       return {
         for (final r in list)
-          (r as Map<String, dynamic>)['id']?.toString() ?? '':
+          (r)['id']?.toString() ?? '':
               (r['full_name'] as String? ?? 'Unknown'),
       };
     } catch (_) {

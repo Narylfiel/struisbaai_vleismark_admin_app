@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'order_type.dart';
 
 /// Online Order Summary model

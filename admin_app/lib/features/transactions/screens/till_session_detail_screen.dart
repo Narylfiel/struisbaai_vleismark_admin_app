@@ -28,15 +28,19 @@ class _TillSessionDetailScreenState extends State<TillSessionDetailScreen> {
     setState(() => _loading = true);
     try {
       final detail = await _repo.getTillSessionDetail(widget.sessionId);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _session = detail;
         _loading = false;
       });
+      }
     } catch (e) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _session = null;
         _loading = false;
       });
+      }
     }
   }
 
@@ -229,9 +233,9 @@ class _TillSessionDetailScreenState extends State<TillSessionDetailScreen> {
                 4: FlexColumnWidth(1.5),
               },
               children: [
-                TableRow(
+                const TableRow(
                   decoration: BoxDecoration(color: AppColors.surfaceBg),
-                  children: const [
+                  children: [
                     Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Time', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
                     Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Dir', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
                     Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Amount', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
@@ -248,8 +252,9 @@ class _TillSessionDetailScreenState extends State<TillSessionDetailScreen> {
                   final reason = (m['reason'] as String?) ?? '—';
                   String recordedByName = '—';
                   final p = m['profiles'];
-                  if (p is Map) recordedByName = (p['full_name'] as String?) ?? '—';
-                  else if (p is List && p.isNotEmpty && p.first is Map) recordedByName = ((p.first as Map)['full_name'] as String?) ?? '—';
+                  if (p is Map) {
+                    recordedByName = (p['full_name'] as String?) ?? '—';
+                  } else if (p is List && p.isNotEmpty && p.first is Map) recordedByName = ((p.first as Map)['full_name'] as String?) ?? '—';
                   final isIn = direction.toLowerCase() == 'in';
                   return TableRow(
                     children: [

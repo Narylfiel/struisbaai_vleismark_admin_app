@@ -217,7 +217,7 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
                 title: const Text('Active'),
                 value: _isActive,
                 onChanged: (v) => setState(() => _isActive = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               const SizedBox(height: 24),
               SizedBox(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
 
@@ -135,7 +134,7 @@ class _ProductSearchPickerState extends State<ProductSearchPicker> {
                 width: 140,
                 child: DropdownButtonFormField<String>(
                   isExpanded: true,
-                  value: _selectedCategoryId,
+                  initialValue: _selectedCategoryId,
                   decoration: const InputDecoration(
                     contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                     border: OutlineInputBorder(),

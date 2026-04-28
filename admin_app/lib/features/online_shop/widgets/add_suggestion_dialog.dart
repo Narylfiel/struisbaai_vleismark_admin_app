@@ -84,13 +84,13 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
             // Header
             Row(
               children: [
-                Icon(
+                const Icon(
                   Icons.add_shopping_cart,
                   color: AppColors.primary,
                   size: 24,
                 ),
                 const SizedBox(width: 12),
-                Expanded(
+                const Expanded(
                   child: Text(
                     'Add Product Suggestion',
                     style: TextStyle(
@@ -111,7 +111,7 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
             const SizedBox(height: 24),
 
             // Suggestion type selection
-            Text(
+            const Text(
               'Suggestion Type',
               style: TextStyle(
                 fontSize: 14,
@@ -174,7 +174,7 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
             const SizedBox(height: 24),
 
             // Product search
-            Text(
+            const Text(
               'Select Product',
               style: TextStyle(
                 fontSize: 14,
@@ -190,11 +190,11 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.border),
+                  borderSide: const BorderSide(color: AppColors.border),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: AppColors.primary),
+                  borderSide: const BorderSide(color: AppColors.primary),
                 ),
               ),
             ),
@@ -217,7 +217,7 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
                   }
 
                   if (products.isEmpty) {
-                    return Center(
+                    return const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
@@ -226,7 +226,7 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
                             size: 48,
                             color: AppColors.textSecondary,
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Text(
                             'No products found',
                             style: TextStyle(
@@ -280,14 +280,14 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
                                     if (product['online_display_name'] != null && product['online_display_name'] != product['name'])
                                       Text(
                                         product['name'],
-                                        style: TextStyle(
+                                        style: const TextStyle(
                                           fontSize: 12,
                                           color: AppColors.textSecondary,
                                         ),
                                       ),
                                     Text(
                                       'R ${product['sell_price']?.toStringAsFixed(2) ?? '0.00'}',
-                                      style: TextStyle(
+                                      style: const TextStyle(
                                         fontSize: 12,
                                         fontWeight: FontWeight.w600,
                                         color: AppColors.success,
@@ -296,7 +296,7 @@ class _AddSuggestionDialogState extends State<AddSuggestionDialog> {
                                   ],
                                 ),
                               ),
-                              Icon(
+                              const Icon(
                                 Icons.arrow_forward_ios,
                                 size: 16,
                                 color: AppColors.textSecondary,

@@ -152,8 +152,8 @@ class _Section extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         if (items.isEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 12),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 12),
             child: Text(
               'None',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
@@ -203,7 +203,7 @@ class _RowItem extends StatelessWidget {
                 ),
                 Text(
                   dateFormat.format(item.createdAt),
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),
@@ -215,7 +215,7 @@ class _RowItem extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(
                   'Retries: ${item.retryCount}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
                     color: AppColors.textSecondary,
                   ),

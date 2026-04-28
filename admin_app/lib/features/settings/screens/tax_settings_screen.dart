@@ -55,13 +55,15 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
         final k = r['setting_key']?.toString();
         if (k != null) map[k] = r['setting_value'];
       }
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _vatRateController.text = (_parseDouble(map['vat_rate']) ?? 15).toString();
         _vatNumberController.text = map['vat_number']?.toString() ?? '';
         _vatPeriod = map['vat_reporting_period']?.toString() ?? _vatPeriods[0];
         _incomeTaxController.text = map['income_tax_provision_pct']?.toString() ?? '';
         _loading = false;
       });
+      }
     } catch (_) {
       if (mounted) setState(() => _loading = false);
     }
@@ -139,7 +141,7 @@ class _TaxSettingsScreenState extends State<TaxSettingsScreen> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<String>(
-            value: _vatPeriods.contains(_vatPeriod) ? _vatPeriod : _vatPeriods[0],
+            initialValue: _vatPeriods.contains(_vatPeriod) ? _vatPeriod : _vatPeriods[0],
             decoration: const InputDecoration(
               labelText: 'VAT Reporting Period',
               border: OutlineInputBorder(),

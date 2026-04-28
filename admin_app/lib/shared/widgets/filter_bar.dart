@@ -231,9 +231,6 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
             ],
           ),
         );
-
-      default:
-        return const SizedBox.shrink();
     }
   }
 

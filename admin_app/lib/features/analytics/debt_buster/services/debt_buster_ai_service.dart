@@ -85,7 +85,7 @@ Constraints:
 - Use only DATA provided below.
 
 DATA:
-${payload}
+$payload
 ''';
   }
 }

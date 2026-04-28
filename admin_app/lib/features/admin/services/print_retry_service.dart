@@ -19,16 +19,14 @@ class PrintRetryService {
           .single();
 
       // Prevent retry if job is already active (printed=false and no error)
-      if (response != null) {
-        final printed = response['printed'] as bool? ?? true;
-        final lastError = response['last_error'] as String?;
-        
-        if (!printed && lastError == null) {
-          debugPrint('[PRINT_QUEUE][ADMIN] RETRY BLOCKED: job_id=$jobId (already active)');
-          return false;
-        }
-      }
+      final printed = response['printed'] as bool? ?? true;
+      final lastError = response['last_error'] as String?;
       
+      if (!printed && lastError == null) {
+        debugPrint('[PRINT_QUEUE][ADMIN] RETRY BLOCKED: job_id=$jobId (already active)');
+        return false;
+      }
+          
       return true;
     } catch (e) {
       debugPrint('[PRINT_QUEUE][ADMIN] RETRY CHECK ERROR: job_id=$jobId error=$e');

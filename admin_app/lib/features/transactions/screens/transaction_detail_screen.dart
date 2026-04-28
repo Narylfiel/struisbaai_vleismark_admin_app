@@ -28,15 +28,19 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     setState(() => _loading = true);
     try {
       final detail = await _repo.getTransactionDetail(widget.transactionId);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _txn = detail;
         _loading = false;
       });
+      }
     } catch (e) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _txn = null;
         _loading = false;
       });
+      }
     }
   }
 
@@ -81,8 +85,9 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
-    if (profiles is Map) cashierName = (profiles['full_name'] as String?) ?? '—';
-    else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) cashierName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
+    if (profiles is Map) {
+      cashierName = (profiles['full_name'] as String?) ?? '—';
+    } else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) cashierName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
     final paymentMethod = t['payment_method'] as String? ?? '—';
     final tillSessionId = t['till_session_id'] as String?;
     final tillStr = tillSessionId != null ? tillSessionId.toString().substring(0, 8) : '—';
@@ -192,11 +197,11 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
           decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(8)),
           child: Table(
             columnWidths: const {0: FlexColumnWidth(3), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1), 3: FlexColumnWidth(1), 4: FlexColumnWidth(1)},
-            border: TableBorder.symmetric(inside: const BorderSide(color: AppColors.border)),
+            border: const TableBorder.symmetric(inside: BorderSide(color: AppColors.border)),
             children: [
-              TableRow(
+              const TableRow(
                 decoration: BoxDecoration(color: AppColors.surfaceBg),
-                children: const [
+                children: [
                   Padding(padding: EdgeInsets.all(8), child: Text('Product', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                   Padding(padding: EdgeInsets.all(8), child: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
                   Padding(padding: EdgeInsets.all(8), child: Text('Unit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),

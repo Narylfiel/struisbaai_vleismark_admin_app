@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/db/cached_staff_profile.dart';
 import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
@@ -126,12 +125,14 @@ class _PinScreenState extends State<PinScreen> {
 
       final hasCache = await IsarService.hasCachedStaff();
       if (!hasCache) {
-        if (mounted) setState(() {
+        if (mounted) {
+          setState(() {
           _message =
               'No internet & no local data.\nLog in online once to enable offline access.';
           _enteredPin = '';
           _isLoading = false;
         });
+        }
         return;
       }
 
@@ -158,7 +159,7 @@ class _PinScreenState extends State<PinScreen> {
 
     // ── Success ───────────────────────────────────────────────
     AuthService().setSession(
-      staff!['id'] as String,
+      staff['id'] as String,
       staff['full_name'] as String,
       role,
     );
@@ -168,7 +169,7 @@ class _PinScreenState extends State<PinScreen> {
     // before MainShell builds the sidebar
     await PermissionService().loadPermissions(
       role: role,
-      staffId: staff!['id'] as String,
+      staffId: staff['id'] as String,
     );
 
     if (mounted) {
@@ -307,7 +308,7 @@ class _PinScreenState extends State<PinScreen> {
               ),
               if (_isOffline && _cacheStale) ...[
                 const SizedBox(height: 6),
-                Text(
+                const Text(
                   'Cached data may be outdated.',
                   style: TextStyle(
                     fontSize: 11,

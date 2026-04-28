@@ -84,7 +84,7 @@ class EdgePipelineClient {
   ) {
     final data = res.data;
     if (data is Map) {
-      final m = Map<String, dynamic>.from(data as Map);
+      final m = Map<String, dynamic>.from(data);
       if (m['error'] != null) {
         throw Exception('$fn: ${m['error']} (correlation_id=$correlationId)');
       }

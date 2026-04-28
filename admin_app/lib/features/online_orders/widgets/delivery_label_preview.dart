@@ -35,9 +35,9 @@ class DeliveryLabelPreview extends StatelessWidget {
           // Header
           Row(
             children: [
-              Icon(Icons.local_shipping, color: AppColors.primary, size: 24),
+              const Icon(Icons.local_shipping, color: AppColors.primary, size: 24),
               const SizedBox(width: 8),
-              Text(
+              const Text(
                 'DELIVERY LABEL',
                 style: TextStyle(
                   fontSize: 18,

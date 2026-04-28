@@ -18,7 +18,7 @@ abstract class BaseService {
       try {
         final result = await query();
         if (operationName != null) {
-          print('✅ $operationName completed successfully');
+          debugPrint('✅ $operationName completed successfully');
         }
         return result;
       } catch (e) {
@@ -26,10 +26,10 @@ abstract class BaseService {
         final errorMsg = operationName != null
             ? '$operationName failed (Attempt $attempts/$maxRetries): $e'
             : 'Database operation failed (Attempt $attempts/$maxRetries): $e';
-        print('⚠️ $errorMsg');
+        debugPrint('⚠️ $errorMsg');
         
         if (attempts >= maxRetries) {
-          print('❌ Final attempt failed for $operationName');
+          debugPrint('❌ Final attempt failed for $operationName');
           throw Exception(errorMsg);
         }
         

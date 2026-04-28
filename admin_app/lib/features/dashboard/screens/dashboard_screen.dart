@@ -8,8 +8,6 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'package:admin_app/core/constants/permissions.dart';
 import 'package:admin_app/features/hr/services/leave_repository.dart';
-import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
-import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/commercial/repositories/commercial_repository.dart';
 import 'package:admin_app/features/commercial/screens/commercial_actions_screen.dart';
 import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
@@ -634,11 +632,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(Icons.show_chart, color: AppColors.primary, size: 20),
-              const SizedBox(width: 8),
-              const Text(
+              SizedBox(width: 8),
+              Text(
                 'SALES (LAST 7 DAYS)',
                 style: TextStyle(
                   fontSize: 12,
@@ -653,15 +651,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SizedBox(
             height: 200,
             child: SfCartesianChart(
-              primaryXAxis: CategoryAxis(
-                labelStyle: const TextStyle(fontSize: 11, color: AppColors.textSecondary),
-                majorGridLines: const MajorGridLines(width: 0),
+              primaryXAxis: const CategoryAxis(
+                labelStyle: TextStyle(fontSize: 11, color: AppColors.textSecondary),
+                majorGridLines: MajorGridLines(width: 0),
               ),
-              primaryYAxis: NumericAxis(
+              primaryYAxis: const NumericAxis(
                 labelFormat: 'R {value}',
-                labelStyle: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
-                axisLine: const AxisLine(width: 0),
-                majorTickLines: const MajorTickLines(size: 0),
+                labelStyle: TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                axisLine: AxisLine(width: 0),
+                majorTickLines: MajorTickLines(size: 0),
               ),
               tooltipBehavior: TooltipBehavior(enable: true),
               series: <CartesianSeries<_DaySalesPoint, String>>[
@@ -1045,11 +1043,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
+          const Row(
             children: [
               Icon(Icons.show_chart, color: AppColors.info, size: 20),
-              const SizedBox(width: 8),
-              const Text(
+              SizedBox(width: 8),
+              Text(
                 'TRANSACTIONS (LAST 7 DAYS)',
                 style: TextStyle(
                   fontSize: 12,
@@ -1064,10 +1062,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
           SizedBox(
             height: 200,
             child: SfCartesianChart(
-              primaryXAxis: CategoryAxis(
+              primaryXAxis: const CategoryAxis(
                 labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 11),
               ),
-              primaryYAxis: NumericAxis(
+              primaryYAxis: const NumericAxis(
                 labelStyle: TextStyle(color: AppColors.textSecondary, fontSize: 11),
               ),
               series: <CartesianSeries>[
@@ -1135,7 +1133,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       setState(() => _topProductsMode = val.first);
                       _loadTopProducts();
                     },
-                    style: ButtonStyle(
+                    style: const ButtonStyle(
                       visualDensity: VisualDensity.compact,
                     ),
                   )

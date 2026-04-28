@@ -191,8 +191,9 @@ profiles!transactions_staff_id_fkey(full_name),
       for (final t in txnList) {
         final amount = (t['total_amount'] as num?)?.toDouble() ?? 0;
         final method = (t['payment_method'] as String?)?.toLowerCase() ?? '';
-        if (method == 'cash') cashTotal += amount;
-        else if (method == 'card') cardTotal += amount;
+        if (method == 'cash') {
+          cashTotal += amount;
+        } else if (method == 'card') cardTotal += amount;
         else if (method == 'account') accountTotal += amount;
         else if (method == 'split') splitTotal += amount;
         else cashTotal += amount; // fallback
@@ -219,8 +220,11 @@ profiles!transactions_staff_id_fkey(full_name),
       double pettyIn = 0, pettyOut = 0;
       for (final m in pcmList) {
         final amt = (m['amount'] as num?)?.toDouble() ?? 0;
-        if ((m['direction'] as String?) == 'in') pettyIn += amt;
-        else pettyOut += amt;
+        if ((m['direction'] as String?) == 'in') {
+          pettyIn += amt;
+        } else {
+          pettyOut += amt;
+        }
       }
       session['petty_cash_net'] = pettyIn - pettyOut;
 

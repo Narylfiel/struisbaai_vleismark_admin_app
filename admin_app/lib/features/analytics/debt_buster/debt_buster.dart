@@ -10,6 +10,7 @@
 /// - Matches opportunities to the gap to determine feasibility
 /// 
 /// READ-ONLY: This feature does not modify any database records.
+library;
 
 // Models
 export 'models/debt_summary.dart';

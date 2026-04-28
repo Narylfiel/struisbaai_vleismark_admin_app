@@ -73,11 +73,11 @@ class SettingsRepository {
         if (data['address'] != null) payload['address'] = data['address'];
         if (data['vat_number'] != null) payload['vat_number'] = data['vat_number'];
         if (data['phone'] != null) payload['phone'] = data['phone'];
-        final start = data['bcea_start_time']?.toString()?.trim();
+        final start = data['bcea_start_time']?.toString().trim();
         if (start != null && start.isNotEmpty) {
           payload['working_hours_start'] = start.length == 5 ? '$start:00' : start;
         }
-        final end = data['bcea_end_time']?.toString()?.trim();
+        final end = data['bcea_end_time']?.toString().trim();
         if (end != null && end.isNotEmpty) {
           payload['working_hours_end'] = end.length == 5 ? '$end:00' : end;
         }
@@ -88,7 +88,7 @@ class SettingsRepository {
         // No main row: upsert key-value rows for Business tab keys
         for (final key in mainKeys) {
           final value = data[key];
-          if (value == null || (value is String && (value as String).trim().isEmpty)) continue;
+          if (value == null || (value is String && (value).trim().isEmpty)) continue;
           await _client.from('business_settings').upsert(
             {'setting_key': key, 'setting_value': value},
             onConflict: 'setting_key',

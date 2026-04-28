@@ -192,7 +192,7 @@ class _ReportScheduleScreenState extends State<ReportScheduleScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
           : _items.isEmpty
-              ? Center(
+              ? const Center(
                   child: Text(
                     'No schedules yet. Tap + to add.',
                     style: TextStyle(color: AppColors.textSecondary),
@@ -346,8 +346,8 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
   Future<void> _save() async {
     if (_labelCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Label is required'),
+        const SnackBar(
+          content: Text('Label is required'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -355,8 +355,8 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
     }
     if (!_timeOk(_timeCtrl.text.trim())) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Time must be HH:MM (UTC)'),
+        const SnackBar(
+          content: Text('Time must be HH:MM (UTC)'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -364,8 +364,8 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
     }
     if (_delivery.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Select at least one delivery channel'),
+        const SnackBar(
+          content: Text('Select at least one delivery channel'),
           backgroundColor: AppColors.error,
         ),
       );
@@ -422,7 +422,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 DropdownButtonFormField<String>(
-                  value: _reportKey,
+                  initialValue: _reportKey,
                   decoration: const InputDecoration(labelText: 'Report'),
                   items: ReportDefinitions.all
                       .map(
@@ -436,7 +436,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
                   decoration: const InputDecoration(labelText: 'Label'),
                 ),
                 DropdownButtonFormField<ScheduleType>(
-                  value: _scheduleType,
+                  initialValue: _scheduleType,
                   decoration: const InputDecoration(labelText: 'Schedule type'),
                   items: const [
                     DropdownMenuItem(value: ScheduleType.daily, child: Text('Daily')),
@@ -454,7 +454,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
                 ),
                 if (_scheduleType == ScheduleType.weekly)
                   DropdownButtonFormField<int>(
-                    value: _dayOfWeek,
+                    initialValue: _dayOfWeek,
                     decoration: const InputDecoration(labelText: 'Day of week (1=Mon)'),
                     items: List.generate(
                       7,
@@ -464,7 +464,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
                   ),
                 if (_scheduleType == ScheduleType.monthly)
                   DropdownButtonFormField<int>(
-                    value: _dayOfMonth,
+                    initialValue: _dayOfMonth,
                     decoration: const InputDecoration(labelText: 'Day of month (1–28)'),
                     items: List.generate(
                       28,
@@ -514,7 +514,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
                   decoration: const InputDecoration(labelText: 'Email override (optional)'),
                 ),
                 DropdownButtonFormField<String>(
-                  value: _format,
+                  initialValue: _format,
                   decoration: const InputDecoration(labelText: 'Format'),
                   items: _ReportScheduleScreenState._formats
                       .map((f) => DropdownMenuItem(value: f, child: Text(f)))
@@ -522,7 +522,7 @@ class _ScheduleFormDialogState extends State<_ScheduleFormDialog> {
                   onChanged: (v) => setState(() => _format = v ?? 'pdf'),
                 ),
                 DropdownButtonFormField<String>(
-                  value: _dateRange,
+                  initialValue: _dateRange,
                   decoration: const InputDecoration(labelText: 'Date range'),
                   items: _ReportScheduleScreenState._dateRanges
                       .map((f) => DropdownMenuItem(value: f, child: Text(f)))

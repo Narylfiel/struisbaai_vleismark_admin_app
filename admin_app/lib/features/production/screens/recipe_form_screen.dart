@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import '../../../core/utils/error_handler.dart';
@@ -243,16 +242,20 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       }
       // Fallback to SA minimum wage if no staff data
       if (avg == 0.0) avg = AdminConfig.minimumWagePerHour;
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _avgLabourRate = avg;
         _loadingLabourRate = false;
       });
+      }
       if (mounted) _calculateCost();
     } catch (_) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _avgLabourRate = AdminConfig.minimumWagePerHour; // SA minimum wage fallback
         _loadingLabourRate = false;
       });
+      }
       if (mounted) _calculateCost();
     }
   }
@@ -273,7 +276,9 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
     double ingredientTotal = 0.0;
     for (final row in _ingredients) {
       if (row.inventoryItemId == null ||
-          row.inventoryItemId!.isEmpty) continue;
+          row.inventoryItemId!.isEmpty) {
+        continue;
+      }
       final cp = _costPriceCache[row.inventoryItemId];
       if (cp == null || cp <= 0) continue;
       final qty = row.quantity;
@@ -339,7 +344,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: categoryId,
+                      initialValue: categoryId,
                       decoration: const InputDecoration(
                         labelText: 'Category (optional)',
                         border: OutlineInputBorder(),
@@ -738,7 +743,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     padding: const EdgeInsets.only(bottom: 8),
                     child: Row(
                       children: [
-                        Icon(Icons.check_circle, color: AppColors.success, size: 20),
+                        const Icon(Icons.check_circle, color: AppColors.success, size: 20),
                         const SizedBox(width: 8),
                         Text(
                           _inventoryItems.cast<Map<String, dynamic>?>().where((e) => e != null && e['id'] == _outputProductId).isNotEmpty
@@ -815,7 +820,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                   ),
                   const SizedBox(height: 8),
                   DropdownButtonFormField<String>(
-                    value: _requiredRole,
+                    initialValue: _requiredRole,
                     decoration: const InputDecoration(
                       labelText: 'Staff role',
                       border: OutlineInputBorder(),
@@ -1147,12 +1152,12 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                   _goesToDryer = v;
                   if (!v) _dryerOutputProductId = null;
                 }),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               if (_goesToDryer) ...[
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _dryerOutputProductId,
+                  initialValue: _dryerOutputProductId,
                   decoration: const InputDecoration(
                     labelText: 'Finished dried product (inventory item) *',
                     helperText: 'Product added to stock after dryer weigh-out',
@@ -1176,7 +1181,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 title: const Text('Active'),
                 value: _isActive,
                 onChanged: (v) => setState(() => _isActive = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               const SizedBox(height: 24),
               const Text('Ingredients (per batch size)', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),

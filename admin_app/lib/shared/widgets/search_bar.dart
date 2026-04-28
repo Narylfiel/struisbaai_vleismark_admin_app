@@ -328,9 +328,6 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
           dense: true,
           contentPadding: EdgeInsets.zero,
         );
-
-      default:
-        return const SizedBox.shrink();
     }
   }
 }

@@ -6,7 +6,6 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/db/isar_service.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/export_service.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../shared/widgets/action_buttons.dart';
@@ -157,9 +156,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
     try {
       final rows = const CsvToListConverter().convert(content);
       if (rows.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('File is empty'), backgroundColor: AppColors.warning),
         );
+        }
         return;
       }
       final headerRow = rows.first.map((c) => (c as String).trim().toLowerCase()).toList();
@@ -171,7 +172,7 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
       final notesIdx = _indexOfHeader(headerRow, 'notes');
       parsed = [];
       for (var i = 1; i < rows.length; i++) {
-        final row = rows[i] as List;
+        final row = rows[i];
         parsed.add({
           'name': nameIdx >= 0 && nameIdx < row.length ? (row[nameIdx] as String?)?.trim() ?? '' : '',
           'contact_name': contactIdx >= 0 && contactIdx < row.length ? (row[contactIdx] as String?)?.trim() ?? '' : '',
@@ -323,9 +324,9 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
           children: [
             const Icon(Icons.error_outline, size: 64, color: AppColors.danger),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Error loading suppliers',
-              style: const TextStyle(color: AppColors.danger, fontSize: 18, fontWeight: FontWeight.w500),
+              style: TextStyle(color: AppColors.danger, fontSize: 18, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             Padding(
@@ -546,7 +547,7 @@ class _ImportPreviewDialog extends StatelessWidget {
                     final name = (r['name'] ?? '').trim();
                     final missingName = name.isEmpty;
                     return DataRow(
-                      color: MaterialStateProperty.resolveWith((_) =>
+                      color: WidgetStateProperty.resolveWith((_) =>
                           missingName ? AppColors.warning.withValues(alpha: 0.15) : null),
                       cells: [
                         DataCell(Text(name.isEmpty ? '(missing)' : name,

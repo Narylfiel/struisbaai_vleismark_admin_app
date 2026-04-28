@@ -28,7 +28,7 @@ Future<String?> createParkedSaleForJob(String jobId) async {
   final servicesList = job['services_list'];
   if (servicesList is List) {
     for (final entry in servicesList) {
-      final map = entry is Map ? Map<String, dynamic>.from(entry as Map) : <String, dynamic>{};
+      final map = entry is Map ? Map<String, dynamic>.from(entry) : <String, dynamic>{};
       final serviceId = map['service_id']?.toString();
       final name = map['name']?.toString() ?? 'Service';
       final qty = (map['quantity'] as num?)?.toDouble() ?? 1.0;
@@ -66,7 +66,7 @@ Future<String?> createParkedSaleForJob(String jobId) async {
   final materialsList = job['materials_list'];
   if (materialsList is List) {
     for (final entry in materialsList) {
-      final map = entry is Map ? Map<String, dynamic>.from(entry as Map) : <String, dynamic>{};
+      final map = entry is Map ? Map<String, dynamic>.from(entry) : <String, dynamic>{};
       final itemId = map['item_id']?.toString();
       final name = map['name']?.toString() ?? 'Material';
       final qty = (map['quantity'] as num?)?.toDouble() ?? 1.0;

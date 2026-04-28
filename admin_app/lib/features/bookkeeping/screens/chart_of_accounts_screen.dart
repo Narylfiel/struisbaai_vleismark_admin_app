@@ -95,14 +95,14 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: type,
+                      initialValue: type,
                       decoration: const InputDecoration(labelText: 'Type'),
                       items: _types.map((t) => DropdownMenuItem(value: t, child: Text(_typeLabels[t] ?? t))).toList(),
                       onChanged: existing == null ? (v) => setDialog(() => type = v ?? type) : null,
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: parentId,
+                      initialValue: parentId,
                       decoration: const InputDecoration(labelText: 'Parent Account (optional)'),
                       items: [
                         const DropdownMenuItem<String>(value: null, child: Text('— None —')),
@@ -146,10 +146,10 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                       if (code.isEmpty) return;
                       try {
                         final refs = await _client.from('ledger_entries').select('id').eq('account_code', code).limit(1);
-                        if (refs != null && (refs as List).isNotEmpty) {
+                        if ((refs as List).isNotEmpty) {
                           if (ctx.mounted) {
                             Navigator.pop(ctx);
-                            ScaffoldMessenger.of(context).showSnackBar(
+                            ScaffoldMessenger.of(ctx).showSnackBar(
                               const SnackBar(content: Text('Cannot delete — has transactions. Deactivate instead.'), backgroundColor: AppColors.warning),
                             );
                           }
@@ -159,10 +159,10 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                         if (ctx.mounted) {
                           Navigator.pop(ctx);
                           _load();
-                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Account deleted'), backgroundColor: AppColors.success));
+                          ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Account deleted'), backgroundColor: AppColors.success));
                         }
                       } catch (e) {
-                        if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+                        if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
                       }
                     },
                     child: const Text('Delete', style: TextStyle(color: AppColors.error)),
@@ -197,10 +197,10 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                       if (ctx.mounted) {
                         Navigator.pop(ctx);
                         _load();
-                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success));
+                        ScaffoldMessenger.of(ctx).showSnackBar(const SnackBar(content: Text('Saved'), backgroundColor: AppColors.success));
                       }
                     } catch (e) {
-                      if (ctx.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
+                      if (ctx.mounted) ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error));
                     }
                   },
                   child: const Text('Save'),
@@ -282,7 +282,7 @@ class _ChartOfAccountsScreenState extends State<ChartOfAccountsScreen> {
                 onChanged: (v) async {
                   if (!v) {
                     final refs = await _client.from('ledger_entries').select('id').eq('account_code', code).limit(1);
-                    if (refs != null && (refs as List).isNotEmpty && mounted) {
+                    if ((refs as List).isNotEmpty && mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('Account has transactions; deactivating hides it from new entries.'), backgroundColor: AppColors.info),
                       );

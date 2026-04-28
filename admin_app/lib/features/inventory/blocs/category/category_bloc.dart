@@ -1,7 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/db/cached_category.dart';
 import '../../../../core/db/isar_service.dart';
-import '../../../../core/services/connectivity_service.dart';
 import '../../../../core/services/supabase_service.dart';
 import '../../../../core/utils/error_handler.dart';
 import '../../models/category.dart';

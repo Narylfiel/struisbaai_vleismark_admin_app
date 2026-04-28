@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/db/cached_hunter_job.dart';
@@ -862,7 +861,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
   String? _serviceCategory;
   List<Map<String, dynamic>> _inventoryItems = [];
   final _productSearchCtrl = TextEditingController();
-  List<Map<String, dynamic>> _cutOptions = []; // [{"name": "Chops"}, {"name": "Steaks"}]
+  final List<Map<String, dynamic>> _cutOptions = []; // [{"name": "Chops"}, {"name": "Steaks"}]
 
   static const List<String> _serviceCategoryOptions = [
     'processing', 'packaging', 'spice', 'extra', 'casing', 'other',
@@ -924,7 +923,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isSaving = true);
     final cutOptionsPayload = _cutOptions
-        .map((c) => c['name']?.toString()?.trim())
+        .map((c) => c['name']?.toString().trim())
         .whereType<String>()
         .where((s) => s.isNotEmpty)
         .map((s) => {'name': s})
@@ -975,7 +974,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
               const Text('Linked Product', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(height: 4),
               DropdownButtonFormField<String?>(
-                value: _linkedProductId,
+                initialValue: _linkedProductId,
                 decoration: const InputDecoration(
                   hintText: 'Search by name or PLU — link to product so pricing stays in sync',
                   isDense: true,
@@ -1039,7 +1038,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
               const Text('Service Category', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(height: 4),
               DropdownButtonFormField<String?>(
-                value: _serviceCategory,
+                initialValue: _serviceCategory,
                 decoration: const InputDecoration(isDense: true),
                 hint: const Text('Select category'),
                 items: [
@@ -1049,7 +1048,7 @@ class _ServiceFormDialogState extends State<_ServiceFormDialog> {
                 onChanged: (v) => setState(() => _serviceCategory = v),
               ),
               const SizedBox(height: 8),
-              SwitchListTile(title: const Text('Active'), value: _isActive, onChanged: (v) => setState(() => _isActive = v!)),
+              SwitchListTile(title: const Text('Active'), value: _isActive, onChanged: (v) => setState(() => _isActive = v)),
             ],
           ),
         ),

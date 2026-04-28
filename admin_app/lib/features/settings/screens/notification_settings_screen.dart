@@ -182,8 +182,9 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
 
   Future<void> _testWhatsApp() async {
     var num = _whatsappController.text.trim().replaceAll(RegExp(r'[^0-9]'), '');
-    if (num.startsWith('0')) num = '27${num.substring(1)}';
-    else if (!num.startsWith('27')) num = '27$num';
+    if (num.startsWith('0')) {
+      num = '27${num.substring(1)}';
+    } else if (!num.startsWith('27')) num = '27$num';
     if (num.length < 11) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Enter valid WhatsApp number'), backgroundColor: AppColors.warning),
@@ -311,7 +312,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               Padding(
                 padding: const EdgeInsets.only(left: 16, top: 8),
                 child: DropdownButtonFormField<int>(
-                  value: _invoiceOverdueDays,
+                  initialValue: _invoiceOverdueDays,
                   decoration: const InputDecoration(labelText: 'Invoice overdue after', border: OutlineInputBorder(), isDense: true),
                   items: const [
                     DropdownMenuItem(value: 7, child: Text('7 days')),
@@ -328,7 +329,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               Padding(
                 padding: const EdgeInsets.only(left: 16, top: 8),
                 child: DropdownButtonFormField<int>(
-                  value: _documentExpiryDays,
+                  initialValue: _documentExpiryDays,
                   decoration: const InputDecoration(labelText: 'Document expiry warning', border: OutlineInputBorder(), isDense: true),
                   items: const [
                     DropdownMenuItem(value: 14, child: Text('14 days')),
@@ -362,14 +363,14 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
             title: const Text('Show alerts on POS screen'),
             value: _enablePosAlerts,
             onChanged: (v) => setState(() => _enablePosAlerts = v),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             dense: true,
           ),
           SwitchListTile(
             title: const Text('Email alerts to manager'),
             value: _enableEmailAlerts,
             onChanged: (v) => setState(() => _enableEmailAlerts = v),
-            activeColor: AppColors.primary,
+            activeThumbColor: AppColors.primary,
             dense: true,
           ),
           if (_enableEmailAlerts) ...[
@@ -538,7 +539,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
           title: Text(title),
           value: _alerts[key] ?? false,
           onChanged: (v) => setState(() => _alerts[key] = v),
-          activeColor: AppColors.primary,
+          activeThumbColor: AppColors.primary,
         ),
         ...children,
       ],

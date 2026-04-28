@@ -64,7 +64,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
       final success = await PrintRetryService.instance.retryPrintJob(jobId);
 
       if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Print job requeued for retry'),
             backgroundColor: AppColors.success,
@@ -73,7 +73,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
         // Refresh the list
         _loadFailedJobs();
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Cannot retry job - job may already be active'),
             backgroundColor: AppColors.error,
@@ -81,7 +81,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
         );
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Failed to retry job: $e'),
           backgroundColor: AppColors.error,
@@ -115,7 +115,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.error, size: 64, color: AppColors.error),
+                      const Icon(Icons.error, size: 64, color: AppColors.error),
                       const SizedBox(height: 16),
                       Text('Error loading failed jobs: $_error'),
                       const SizedBox(height: 16),
@@ -127,17 +127,17 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
                   ),
                 )
               : _failedJobs.isEmpty
-                  ? Center(
+                  ? const Center(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(Icons.check_circle, size: 64, color: AppColors.success),
-                          const SizedBox(height: 16),
-                          const Text(
+                          SizedBox(height: 16),
+                          Text(
                             'No failed print jobs',
                             style: TextStyle(fontSize: 18),
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           Text(
                             'All print jobs are processing successfully',
                             style: TextStyle(
@@ -206,7 +206,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
                   ),
                   child: Text(
                     '$attempts attempts',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 12,
                       color: AppColors.error,
                       fontWeight: FontWeight.bold,
@@ -218,7 +218,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
             const SizedBox(height: 8),
             Text(
               'Order ID: $orderId',
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 color: AppColors.textSecondary,
               ),
@@ -227,7 +227,7 @@ class _FailedPrintJobsScreenState extends State<FailedPrintJobsScreen> {
               const SizedBox(height: 4),
               Text(
                 'Created: ${_formatDateTime(createdAt)}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 12,
                   color: AppColors.textSecondary,
                 ),

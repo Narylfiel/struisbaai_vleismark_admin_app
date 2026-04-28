@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/admin_config.dart';
 import '../../../core/utils/error_handler.dart';
@@ -633,7 +632,7 @@ class _StartBatchDialogState extends State<_StartBatchDialog> {
             const Text('Recipe', style: TextStyle(fontWeight: FontWeight.w600)),
             const SizedBox(height: 8),
             DropdownButtonFormField<Recipe>(
-              value: _selectedRecipe,
+              initialValue: _selectedRecipe,
               decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
               items: widget.recipes
                   .map((r) => DropdownMenuItem(value: r, child: Text(r.name)))
@@ -1010,10 +1009,10 @@ class _CompleteBatchScreen extends StatefulWidget {
 class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
   final _client = SupabaseService.client;
   final _costTotalController = TextEditingController();
-  List<_OutputRow> _outputRows = [];
-  Map<String, TextEditingController> _actualControllers = {};
+  final List<_OutputRow> _outputRows = [];
+  final Map<String, TextEditingController> _actualControllers = {};
   List<ProductionBatchIngredient> _batchIngredients = [];
-  Map<String, RecipeIngredient> _ingredientById = {};
+  final Map<String, RecipeIngredient> _ingredientById = {};
   List<Map<String, dynamic>> _inventoryItems = [];
   Map<String, double> _availableStockByItemId = {};
   double _calculatedIngredientCost = 0.0;
@@ -1022,7 +1021,7 @@ class _CompleteBatchScreenState extends State<_CompleteBatchScreen> {
   int _recipePrepTimeMinutes = 0;
   String _recipeRequiredRole = 'butchery_assistant';
   double _labourRatePerHour = 28.79;
-  Map<String, double> _ingredientCostPrices = {};
+  final Map<String, double> _ingredientCostPrices = {};
   bool _costCalculated = false;
   bool _loading = true;
   bool _saving = false;
@@ -1601,10 +1600,10 @@ class _EditBatchScreen extends StatefulWidget {
 class _EditBatchScreenState extends State<_EditBatchScreen> {
   final _client = SupabaseService.client;
   final _costTotalController = TextEditingController();
-  List<_OutputRow> _outputRows = [];
-  Map<String, TextEditingController> _actualControllers = {};
+  final List<_OutputRow> _outputRows = [];
+  final Map<String, TextEditingController> _actualControllers = {};
   List<ProductionBatchIngredient> _batchIngredients = [];
-  Map<String, RecipeIngredient> _ingredientById = {};
+  final Map<String, RecipeIngredient> _ingredientById = {};
   List<Map<String, dynamic>> _inventoryItems = [];
   Map<String, double> _availableStockByItemId = {};
   double _calculatedIngredientCost = 0.0;
@@ -1613,7 +1612,7 @@ class _EditBatchScreenState extends State<_EditBatchScreen> {
   int _recipePrepTimeMinutes = 0;
   String _recipeRequiredRole = 'butchery_assistant';
   double _labourRatePerHour = 28.79;
-  Map<String, double> _ingredientCostPrices = {};
+  final Map<String, double> _ingredientCostPrices = {};
   bool _costCalculated = false;
   bool _loading = true;
   bool _saving = false;

@@ -169,7 +169,7 @@ class ScenarioService {
     required double expenseImpact,
     required double stockImpact,
   }) {
-    final eps = 1e-9;
+    const eps = 1e-9;
     final maxVal = _scenarioMax4(
       a: shrinkageImpact,
       b: marginImpact,

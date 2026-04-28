@@ -185,7 +185,7 @@ class PrintAutomationService {
       'auto_retries_attempted': _autoRetriesAttempted,
       'auto_retries_succeeded': _autoRetriesSucceeded,
       'auto_retry_success_rate': _autoRetriesAttempted > 0 
-          ? (_autoRetriesSucceeded / _autoRetriesAttempted * 100).toStringAsFixed(1) + '%'
+          ? '${(_autoRetriesSucceeded / _autoRetriesAttempted * 100).toStringAsFixed(1)}%'
           : '0%',
       'priority_escalations': _priorityEscalations,
       'backlog_throttling_active': _backlogThrottlingActive,

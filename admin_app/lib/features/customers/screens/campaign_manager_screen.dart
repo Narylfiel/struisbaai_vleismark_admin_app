@@ -1011,7 +1011,8 @@ class _IngredientsDialogState extends State<_IngredientsDialog>
           .order('sort_order');
 
       final all = List<Map<String, dynamic>>.from(res);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _meatBases = all.where((i) =>
             i['ingredient_type'] == 'meat_base').toList();
         _profiles  = all.where((i) =>
@@ -1020,6 +1021,7 @@ class _IngredientsDialogState extends State<_IngredientsDialog>
             i['ingredient_type'] == 'spice_addon').toList();
         _loading   = false;
       });
+      }
     } catch (e) {
       debugPrint('[INGREDIENTS] Load failed: $e');
       if (mounted) setState(() => _loading = false);
@@ -1097,7 +1099,7 @@ class _IngredientsDialogState extends State<_IngredientsDialog>
     final nameCtrl  = TextEditingController(
         text: ingredient['name'] as String? ?? '');
     final priceCtrl = TextEditingController(
-        text: '${(ingredient['price_per_kg'] as num?)?.toStringAsFixed(2) ?? '0.00'}');
+        text: (ingredient['price_per_kg'] as num?)?.toStringAsFixed(2) ?? '0.00');
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -1184,9 +1186,9 @@ class _IngredientsDialogState extends State<_IngredientsDialog>
             // Header
             Container(
               padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
-              decoration: BoxDecoration(
+              decoration: const BoxDecoration(
                 color: AppColors.cardBg,
-                borderRadius: const BorderRadius.vertical(
+                borderRadius: BorderRadius.vertical(
                     top: Radius.circular(14)),
                 border: Border(
                     bottom: BorderSide(color: AppColors.border)),

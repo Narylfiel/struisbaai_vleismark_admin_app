@@ -143,9 +143,7 @@ class _ComposeTabState extends State<_ComposeTab> {
         'target_audience': _audience,
         'is_active': true,
         'image_url': imageUrl,
-        'end_date': _endDate != null
-            ? _endDate!.toIso8601String().substring(0, 10)
-            : null,
+        'end_date': _endDate?.toIso8601String().substring(0, 10),
         'created_by': AuthService().getCurrentStaffId(),
       });
 

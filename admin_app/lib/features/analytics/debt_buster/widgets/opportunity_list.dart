@@ -370,7 +370,7 @@ class _OpportunityCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           side: BorderSide(color: AppColors.success.withOpacity(0.35)),
         ),
-        icon: Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
+        icon: const Icon(Icons.check_circle_outline, size: 16, color: AppColors.success),
         label: const Text(
           'Completed',
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),
@@ -385,7 +385,7 @@ class _OpportunityCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
           side: BorderSide(color: Colors.orange.withOpacity(0.35)),
         ),
-        icon: Icon(Icons.play_arrow_outlined, size: 16, color: Colors.orange),
+        icon: const Icon(Icons.play_arrow_outlined, size: 16, color: Colors.orange),
         label: const Text(
           'In Progress',
           style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600),

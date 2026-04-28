@@ -441,7 +441,7 @@ class _RecipeLibraryScreenState extends State<RecipeLibraryScreen> {
   Future<void> _downloadCsvTemplate() async {
     const header = 'title,description,serving_size,prep_time_minutes,cook_time_minutes,status,ingredients,steps,image_urls,categories';
     const exampleRow = 'Braai Burger,Classic beef burger for the braai,4,15,10,published,"500g beef mince|1 egg (optional)|salt and pepper","Shape patties|Braai 4 min per side|Serve with rolls",https://example.com/burger.jpg,Beef|Braai|Dinner';
-    final csv = '$header\n$exampleRow';
+    const csv = '$header\n$exampleRow';
     final dir = await getDownloadsDirectory();
     final directory = dir ?? await getApplicationDocumentsDirectory();
     final file = File('${directory.path}/recipe_import_template.csv');
@@ -1039,9 +1039,9 @@ class _CardMenu extends StatelessWidget {
           size: 16, color: AppColors.textSecondary),
       padding: EdgeInsets.zero,
       itemBuilder: (_) => [
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'edit',
-          child: const Row(children: [
+          child: Row(children: [
             Icon(Icons.edit_outlined, size: 16),
             SizedBox(width: 8),
             Text('Edit'),
@@ -1061,9 +1061,9 @@ class _CardMenu extends StatelessWidget {
           ]),
         ),
         const PopupMenuDivider(),
-        PopupMenuItem(
+        const PopupMenuItem(
           value: 'delete',
-          child: const Row(children: [
+          child: Row(children: [
             Icon(Icons.delete_outline, size: 16, color: AppColors.danger),
             SizedBox(width: 8),
             Text('Delete', style: TextStyle(color: AppColors.danger)),

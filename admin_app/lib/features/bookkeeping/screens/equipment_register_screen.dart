@@ -193,8 +193,8 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
                             DataCell(Text(r['asset_number']?.toString() ?? '—')),
                             DataCell(Text(r['location']?.toString() ?? '—')),
                             DataCell(Text((r['purchase_date']?.toString() ?? '').length >= 10 ? (r['purchase_date'].toString().substring(0, 10)) : '—')),
-                            DataCell(Text('${(r['purchase_price'] as num?)?.toStringAsFixed(2) ?? '0.00'}')),
-                            DataCell(Text('${_currentValue(r).toStringAsFixed(2)}')),
+                            DataCell(Text((r['purchase_price'] as num?)?.toStringAsFixed(2) ?? '0.00')),
+                            DataCell(Text(_currentValue(r).toStringAsFixed(2))),
                             DataCell(Chip(
                               label: Text(_statusDisplayLabel(status), style: const TextStyle(fontSize: 11)),
                               backgroundColor: _statusColor(status).withValues(alpha: 0.2),
@@ -510,7 +510,7 @@ class _EquipmentFormDialogState extends State<_EquipmentFormDialog> {
                 ],
               ),
               DropdownButtonFormField<String>(
-                value: _status,
+                initialValue: _status,
                 decoration: const InputDecoration(labelText: 'Status', border: OutlineInputBorder()),
                 items: const [
                   DropdownMenuItem(value: 'active', child: Text('Active')),

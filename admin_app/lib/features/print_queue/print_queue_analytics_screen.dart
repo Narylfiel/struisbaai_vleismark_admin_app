@@ -279,7 +279,7 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error, size: 64, color: AppColors.error),
+          const Icon(Icons.error, size: 64, color: AppColors.error),
           const SizedBox(height: 16),
           Text('Error loading analytics: $_error'),
           const SizedBox(height: 16),
@@ -322,7 +322,7 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       return const Center(child: Text('No data available'));
     }
 
-    return Container(
+    return SizedBox(
       height: 200,
       child: _buildSimpleLineChart(
         _dailyTrends.map((day) => {
@@ -470,7 +470,7 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
       return const Center(child: Text('No data available'));
     }
 
-    return Container(
+    return SizedBox(
       height: 250,
       child: _buildMultiLineChart(
         _printTypePerformance.map((day) => {
@@ -486,7 +486,7 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
     if (data.isEmpty) return const SizedBox.shrink();
 
     final maxValue = data.map((d) => d['value'] as double).reduce((a, b) => a > b ? a : b);
-    final chartHeight = 150.0;
+    const chartHeight = 150.0;
     final chartWidth = MediaQuery.of(context).size.width - 64; // Account for padding
 
     return Column(
@@ -513,10 +513,10 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
     if (data.isEmpty) return const SizedBox.shrink();
 
     final maxValue = data.map((d) => d['value'] as double).reduce((a, b) => a > b ? a : b);
-    final chartHeight = 60.0;
+    const chartHeight = 60.0;
     final chartWidth = MediaQuery.of(context).size.width - 64;
 
-    return Container(
+    return SizedBox(
       height: chartHeight,
       width: chartWidth,
       child: CustomPaint(
@@ -528,7 +528,7 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
   Widget _buildMultiLineChart(List<Map<String, dynamic>> data) {
     if (data.isEmpty) return const SizedBox.shrink();
 
-    final chartHeight = 200.0;
+    const chartHeight = 200.0;
     final chartWidth = MediaQuery.of(context).size.width - 64;
 
     return Container(

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import '../repositories/online_orders_repository.dart';
@@ -126,11 +125,11 @@ class _CapeTownDeliveryManifestScreenState
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, color: AppColors.error, size: 48),
+              const Icon(Icons.error_outline, color: AppColors.error, size: 48),
               const SizedBox(height: 16),
               Text(
                 'Error: $_error',
-                style: TextStyle(color: AppColors.error),
+                style: const TextStyle(color: AppColors.error),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 16),
@@ -155,7 +154,7 @@ class _CapeTownDeliveryManifestScreenState
               color: AppColors.textSecondary.withOpacity(0.5),
             ),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'No deliveries scheduled',
               style: TextStyle(
                 color: AppColors.textSecondary,
@@ -193,11 +192,11 @@ class _CapeTownDeliveryManifestScreenState
           ),
           child: Row(
             children: [
-              Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
+              const Icon(Icons.calendar_today, color: AppColors.primary, size: 20),
               const SizedBox(width: 8),
               Text(
                 '${_formatDate(_startDate!)} - ${_formatDate(_endDate!)}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontWeight: FontWeight.bold,
                   color: AppColors.primary,
                 ),
@@ -205,7 +204,7 @@ class _CapeTownDeliveryManifestScreenState
               const Spacer(),
               Text(
                 '${_orders.length} orders',
-                style: TextStyle(
+                style: const TextStyle(
                   color: AppColors.primary,
                   fontWeight: FontWeight.w500,
                 ),
@@ -242,7 +241,7 @@ class _CapeTownDeliveryManifestScreenState
         ),
         subtitle: Text(
           '$totalOrders orders across ${zones.length} zone${zones.length > 1 ? 's' : ''}',
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,
           ),
@@ -299,7 +298,7 @@ class _CapeTownDeliveryManifestScreenState
         ),
         subtitle: Text(
           '${orders.length} order${orders.length > 1 ? 's' : ''}',
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 12,
             color: AppColors.textSecondary,
           ),
@@ -379,7 +378,7 @@ class _CapeTownDeliveryManifestScreenState
           const SizedBox(height: 4),
           Text(
             'Customer: ${customer?['full_name'] ?? 'N/A'}',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
               color: AppColors.textSecondary,
             ),
@@ -404,7 +403,7 @@ class _CapeTownDeliveryManifestScreenState
               padding: const EdgeInsets.only(top: 4),
               child: Text(
                 'Instructions: ${order['special_instructions']}',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 11,
                   color: Colors.orange,
                   fontStyle: FontStyle.italic,
@@ -503,7 +502,7 @@ class _CapeTownDeliveryManifestScreenState
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            appBarTheme: AppBarTheme(
+            appBarTheme: const AppBarTheme(
               backgroundColor: AppColors.cardBg,
               foregroundColor: AppColors.textPrimary,
             ),

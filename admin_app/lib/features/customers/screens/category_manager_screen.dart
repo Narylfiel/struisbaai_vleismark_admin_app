@@ -27,10 +27,12 @@ class _CategoryManagerScreenState extends State<CategoryManagerScreen> {
   Future<void> _load() async {
     setState(() => _loading = true);
     final types = await _repo.getCategoryTypes();
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _types = types;
       _loading = false;
     });
+    }
   }
 
   // ── TYPE DIALOGS ──────────────────────────────────────────

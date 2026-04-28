@@ -48,7 +48,7 @@ class _PtyConversionScreenState extends State<PtyConversionScreen> {
       if (mounted && row != null && row['setting_value'] != null) {
         final v = row['setting_value'];
         if (v is Map) {
-          final map = Map<String, dynamic>.from(v as Map);
+          final map = Map<String, dynamic>.from(v);
           final stepData = <String, Map<String, dynamic>>{};
           for (final s in _steps) {
             stepData[s.slug] = Map<String, dynamic>.from(Map<String, dynamic>.from(map[s.slug] as Map? ?? {}));
@@ -122,7 +122,7 @@ class _PtyConversionScreenState extends State<PtyConversionScreen> {
     final path = 'pty/$slug/${DateTime.now().millisecondsSinceEpoch}_${file.name}';
     setState(() => _loading = true);
     try {
-      await _client.storage.from('documents').uploadBinary(path, bytes, fileOptions: FileOptions(upsert: true));
+      await _client.storage.from('documents').uploadBinary(path, bytes, fileOptions: const FileOptions(upsert: true));
       final url = _client.storage.from('documents').getPublicUrl(path);
       setState(() {
         _stepData[slug] = {...?_stepData[slug], 'file_path': path, 'file_url': url};

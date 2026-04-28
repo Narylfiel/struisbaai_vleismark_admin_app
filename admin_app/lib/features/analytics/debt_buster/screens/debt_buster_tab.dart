@@ -6,9 +6,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/ai_service.dart';
 import '../services/debt_buster_service.dart';
 import '../models/debt_buster_ai_input.dart';
-import '../models/gap_analysis.dart';
 import '../services/debt_buster_ai_service.dart';
-import '../models/strategy_plan.dart';
 import '../models/scenario_input.dart';
 import '../models/scenario_result.dart';
 import '../services/scenario_service.dart';
@@ -368,7 +366,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
 
       final result = await _aiWrapper.generateInsights(input);
       final trimmed = result.trim();
-      final fallback = 'AI insights unavailable — using data-driven analysis only';
+      const fallback = 'AI insights unavailable — using data-driven analysis only';
       final finalText = trimmed.isEmpty ? fallback : trimmed;
 
       if (!mounted) return;
@@ -425,9 +423,9 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
           children: [
             const Icon(Icons.error_outline, size: 48, color: AppColors.error),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Error loading analysis',
-              style: const TextStyle(fontWeight: FontWeight.bold),
+              style: TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Text(
@@ -496,11 +494,11 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
         children: [
           const Icon(Icons.track_changes, color: AppColors.primary, size: 28),
           const SizedBox(width: 12),
-          Expanded(
+          const Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Debt Buster',
                   style: TextStyle(
                     fontSize: 18,
@@ -508,7 +506,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                     color: AppColors.primary,
                   ),
                 ),
-                const Text(
+                Text(
                   'Target-driven decision engine for debt clearance',
                   style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
                 ),
@@ -657,7 +655,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
   }
 
   Widget _buildAiInsightsCard() {
-    final fallback = 'AI insights unavailable — using data-driven analysis only';
+    const fallback = 'AI insights unavailable — using data-driven analysis only';
 
     return Card(
       child: Padding(
@@ -665,8 +663,8 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: const [
+            const Row(
+              children: [
                 Icon(Icons.auto_awesome, size: 20, color: AppColors.primary),
                 SizedBox(width: 8),
                 Text(
@@ -677,14 +675,14 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
             ),
             const SizedBox(height: 12),
             if (_isAiLoading) ...[
-              Row(
+              const Row(
                 children: [
-                  const SizedBox(
+                  SizedBox(
                     width: 20,
                     height: 20,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Text(
                     'Generating explanation and priority guidance...',
                     style: TextStyle(
@@ -753,8 +751,8 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: const [
+            const Row(
+              children: [
                 Icon(Icons.tune, size: 20, color: AppColors.primary),
                 SizedBox(width: 8),
                 Text(
@@ -766,7 +764,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
             const SizedBox(height: 12),
 
             if (!hasDebt) ...[
-              Text(
+              const Text(
                 'Scenario simulation is available when there is debt to clear.',
                 style: TextStyle(
                   fontSize: 13,
@@ -923,7 +921,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                   _actionTrackingPanel(analysis: analysis),
                   const SizedBox(height: 14),
                 ] else ...[
-                  Text(
+                  const Text(
                     'Start an action from the opportunities list to enable plan -> act -> measure.',
                     style: TextStyle(
                       fontSize: 12,
@@ -958,7 +956,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                   color: AppColors.primary,
                 ),
                 const SizedBox(height: 6),
-                Text(
+                const Text(
                   'Stock cash release is spread across your repayment window for feasibility.',
                   style: TextStyle(
                     fontSize: 12,
@@ -997,7 +995,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
           Expanded(
             child: Text(
               title,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
                 color: AppColors.textPrimary,
@@ -1066,7 +1064,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                 ],
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'Breakdown:',
                 style: TextStyle(
                   fontSize: 11,
@@ -1124,7 +1122,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
         Expanded(
           child: Text(
             'Main improvement comes from: $pretty',
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 13,
               color: AppColors.textSecondary,
               fontWeight: FontWeight.w800,
@@ -1204,7 +1202,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
     return OutlinedButton.icon(
       onPressed: () => onPick(input),
       icon: Icon(icon, size: 18, color: AppColors.primary),
-      label: Text(label, style: TextStyle(color: AppColors.primary, fontSize: 12)),
+      label: Text(label, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
       style: OutlinedButton.styleFrom(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
       ),
@@ -1300,7 +1298,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
           ),
           const SizedBox(width: 8),
           Text(
-            '$text',
+            text,
             style: TextStyle(
               fontWeight: FontWeight.w700,
               color: color,
@@ -1320,7 +1318,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
     final active = entries.where((e) => !e.value.completed).toList();
     final completed = entries.where((e) => e.value.completed).toList();
 
-    Widget _rowForTracking(ActionTracking t) {
+    Widget rowForTracking(ActionTracking t) {
       const minEvaluationDays = 3;
       final daysSince = panelNow.difference(t.startedAt).inDays;
 
@@ -1408,11 +1406,11 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                ...active.take(3).map((e) => _rowForTracking(e.value)),
+                ...active.take(3).map((e) => rowForTracking(e.value)),
                 if (active.length > 3)
                   Text(
                     '+${active.length - 3} more',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
                   ),
               ],
               if (completed.isNotEmpty) ...[
@@ -1422,7 +1420,7 @@ class _DebtBusterTabState extends State<DebtBusterTab> {
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
                 ),
                 const SizedBox(height: 6),
-                ...completed.take(2).map((e) => _rowForTracking(e.value)),
+                ...completed.take(2).map((e) => rowForTracking(e.value)),
               ],
             ],
           ],

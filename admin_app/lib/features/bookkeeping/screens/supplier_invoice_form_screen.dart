@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/error_handler.dart';
 import '../../../core/services/supabase_service.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../shared/widgets/form_widgets.dart';
 import '../../inventory/models/supplier.dart';
 import '../../inventory/services/supplier_repository.dart';
 import '../models/supplier_invoice.dart';
@@ -384,7 +382,9 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     // Pre-fill line items if extracted
     if (result.lineItems.isNotEmpty) {
       setState(() {
-        for (final r in _lineRows) r.dispose();
+        for (final r in _lineRows) {
+          r.dispose();
+        }
         _lineRows.clear();
         for (final item in result.lineItems) {
           final row = _LineRow();
@@ -596,7 +596,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
             Navigator.pop(context, true);
           }
         } catch (e) {
-          print('Supplier invoice save error: $e');
+          debugPrint('Supplier invoice save error: $e');
           rethrow;
         }
       }
@@ -621,7 +621,9 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
     _taxAmountController.dispose();
     _invoiceDateController.dispose();
     _dueDateController.dispose();
-    for (final row in _lineRows) row.dispose();
+    for (final row in _lineRows) {
+      row.dispose();
+    }
     super.dispose();
   }
 
@@ -679,7 +681,7 @@ class _SupplierInvoiceFormScreenState extends State<SupplierInvoiceFormScreen> {
                   const SizedBox(width: 16),
                   Expanded(
                     child: DropdownButtonFormField<String>(
-                      value: _selectedSupplierId,
+                      initialValue: _selectedSupplierId,
                       decoration: const InputDecoration(labelText: 'Supplier'),
                       items: [
                         const DropdownMenuItem(value: null, child: Text('— None —')),

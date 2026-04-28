@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/db/cached_dryer_batch.dart';
 import '../../../core/db/isar_service.dart';
@@ -198,14 +197,14 @@ class _DryerBatchScreenState extends State<DryerBatchScreen> {
           child: _batches.isEmpty
               ? Center(
                   child: _isOffline
-                      ? Padding(
-                          padding: const EdgeInsets.all(24),
+                      ? const Padding(
+                          padding: EdgeInsets.all(24),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(Icons.cloud_off, size: 64, color: AppColors.textSecondary),
-                              const SizedBox(height: 16),
-                              const Text(
+                              SizedBox(height: 16),
+                              Text(
                                 'No cached data available. Connect to the internet to load data.',
                                 style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
                                 textAlign: TextAlign.center,
@@ -494,7 +493,7 @@ class _DryerBatchDetailPanel extends StatelessWidget {
         _detailRow('Power', '${kwh.toStringAsFixed(1)} kWh'),
         _detailRow('Electricity cost', 'R${cost.toStringAsFixed(2)}'),
         _detailRow('Weight in', '${batch.inputWeightKg} kg'),
-        _detailRow('Weight out', '${batch.outputWeightKg != null ? '${batch.outputWeightKg} kg' : '—'}'),
+        _detailRow('Weight out', batch.outputWeightKg != null ? '${batch.outputWeightKg} kg' : '—'),
         if (shrinkage != null) _detailRow('Shrinkage', '${shrinkage.toStringAsFixed(1)}% (${lostKg.toStringAsFixed(1)} kg)'),
         _detailRow('Cost per kg', 'R${costPerKg.toStringAsFixed(2)}'),
       ],
@@ -672,7 +671,7 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             DropdownButtonFormField<String>(
-              value: _selectedRecipeId,
+              initialValue: _selectedRecipeId,
               decoration: const InputDecoration(
                 labelText: 'Recipe *',
                 border: OutlineInputBorder(),
@@ -703,7 +702,7 @@ class _NewDryerBatchDialogState extends State<_NewDryerBatchDialog> {
             ],
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _dryerType,
+              initialValue: _dryerType,
               decoration: const InputDecoration(labelText: 'Product type', border: OutlineInputBorder(), isDense: true),
               items: const [
                 DropdownMenuItem(value: 'biltong', child: Text('Biltong')),

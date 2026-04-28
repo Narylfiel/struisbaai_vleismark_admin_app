@@ -191,7 +191,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     const SizedBox(height: 16),
                     const Text('DEBIT', style: TextStyle(fontWeight: FontWeight.bold)),
                     DropdownButtonFormField<String>(
-                      value: debitCode,
+                      initialValue: debitCode,
                       decoration: const InputDecoration(labelText: 'Account'),
                       items: _accounts
                           .map((a) => DropdownMenuItem<String>(
@@ -210,7 +210,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
                     const SizedBox(height: 16),
                     const Text('CREDIT', style: TextStyle(fontWeight: FontWeight.bold)),
                     DropdownButtonFormField<String>(
-                      value: creditCode,
+                      initialValue: creditCode,
                       decoration: const InputDecoration(labelText: 'Account'),
                       items: _accounts
                           .map((a) => DropdownMenuItem<String>(
@@ -351,7 +351,7 @@ class _LedgerScreenState extends State<LedgerScreen> {
           SizedBox(
             width: 220,
             child: DropdownButtonFormField<String>(
-              value: _selectedAccountCode,
+              initialValue: _selectedAccountCode,
               isExpanded: true,
               decoration: const InputDecoration(labelText: 'Account', isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 4)),
               items: [
@@ -392,18 +392,18 @@ class _LedgerScreenState extends State<LedgerScreen> {
             color: AppColors.surfaceBg,
             child: Row(
               children: [
-                SizedBox(width: 90, child: Text('Date', style: _hStyle)),
+                const SizedBox(width: 90, child: Text('Date', style: _hStyle)),
                 const SizedBox(width: 8),
-                SizedBox(width: 100, child: Text('Account Name', style: _hStyle)),
+                const SizedBox(width: 100, child: Text('Account Name', style: _hStyle)),
                 const SizedBox(width: 8),
-                Expanded(flex: 2, child: Text('Description', style: _hStyle)),
+                const Expanded(flex: 2, child: Text('Description', style: _hStyle)),
                 const SizedBox(width: 8),
-                SizedBox(width: 80, child: Text('Reference', style: _hStyle)),
+                const SizedBox(width: 80, child: Text('Reference', style: _hStyle)),
                 const SizedBox(width: 8),
-                SizedBox(width: 80, child: Text('Debit', style: _hStyle)),
+                const SizedBox(width: 80, child: Text('Debit', style: _hStyle)),
                 const SizedBox(width: 8),
-                SizedBox(width: 80, child: Text('Credit', style: _hStyle)),
-                if (showBalance) ...[const SizedBox(width: 8), SizedBox(width: 90, child: Text('Running Balance', style: _hStyle))],
+                const SizedBox(width: 80, child: Text('Credit', style: _hStyle)),
+                if (showBalance) ...[const SizedBox(width: 8), const SizedBox(width: 90, child: Text('Running Balance', style: _hStyle))],
               ],
             ),
           ),

@@ -36,7 +36,7 @@ class _RouteOrderDialogState extends State<RouteOrderDialog> {
         height: 400,
         child: Column(
           children: [
-            Text(
+            const Text(
               'Drag and drop to reorder delivery stops:',
               style: TextStyle(
                 fontSize: 14,
@@ -87,7 +87,7 @@ class _RouteOrderDialogState extends State<RouteOrderDialog> {
                           ),
                           Text(
                             address,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 11,
                               color: AppColors.textSecondary,
                             ),

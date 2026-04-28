@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/db/isar_service.dart';
@@ -1322,11 +1321,11 @@ class _TemplateFormDialogState extends State<_TemplateFormDialog> {
                             Expanded(
                               child: TextField(
                                 controller: _itemSearchControllers[i],
-                                decoration: InputDecoration(
+                                decoration: const InputDecoration(
                                   isDense: true,
                                   hintText: 'Link inventory item (optional)',
-                                  prefixIcon: const Icon(Icons.link, size: 14),
-                                  contentPadding: const EdgeInsets.symmetric(
+                                  prefixIcon: Icon(Icons.link, size: 14),
+                                  contentPadding: EdgeInsets.symmetric(
                                       horizontal: 8, vertical: 6),
                                 ),
                                 style: const TextStyle(fontSize: 12),
@@ -1549,7 +1548,7 @@ class _IntakeFormDialogState extends State<_IntakeFormDialog> {
       await AuditService.log(
         action: 'CREATE',
         module: 'Production',
-        description: 'Carcass intake: ${_carcassType} - ${_actualWeight.toStringAsFixed(2)}kg${supplierName.isNotEmpty ? " from $supplierName" : ""}',
+        description: 'Carcass intake: $_carcassType - ${_actualWeight.toStringAsFixed(2)}kg${supplierName.isNotEmpty ? " from $supplierName" : ""}',
         entityType: 'CarcassIntake',
         entityId: result['id'],
         newValues: data,

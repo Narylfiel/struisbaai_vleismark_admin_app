@@ -188,8 +188,9 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
 
   List<Map<String, dynamic>> get _filtered {
     var list = _items;
-    if (_filter == 'low') list = list.where(_isLow).toList();
-    else if (_filter == 'ok') list = list.where((p) => !_isLow(p)).toList();
+    if (_filter == 'low') {
+      list = list.where(_isLow).toList();
+    } else if (_filter == 'ok') list = list.where((p) => !_isLow(p)).toList();
 
     if (_selectedCategoryId != null) {
       list = list.where((p) => p['category_id']?.toString() == _selectedCategoryId).toList();
@@ -598,8 +599,8 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                     ),
         ),
         if (_isOffline && _items.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+          const Padding(
+            padding: EdgeInsets.fromLTRB(24, 8, 24, 16),
             child: Text(
               'Last movement data unavailable offline.',
               style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic),

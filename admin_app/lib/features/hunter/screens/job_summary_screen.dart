@@ -10,7 +10,6 @@ import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/hunter/models/hunter_job.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
@@ -568,7 +567,7 @@ class _JobSummaryScreenState extends State<JobSummaryScreen> {
 
   Future<void> _sendWhatsApp() async {
     final job = _currentJob ?? widget.job;
-    final phone = (job['contact_phone'] ?? job['client_contact'])?.toString()?.replaceAll(RegExp(r'[^\d+]'), '') ?? '';
+    final phone = (job['contact_phone'] ?? job['client_contact'])?.toString().replaceAll(RegExp(r'[^\d+]'), '') ?? '';
     if (phone.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('No phone number for hunter.')));
       return;

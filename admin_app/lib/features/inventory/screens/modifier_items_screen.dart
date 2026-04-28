@@ -35,10 +35,12 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
     try {
       _isOffline = false;
       final list = await _repo.getItemsByGroup(widget.group.id);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _items = list;
         _loading = false;
       });
+      }
     } catch (e) {
       _isOffline = true;
       try {
@@ -57,10 +59,12 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
                 ))
             .toList();
       } catch (_) {}
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _error = ErrorHandler.friendlyMessage(e);
         _loading = false;
       });
+      }
     }
   }
 
@@ -283,10 +287,12 @@ class _ModifierItemFormScreenState extends State<_ModifierItemFormScreen> {
           .select('id, name')
           .eq('is_active', true)
           .order('name');
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _inventoryItems = List<Map<String, dynamic>>.from(r as List);
         _loadingInventory = false;
       });
+      }
     } catch (_) {
       if (mounted) setState(() => _loadingInventory = false);
     }
@@ -390,13 +396,13 @@ class _ModifierItemFormScreenState extends State<_ModifierItemFormScreen> {
                 subtitle: const Text('Blueprint: Track Inventory?'),
                 value: _trackInventory,
                 onChanged: (v) => setState(() => _trackInventory = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               if (_loadingInventory)
                 const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
               else
                 DropdownButtonFormField<String>(
-                  value: _linkedInventoryItemId,
+                  initialValue: _linkedInventoryItemId,
                   decoration: const InputDecoration(
                     labelText: 'Linked item (inventory product)',
                     border: OutlineInputBorder(),
@@ -417,7 +423,7 @@ class _ModifierItemFormScreenState extends State<_ModifierItemFormScreen> {
                 title: const Text('Active'),
                 value: _isActive,
                 onChanged: (v) => setState(() => _isActive = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               const SizedBox(height: 24),
               SizedBox(

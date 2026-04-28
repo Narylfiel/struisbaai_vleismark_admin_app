@@ -125,8 +125,6 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         return exp != null && !exp.isBefore(today) && !exp.isAfter(today30);
       case _Filter.expiredMissing:
         return exp == null || exp.isBefore(today);
-      default:
-        return true;
     }
   }
 
@@ -151,12 +149,12 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
         build: (context) => [
           pw.Text(_businessName ?? 'Business', style: pw.TextStyle(fontSize: 18, fontWeight: pw.FontWeight.bold)),
           pw.SizedBox(height: 8),
-          pw.Text('BCEA Compliance — Document status', style: pw.TextStyle(fontSize: 14)),
+          pw.Text('BCEA Compliance — Document status', style: const pw.TextStyle(fontSize: 14)),
           pw.SizedBox(height: 12),
           pw.Table(
             border: pw.TableBorder.all(width: 0.5),
             columnWidths: {
-              for (int i = 0; i < 1 + staffCols.length; i++) i: pw.FlexColumnWidth(1.5),
+              for (int i = 0; i < 1 + staffCols.length; i++) i: const pw.FlexColumnWidth(1.5),
             },
             children: [
               pw.TableRow(
@@ -190,7 +188,7 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
             ],
           ),
           pw.SizedBox(height: 16),
-          pw.Text('Generated: ${DateTime.now().toIso8601String().substring(0, 19)}', style: pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
+          pw.Text('Generated: ${DateTime.now().toIso8601String().substring(0, 19)}', style: const pw.TextStyle(fontSize: 9, color: PdfColors.grey700)),
         ],
       ),
     );
@@ -260,7 +258,7 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
                                 children: [
                                   Row(
                                     children: [
-                                      SizedBox(width: cornerW, height: rowH, child: const ColoredBox(color: AppColors.surfaceBg, child: Center(child: Text('Document type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))))),
+                                      const SizedBox(width: cornerW, height: rowH, child: ColoredBox(color: AppColors.surfaceBg, child: Center(child: Text('Document type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))))),
                                       ...staffCols.map((s) => SizedBox(
                                             width: colW,
                                             height: rowH,
@@ -290,7 +288,7 @@ class _ComplianceScreenState extends State<ComplianceScreen> {
                                             ),
                                             ...staffCols.map((s) {
                                               final sid = s['id']?.toString();
-                                              if (sid == null) return SizedBox(width: colW, height: rowH, child: const ColoredBox(color: Colors.transparent));
+                                              if (sid == null) return const SizedBox(width: colW, height: rowH, child: ColoredBox(color: Colors.transparent));
                                               final rec = _getRecord(sid, doc.slug);
                                               DateTime? exp;
                                               if (rec != null && rec['expiry_date'] != null) exp = DateTime.tryParse(rec['expiry_date'].toString().substring(0, 10));

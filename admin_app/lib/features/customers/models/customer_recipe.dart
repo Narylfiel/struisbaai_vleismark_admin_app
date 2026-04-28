@@ -1,6 +1,7 @@
 /// Models for the Customer Recipe Library feature.
 /// These are meal/cooking recipes for the customer loyalty app.
 /// Completely separate from [Recipe] in features/production/.
+library;
 
 // ─────────────────────────────────────────────
 // Category Type (e.g. "Meal Type", "Cuisine")

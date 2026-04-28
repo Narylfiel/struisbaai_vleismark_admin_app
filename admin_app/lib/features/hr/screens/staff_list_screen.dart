@@ -490,7 +490,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                   ...c,
                   'staff_profiles': {
                     ...Map<String, dynamic>.from(staffProfiles),
-                    'hourly_rate': (staffProfiles as Map)['hourly_rate'],
+                    'hourly_rate': (staffProfiles)['hourly_rate'],
                   },
                 };
               }
@@ -1053,14 +1053,14 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(errorMsg!,
-                          style: TextStyle(color: AppColors.error, fontSize: 13)),
+                          style: const TextStyle(color: AppColors.error, fontSize: 13)),
                     ),
                     const SizedBox(height: 12),
                   ],
                   // Shift date (read-only label)
                   Text(
                     'Shift: ${t['shift_date'] ?? ''}',
-                    style: TextStyle(
+                    style: const TextStyle(
                         fontSize: 12,
                         color: AppColors.textSecondary,
                         fontWeight: FontWeight.w500),
@@ -1087,7 +1087,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                   const SizedBox(height: 12),
                   const Divider(),
                   const SizedBox(height: 8),
-                  Text('Breaks',
+                  const Text('Breaks',
                       style: TextStyle(
                           fontSize: 12,
                           color: AppColors.textSecondary,
@@ -1243,10 +1243,10 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                           newValues: newData,
                         );
 
-                        if (mounted) {
+                        if (ctx.mounted) {
                           Navigator.pop(ctx);
                           _load(); // refresh the list
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          ScaffoldMessenger.of(ctx).showSnackBar(
                             const SnackBar(
                               content: Text('Timecard updated successfully'),
                               backgroundColor: AppColors.success,
@@ -1790,9 +1790,9 @@ class _LeaveTabState extends State<_LeaveTab> {
                     'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
                   });
 
-                  if (mounted) {
+                  if (ctx.mounted) {
                     Navigator.pop(ctx);
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    ScaffoldMessenger.of(ctx).showSnackBar(
                       const SnackBar(content: Text('Leave recorded'), backgroundColor: AppColors.success),
                     );
                   }
@@ -2400,7 +2400,7 @@ class _AwolTabState extends State<_AwolTab> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<AwolResolution>(
-                  value: resolution,
+                  initialValue: resolution,
                   decoration: const InputDecoration(labelText: 'Resolution'),
                   items: AwolResolution.values.map((r) => DropdownMenuItem(
                     value: r,
@@ -2491,7 +2491,7 @@ class _AwolTabState extends State<_AwolTab> {
                 Text('Date: ${record.awolDate.day}/${record.awolDate.month}/${record.awolDate.year}'),
                 const SizedBox(height: 16),
                 DropdownButtonFormField<AwolResolution>(
-                  value: resolution,
+                  initialValue: resolution,
                   decoration: const InputDecoration(labelText: 'Resolution'),
                   items: [
                     AwolResolution.returned,
@@ -3004,8 +3004,8 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                   await _supabase.from('leave_history').insert({
                     'staff_id': widget.staff!['id'],
                     'leave_type': leaveType,
-                    'start_date': startDate!.toIso8601String().substring(0, 10),
-                    'end_date': endDate!.toIso8601String().substring(0, 10),
+                    'start_date': startDate.toIso8601String().substring(0, 10),
+                    'end_date': endDate.toIso8601String().substring(0, 10),
                     'days_taken': days,
                     'source': 'admin_entry',
                     'source_request_id': null,
@@ -3013,13 +3013,13 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                     'notes': notesController.text.trim().isEmpty ? null : notesController.text.trim(),
                   });
 
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(
                       const SnackBar(content: Text('Leave recorded successfully'), backgroundColor: AppColors.success),
                     );
                     Navigator.pop(ctx);
-                    _loadLeaveData(); // Reload balances
                   }
+                  _loadLeaveData(); // Reload balances
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
@@ -3869,7 +3869,7 @@ class _BreakAlertsTabState extends State<_BreakAlertsTab> {
             SizedBox(
               width: 200,
               child: DropdownButtonFormField<String?>(
-                value: _selectedStaffId,
+                initialValue: _selectedStaffId,
                 decoration: const InputDecoration(
                     labelText: 'Staff', isDense: true),
                 items: [
@@ -3892,7 +3892,7 @@ class _BreakAlertsTabState extends State<_BreakAlertsTab> {
             SizedBox(
               width: 200,
               child: DropdownButtonFormField<String?>(
-                value: _selectedAlertType,
+                initialValue: _selectedAlertType,
                 decoration: const InputDecoration(
                     labelText: 'Alert Type', isDense: true),
                 items: const [

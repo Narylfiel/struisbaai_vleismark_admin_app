@@ -1,12 +1,10 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:excel/excel.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'base_service.dart';
-import '../utils/app_constants.dart';
 
 /// Service for generating reports in PDF and Excel formats
 class ReportService extends BaseService {

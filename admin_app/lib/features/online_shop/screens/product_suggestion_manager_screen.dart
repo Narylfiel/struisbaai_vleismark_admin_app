@@ -68,13 +68,13 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.error_outline,
                     size: 64,
                     color: AppColors.error,
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  const Text(
                     'Error loading suggestions',
                     style: TextStyle(
                       fontSize: 18,
@@ -85,7 +85,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                   const SizedBox(height: 8),
                   Text(
                     state.message,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
                       color: AppColors.textSecondary,
                     ),
@@ -132,7 +132,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
               ),
               child: Row(
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.shopping_bag_outlined,
                     color: AppColors.primary,
                     size: 24,
@@ -142,7 +142,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
+                        const Text(
                           'Managing suggestions for:',
                           style: TextStyle(
                             fontSize: 12,
@@ -151,7 +151,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                         ),
                         Text(
                           widget.productName,
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w600,
                             color: AppColors.textPrimary,
@@ -168,7 +168,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                     ),
                     child: Text(
                       '${state.suggestions.length} suggestions',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppColors.primary,
@@ -236,13 +236,13 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                 ),
                 child: Column(
                   children: [
-                    Icon(
+                    const Icon(
                       Icons.lightbulb_outline,
                       size: 64,
                       color: AppColors.textSecondary,
                     ),
                     const SizedBox(height: 16),
-                    Text(
+                    const Text(
                       'No suggestions yet',
                       style: TextStyle(
                         fontSize: 18,
@@ -251,7 +251,7 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
                       ),
                     ),
                     const SizedBox(height: 8),
-                    Text(
+                    const Text(
                       'Add product suggestions to increase cross-sells and improve customer experience.',
                       style: TextStyle(
                         fontSize: 14,

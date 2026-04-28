@@ -330,7 +330,7 @@ class DebtBusterService {
         // LOW MARGIN PRODUCTS (margin < 20%)
         else if (marginFlag == 'low' || margin < 20) {
           // Estimate impact: if margin increased to 25%, additional profit
-          final targetMargin = 25.0;
+          const targetMargin = 25.0;
           if (margin < targetMargin && revenue > 0) {
             final currentProfit = revenue * (margin / 100);
             final potentialProfit = revenue * (targetMargin / 100);

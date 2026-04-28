@@ -261,7 +261,7 @@ class CustomerRecipeRepository {
     final iImageUrls = idx('image_urls');
     final iCategories = idx('categories');
     if (iTitle < 0) {
-      return CsvImportResult(
+      return const CsvImportResult(
         successCount: 0,
         skipCount: 0,
         errors: ['CSV must have a "title" column.'],

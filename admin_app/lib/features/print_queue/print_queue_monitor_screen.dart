@@ -745,7 +745,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.error, size: 64, color: AppColors.error),
+          const Icon(Icons.error, size: 64, color: AppColors.error),
           const SizedBox(height: 16),
           Text('Error loading data: $_error'),
           const SizedBox(height: 16),
@@ -795,7 +795,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                     )),
                   ] else ...[
                     const SizedBox(height: 4),
-                    Text(
+                    const Text(
                       'All systems operational',
                       style: TextStyle(
                         fontSize: 12,
@@ -822,11 +822,11 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
+            const Row(
               children: [
                 Icon(Icons.lightbulb, color: Colors.amber, size: 20),
-                const SizedBox(width: 8),
-                const Text(
+                SizedBox(width: 8),
+                Text(
                   'System Insights',
                   style: TextStyle(
                     fontSize: 18,
@@ -845,7 +845,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                     width: 4,
                     height: 4,
                     margin: const EdgeInsets.only(top: 8, right: 8),
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       color: Colors.amber,
                       shape: BoxShape.circle,
                     ),
@@ -882,7 +882,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
           children: [
             Row(
               children: [
-                Icon(Icons.smart_toy, color: Colors.blue, size: 20),
+                const Icon(Icons.smart_toy, color: Colors.blue, size: 20),
                 const SizedBox(width: 8),
                 const Text(
                   'Automation Status',
@@ -899,7 +899,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                       _automationEnabled = value;
                     });
                   },
-                  activeColor: Colors.blue,
+                  activeThumbColor: Colors.blue,
                 ),
               ],
             ),
@@ -961,7 +961,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
         children: [
           Text(
             label,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 12,
               color: AppColors.textSecondary,
             ),
@@ -1043,7 +1043,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                     Container(
                       width: 8,
                       height: 8,
-                      decoration: BoxDecoration(
+                      decoration: const BoxDecoration(
                         color: Colors.red,
                         shape: BoxShape.circle,
                       ),
@@ -1190,9 +1190,9 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
+                        const Text(
                           'Success Rate',
-                          style: const TextStyle(fontSize: 11),
+                          style: TextStyle(fontSize: 11),
                         ),
                         Text(
                           '${successRate.toStringAsFixed(1)}%',
@@ -1207,7 +1207,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                     ),
                     Text(
                       'Total: $total jobs',
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 10,
                         color: AppColors.textSecondary,
                       ),
@@ -1252,7 +1252,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Row(
                     children: [
-                      Icon(Icons.access_time, size: 12, color: Colors.red),
+                      const Icon(Icons.access_time, size: 12, color: Colors.red),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -1267,7 +1267,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
             if (_stuckJobs.length > 3)
               Text(
                 '+${_stuckJobs.length - 3} more',
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 10,
                   color: AppColors.textSecondary,
                 ),
@@ -1329,7 +1329,7 @@ class _PrintQueueMonitorScreenState extends State<PrintQueueMonitorScreen> {
             const SizedBox(height: 4),
             Text(
               title,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 12,
                 color: AppColors.textSecondary,
               ),

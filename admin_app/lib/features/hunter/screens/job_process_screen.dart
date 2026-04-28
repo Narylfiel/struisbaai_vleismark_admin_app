@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/admin_config.dart';
@@ -26,12 +25,12 @@ class _CutRow {
   final TextEditingController weightController;
   String? linkedInventoryItemId;
 
-  _CutRow({required this.name, required this.weightController, this.linkedInventoryItemId});
+  _CutRow({required this.name, required this.weightController});
 }
 
 class _JobProcessScreenState extends State<JobProcessScreen> {
   final _client = SupabaseService.client;
-  List<_CutRow> _cutRows = [];
+  final List<_CutRow> _cutRows = [];
   final TextEditingController _weightInTotalCtrl = TextEditingController();
   List<Map<String, dynamic>> _inventoryItems = [];
   bool _loading = true;
@@ -46,7 +45,9 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
 
   @override
   void dispose() {
-    for (final row in _cutRows) row.weightController.dispose();
+    for (final row in _cutRows) {
+      row.weightController.dispose();
+    }
     _weightInTotalCtrl.dispose();
     super.dispose();
   }
@@ -250,7 +251,7 @@ class _JobProcessScreenState extends State<JobProcessScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: DropdownButtonFormField<String>(
-                          value: row.linkedInventoryItemId,
+                          initialValue: row.linkedInventoryItemId,
                           isExpanded: true,
                           decoration: const InputDecoration(labelText: 'Link product', isDense: true, border: OutlineInputBorder()),
                           items: [

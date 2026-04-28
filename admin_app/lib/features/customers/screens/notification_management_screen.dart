@@ -248,7 +248,7 @@ class _ComposeTabState extends State<_ComposeTab> {
           const Text('Notification Type', style: TextStyle(fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           DropdownButtonFormField<String>(
-            value: _notificationType,
+            initialValue: _notificationType,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
               isDense: true,
@@ -311,7 +311,7 @@ class _ComposeTabState extends State<_ComposeTab> {
 
           if (_recipientMode == 'tier')
             DropdownButtonFormField<String>(
-              value: _selectedTier,
+              initialValue: _selectedTier,
               decoration: const InputDecoration(
                 labelText: 'Loyalty Tier',
                 border: OutlineInputBorder(),
@@ -327,7 +327,7 @@ class _ComposeTabState extends State<_ComposeTab> {
             )
           else
             DropdownButtonFormField<String>(
-              value: _selectedCustomerId,
+              initialValue: _selectedCustomerId,
               decoration: const InputDecoration(
                 labelText: 'Customer',
                 border: OutlineInputBorder(),

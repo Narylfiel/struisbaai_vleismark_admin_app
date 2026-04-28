@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/utils/error_handler.dart';
@@ -263,7 +262,7 @@ class _WasteDialogState extends State<_WasteDialog> {
       }
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Waste recorded')),
       );
     } catch (e) {
@@ -415,7 +414,7 @@ class _TransferDialogState extends State<_TransferDialog> {
       );
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Transfer recorded')),
       );
     } catch (e) {
@@ -453,7 +452,7 @@ class _TransferDialogState extends State<_TransferDialog> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _fromId,
+                  initialValue: _fromId,
                   decoration: const InputDecoration(
                     labelText: 'From location',
                     border: OutlineInputBorder(),
@@ -468,7 +467,7 @@ class _TransferDialogState extends State<_TransferDialog> {
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  value: _toId,
+                  initialValue: _toId,
                   decoration: const InputDecoration(
                     labelText: 'To location',
                     border: OutlineInputBorder(),
@@ -565,7 +564,7 @@ class _FreezerDialogState extends State<_FreezerDialog> {
       );
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Move to freezer recorded')),
       );
     } catch (e) {
@@ -717,7 +716,7 @@ class _DonationDialogState extends State<_DonationDialog> {
       }
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Donation recorded')),
       );
     } catch (e) {
@@ -902,7 +901,7 @@ class _SponsorshipDialogState extends State<_SponsorshipDialog> {
       }
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Sponsorship recorded')),
       );
     } catch (e) {
@@ -1091,7 +1090,7 @@ class _StockTakeDialogState extends State<_StockTakeDialog> {
       );
       widget.onDone();
       if (mounted) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Stock take adjustment saved')),
       );
     } catch (e) {
@@ -1262,7 +1261,7 @@ class _DialogShell extends StatelessWidget {
             children: [
               Row(
                 children: [
-                  Icon(Icons.inventory_2, color: AppColors.primary),
+                  const Icon(Icons.inventory_2, color: AppColors.primary),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(

@@ -138,11 +138,11 @@ class GapIndicator extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppColors.error.withOpacity(0.2)),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      const Icon(Icons.money_off, color: AppColors.error, size: 18),
-                      const SizedBox(width: 10),
-                      const Expanded(
+                      Icon(Icons.money_off, color: AppColors.error, size: 18),
+                      SizedBox(width: 10),
+                      Expanded(
                         child: Text(
                           'No available cash for repayment',
                           style: TextStyle(
@@ -164,11 +164,11 @@ class GapIndicator extends StatelessWidget {
                     color: AppColors.success.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      const Icon(Icons.lightbulb, color: AppColors.success, size: 18),
-                      const SizedBox(width: 8),
-                      const Expanded(
+                      Icon(Icons.lightbulb, color: AppColors.success, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
                         child: Text(
                           'Gap can be closed with recommended actions',
                           style: TextStyle(
@@ -189,11 +189,11 @@ class GapIndicator extends StatelessWidget {
                     color: AppColors.error.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Row(
+                  child: const Row(
                     children: [
-                      const Icon(Icons.warning_amber, color: AppColors.error, size: 18),
-                      const SizedBox(width: 8),
-                      const Expanded(
+                      Icon(Icons.warning_amber, color: AppColors.error, size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
                         child: Text(
                           'Goal not achievable with current conditions',
                           style: TextStyle(

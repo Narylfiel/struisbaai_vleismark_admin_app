@@ -675,7 +675,7 @@ class ProductListScreenState extends State<ProductListScreen> {
 
       final parsed = <Map<String, dynamic>>[];
       for (var i = 1; i < rows.length; i++) {
-        final row = rows[i] as List;
+        final row = rows[i];
         final item = <String, dynamic>{};
         for (final col in _productCsvColumns) {
           final idx = headerIndex[col];
@@ -1589,8 +1589,8 @@ class ProductListScreenState extends State<ProductListScreen> {
                                           ),
                                         if (_pendingCommercialActionIds
                                             .contains(productId))
-                                          Padding(
-                                            padding: const EdgeInsets.only(top: 4),
+                                          const Padding(
+                                            padding: EdgeInsets.only(top: 4),
                                             child: Text(
                                               'Action Required',
                                               style: TextStyle(
@@ -1614,13 +1614,13 @@ class ProductListScreenState extends State<ProductListScreen> {
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         if (availablePos)
-                                          Icon(Icons.receipt, size: 14, color: AppColors.textSecondary),
+                                          const Icon(Icons.receipt, size: 14, color: AppColors.textSecondary),
                                         if (availablePos && (availableApp || availableOnline)) const SizedBox(width: 2),
                                         if (availableApp)
-                                          Icon(Icons.phone_android, size: 14, color: AppColors.textSecondary),
+                                          const Icon(Icons.phone_android, size: 14, color: AppColors.textSecondary),
                                         if (availableApp && availableOnline) const SizedBox(width: 2),
                                         if (availableOnline)
-                                          Icon(Icons.public, size: 14, color: AppColors.textSecondary),
+                                          const Icon(Icons.public, size: 14, color: AppColors.textSecondary),
                                         if (!availablePos && !availableApp && !availableOnline)
                                           const Text('—', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
                                       ],
@@ -1942,7 +1942,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
 
   /// Subcategories of selected main category for Sub-Category dropdown. None if no children.
   List<DropdownMenuItem<String?>> get _subCategoryDropdownItems {
-    final none = DropdownMenuItem<String?>(value: null, child: Text('None'));
+    const none = DropdownMenuItem<String?>(value: null, child: Text('None'));
     if (_selectedCategoryId == null || _selectedCategoryId!.isEmpty) {
       return [none];
     }
@@ -1997,7 +1997,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
   String? _dryerProductType;
   bool _manufacturedItem = false;
   List<Map<String, dynamic>> _recipes = [];
-  List<Map<String, dynamic>> _dryerTypes = [];
+  final List<Map<String, dynamic>> _dryerTypes = [];
   double? _recipeCostPerKg;
   bool _recipeCostLoading = false;
 
@@ -2998,7 +2998,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String?>(
-                      value: _selectedCategoryId,
+                      initialValue: _selectedCategoryId,
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       hint: const Text('Select category'),
@@ -3043,7 +3043,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String?>(
-                      value: _selectedSubCategoryId,
+                      initialValue: _selectedSubCategoryId,
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       hint: const Text('None'),
@@ -3079,7 +3079,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _itemType,
+                      initialValue: _itemType,
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       items: const [
@@ -3115,7 +3115,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _productType,
+                      initialValue: _productType,
                       isExpanded: true,
                       decoration: const InputDecoration(isDense: true),
                       items: const [
@@ -3488,7 +3488,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             color: AppColors.textSecondary)),
                     const SizedBox(height: 6),
                     DropdownButtonFormField<String>(
-                      value: _vatGroup,
+                      initialValue: _vatGroup,
                       decoration: const InputDecoration(isDense: true),
                       items: const [
                         DropdownMenuItem(
@@ -3608,7 +3608,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                                 color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _stockControlType,
+                          initialValue: _stockControlType,
                           isExpanded: true,
                           decoration: const InputDecoration(isDense: true),
                           items: const [
@@ -3646,7 +3646,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                                 color: AppColors.textSecondary)),
                         const SizedBox(height: 6),
                         DropdownButtonFormField<String>(
-                          value: _unitType,
+                          initialValue: _unitType,
                           isExpanded: true,
                           decoration: const InputDecoration(isDense: true),
                           items: const [
@@ -3676,7 +3676,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                             Switch(
                               value: _allowFraction,
                               onChanged: (v) => setState(() => _allowFraction = v),
-                              activeColor: AppColors.primary,
+                              activeThumbColor: AppColors.primary,
                             ),
                             const SizedBox(width: 8),
                             Text(_allowFraction ? 'Yes' : 'No',
@@ -3706,7 +3706,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                               value: _isFrozenVariant,
                               onChanged: (v) =>
                                   setState(() => _isFrozenVariant = v),
-                              activeColor: AppColors.primary,
+                              activeThumbColor: AppColors.primary,
                             ),
                             const SizedBox(width: 8),
                             Flexible(
@@ -3876,7 +3876,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 value: _dryerBiltongProduct,
                 onChanged: (v) =>
                     setState(() => _dryerBiltongProduct = v),
-                activeColor: AppColors.primary,
+                activeThumbColor: AppColors.primary,
               ),
               const SizedBox(width: 8),
               const Text('Dryer/Biltong Product (links to Dryer module)',
@@ -3914,7 +3914,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _barcodePrefix,
+                initialValue: _barcodePrefix,
                 decoration: const InputDecoration(isDense: true),
                 hint: const Text('None'),
                 items: const [
@@ -4100,7 +4100,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _recipes.any((r) => r['id'] == _recipeId) ? _recipeId : null,
+                initialValue: _recipes.any((r) => r['id'] == _recipeId) ? _recipeId : null,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   isDense: true,
@@ -4139,7 +4139,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                       color: AppColors.textSecondary)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String>(
-                value: _dryerProductType,
+                initialValue: _dryerProductType,
                 decoration: const InputDecoration(isDense: true),
                 hint: const Text('None'),
                 items: const [
@@ -4192,7 +4192,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                   subtitle: const Text('Scale weighs this item'),
                   value: _weighed,
                   onChanged: (v) => setState(() => _weighed = v),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -4203,7 +4203,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                   subtitle: const Text('Ingredient label required'),
                   value: _hasIngredient,
                   onChanged: (v) => setState(() => _hasIngredient = v),
-                  activeColor: AppColors.primary,
+                  activeThumbColor: AppColors.primary,
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
@@ -4385,7 +4385,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
     final shelfLife = _scaleShelfLifeController.text.isEmpty ? '000' : _scaleShelfLifeController.text.padLeft(3, '0');
     final bestBy = _bestByController.text.isEmpty ? '0000' : _bestByController.text.padLeft(4, '0');
     final weighed = _weighed ? '0' : '1';
-    final cdv = '0';
+    const cdv = '0';
     final des1 = _desLi1Controller.text.isEmpty ? (_scaleLabelController.text.isEmpty ? _nameController.text : _scaleLabelController.text) : _desLi1Controller.text;
     final des2 = _desLi2Controller.text;
     final hasIng = _hasIngredient ? 'TRUE' : 'FALSE';
@@ -4420,8 +4420,11 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 selected: selected,
                 onSelected: (v) {
                   setState(() {
-                    if (v) _dietaryTags.add(tag);
-                    else _dietaryTags.remove(tag);
+                    if (v) {
+                      _dietaryTags.add(tag);
+                    } else {
+                      _dietaryTags.remove(tag);
+                    }
                   });
                 },
               );
@@ -4444,8 +4447,11 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                 selected: selected,
                 onSelected: (v) {
                   setState(() {
-                    if (v) _allergenInfo.add(tag);
-                    else _allergenInfo.remove(tag);
+                    if (v) {
+                      _allergenInfo.add(tag);
+                    } else {
+                      _allergenInfo.remove(tag);
+                    }
                   });
                 },
               );
@@ -4537,7 +4543,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             title: const Text('Available on POS / Till'),
             value: _availablePos,
             onChanged: (v) => setState(() => _availablePos = v),
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
             contentPadding: EdgeInsets.zero,
           ),
           const Divider(height: 32),
@@ -4551,7 +4557,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             title: const Text('Show in online store'),
             value: _availableOnline,
             onChanged: (v) => setState(() => _availableOnline = v),
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
             contentPadding: EdgeInsets.zero,
           ),
           const SizedBox(height: 8),
@@ -4559,7 +4565,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             title: const Text('Show in loyalty app'),
             value: _availableLoyaltyApp,
             onChanged: (v) => setState(() => _availableLoyaltyApp = v),
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
             contentPadding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
@@ -4603,14 +4609,14 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             title: const Text('Mark as best seller'),
             value: _isBestSeller,
             onChanged: (v) => setState(() => _isBestSeller = v),
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
             contentPadding: EdgeInsets.zero,
           ),
           SwitchListTile(
             title: const Text('Mark as featured'),
             value: _isFeatured,
             onChanged: (v) => setState(() => _isFeatured = v),
-            activeColor: AppColors.success,
+            activeThumbColor: AppColors.success,
             contentPadding: EdgeInsets.zero,
           ),
           const SizedBox(height: 16),
@@ -5076,7 +5082,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             
             // Deduction unit dropdown
             DropdownButtonFormField<String>(
-              value: _stockDeductionUnit,
+              initialValue: _stockDeductionUnit,
               decoration: const InputDecoration(
                 labelText: 'Deduction unit',
                 border: OutlineInputBorder(),
@@ -5174,7 +5180,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: adjustType,
+                  initialValue: adjustType,
                   decoration: const InputDecoration(isDense: true),
                   items: const [
                     DropdownMenuItem(value: 'fresh', child: Text('Fresh / On Display')),
@@ -5188,7 +5194,7 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
                 const SizedBox(height: 6),
                 DropdownButtonFormField<String>(
-                  value: adjustReason,
+                  initialValue: adjustReason,
                   decoration: const InputDecoration(isDense: true),
                   items: const [
                     DropdownMenuItem(
@@ -5481,7 +5487,7 @@ class _ProductSupplierMappingDialogState extends State<_ProductSupplierMappingDi
               const Text('Supplier', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
               const SizedBox(height: 6),
               DropdownButtonFormField<String?>(
-                value: _selectedSupplierId,
+                initialValue: _selectedSupplierId,
                 decoration: const InputDecoration(border: OutlineInputBorder(), isDense: true),
                 items: widget.suppliers
                     .map((s) => DropdownMenuItem<String?>(

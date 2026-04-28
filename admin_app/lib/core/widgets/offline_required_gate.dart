@@ -28,7 +28,7 @@ class OfflineRequiredGate extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.wifi_off, size: 64, color: AppColors.textSecondary),
+                const Icon(Icons.wifi_off, size: 64, color: AppColors.textSecondary),
                 const SizedBox(height: 16),
                 const Text(
                   'This feature requires an internet connection.',

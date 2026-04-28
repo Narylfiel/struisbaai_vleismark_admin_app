@@ -88,7 +88,7 @@ class InvoicePdfService {
     final bizAddress = biz['address']?.toString() ?? 'Unit 6b Struisbaai Business Centre, Malvern Drive';
     final bizVat     = biz['vat_number']?.toString() ?? '';
     final bizPhone   = biz['phone']?.toString() ?? '082 696 2940';
-    final bizEmail   = 'leon@struisbaai-slaghuis.co.za';
+    const bizEmail   = 'leon@struisbaai-slaghuis.co.za';
 
     // Account details
     final accName    = account['name']?.toString() ?? invoice['account_name']?.toString() ?? '—';

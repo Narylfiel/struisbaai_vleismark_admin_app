@@ -496,7 +496,9 @@ class _PayrollScreenState extends State<PayrollScreen> {
   Future<void> _generatePayslipsForPeriod() async {
     if (_periodStart == null ||
         _periodEnd == null ||
-        _calculatedEntries.isEmpty) return;
+        _calculatedEntries.isEmpty) {
+      return;
+    }
 
     setState(() => _isGeneratingAllPayslips = true);
 
@@ -714,13 +716,6 @@ class _PayrollScreenState extends State<PayrollScreen> {
     return uif + meat + adv + other;
   }
 
-  String _sanitizeFileSegment(String s) {
-    return s
-        .replaceAll(RegExp(r'[^\w\-\s]'), '')
-        .trim()
-        .replaceAll(RegExp(r'\s+'), '_');
-  }
-
   Future<void> _openPdfFile(File file) async {
     if (Platform.isWindows) {
       await Process.run('cmd', ['/c', 'start', '', file.path]);
@@ -747,33 +742,6 @@ class _PayrollScreenState extends State<PayrollScreen> {
           if (leaveRow != null) leaveBalances = Map<String, dynamic>.from(leaveRow);
         }
       } catch (_) {}
-
-      final staffName = staffMap['full_name']?.toString() ?? 'Staff';
-      final hourlyRate = (staffMap['hourly_rate'] as num?)?.toDouble() ?? 0;
-
-      final startStr = _periodStart!.toIso8601String().substring(0, 10);
-      final endStr = _periodEnd!.toIso8601String().substring(0, 10);
-
-      final regHrs = (entry['regular_hours'] as num?)?.toDouble() ?? 0;
-      final otHrs = (entry['overtime_hours'] as num?)?.toDouble() ?? 0;
-      final sunHrs = (entry['sunday_hours'] as num?)?.toDouble() ?? 0;
-      final phHrs = (entry['public_holiday_hours'] as num?)?.toDouble() ?? 0;
-
-      final regPay = (entry['regular_pay'] as num?)?.toDouble() ?? 0;
-      final otPay = (entry['overtime_pay'] as num?)?.toDouble() ?? 0;
-      final sunPay = (entry['sunday_pay'] as num?)?.toDouble() ?? 0;
-      final phPay = (entry['public_holiday_pay'] as num?)?.toDouble() ?? 0;
-
-      final uifEmp = (entry['uif_employee'] as num?)?.toDouble() ?? 0;
-      final meatDed = (entry['meat_purchase_deduction'] as num?)?.toDouble() ?? 0;
-      final advDed = (entry['advance_deduction'] as num?)?.toDouble() ?? 0;
-      final otherDed = (entry['other_deductions'] as num?)?.toDouble() ?? 0;
-
-      final grossPay = (entry['gross_pay'] as num?)?.toDouble() ?? 0;
-      final totalDed = _totalDeductionsForEntry(entry);
-      final netPay = (entry['net_pay'] as num?)?.toDouble() ?? 0;
-      final uifEmployer = (entry['uif_employer'] as num?)?.toDouble() ?? 0;
-      final statusStr = entry['status']?.toString() ?? '';
 
       final file = await PayslipPdfService().generatePayslip(
         entry: entry,

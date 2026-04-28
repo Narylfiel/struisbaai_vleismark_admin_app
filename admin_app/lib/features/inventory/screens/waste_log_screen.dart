@@ -582,7 +582,7 @@ class _WasteLogScreenState extends State<WasteLogScreen> {
                 // Type filter dropdown
                 Flexible(
                   child: DropdownButtonFormField<String>(
-                    value: _typeFilter,
+                    initialValue: _typeFilter,
                     decoration: const InputDecoration(
                       contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                       border: OutlineInputBorder(),
@@ -901,7 +901,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
           await _client.storage.from('waste-photos').uploadBinary(
             fileName,
             bytes,
-            fileOptions: FileOptions(contentType: 'image/jpeg'),
+            fileOptions: const FileOptions(contentType: 'image/jpeg'),
           );
           
           photoUrl = _client.storage.from('waste-photos').getPublicUrl(fileName);
@@ -988,7 +988,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
       await AuditService.log(
         action: 'CREATE',
         module: 'Inventory',
-        description: '${_selectedType}: ${qty.toStringAsFixed(2)} ${_selectedProduct!['unit_type']} x ${_selectedProduct!['name']} — $_selectedReason',
+        description: '$_selectedType: ${qty.toStringAsFixed(2)} ${_selectedProduct!['unit_type']} x ${_selectedProduct!['name']} — $_selectedReason',
         entityType: 'StockMovement',
         entityId: movement.id,
       );
@@ -1155,11 +1155,11 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
           mainAxisSize: MainAxisSize.min,
           children: [
             // Header
-            Row(
+            const Row(
               children: [
-                const Icon(Icons.warning_amber, color: AppColors.danger, size: 24),
-                const SizedBox(width: 12),
-                const Text(
+                Icon(Icons.warning_amber, color: AppColors.danger, size: 24),
+                SizedBox(width: 12),
+                Text(
                   'Record Waste / Sponsorship',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
                 ),
@@ -1171,7 +1171,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
             const Text('Product *', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: 8),
             DropdownButtonFormField<Map<String, dynamic>>(
-              value: _selectedProduct,
+              initialValue: _selectedProduct,
               decoration: InputDecoration(
                 hintText: 'Select product...',
                 border: const OutlineInputBorder(),
@@ -1247,7 +1247,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
             const Text('Reason *', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _selectedReason,
+              initialValue: _selectedReason,
               decoration: const InputDecoration(
                 hintText: 'Select reason...',
                 border: OutlineInputBorder(),
@@ -1355,7 +1355,7 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
                         width: 20,
                         child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
                       )
-                    : Text('Record ${_selectedType}'),
+                    : Text('Record $_selectedType'),
               ),
             ),
           ],

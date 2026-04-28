@@ -31,15 +31,19 @@ class _TillSessionListScreenState extends State<TillSessionListScreen> {
       final start = DateTime(_dateFrom.year, _dateFrom.month, _dateFrom.day);
       final end = DateTime(_dateTo.year, _dateTo.month, _dateTo.day, 23, 59, 59);
       final list = await _repo.getTillSessions(start, end);
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _sessions = list;
         _loading = false;
       });
+      }
     } catch (e) {
-      if (mounted) setState(() {
+      if (mounted) {
+        setState(() {
         _sessions = [];
         _loading = false;
       });
+      }
     }
   }
 
@@ -177,8 +181,9 @@ class _TillSessionListScreenState extends State<TillSessionListScreen> {
     final terminalId = s['terminal_id'] as String? ?? '—';
     final profiles = s['profiles'];
     String openedByName = '—';
-    if (profiles is Map) openedByName = (profiles['full_name'] as String?) ?? '—';
-    else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) openedByName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
+    if (profiles is Map) {
+      openedByName = (profiles['full_name'] as String?) ?? '—';
+    } else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) openedByName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
     final openingFloat = (s['opening_float'] as num?)?.toDouble() ?? 0;
     final expectedCash = (s['expected_closing_cash'] as num?)?.toDouble();
     final actualCash = (s['actual_closing_cash'] as num?)?.toDouble();

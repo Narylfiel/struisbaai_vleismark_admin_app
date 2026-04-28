@@ -1,6 +1,4 @@
-import 'package:admin_app/core/constants/admin_config.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
-import '../models/awol_record.dart';
 import 'awol_repository.dart';
 
 /// Blueprint §7.6: BCEA Compliance — weekly hours, breaks, leave, Sunday work, AWOL flags.
@@ -344,7 +342,7 @@ class ComplianceService {
         final staffId = r['staff_id']?.toString();
         if (staffId != null) byStaff[staffId] = (byStaff[staffId] ?? 0) + days;
       }
-      final proRataPerMonth = _BceaLimits.annualLeaveDaysPerYear / 12;
+      const proRataPerMonth = _BceaLimits.annualLeaveDaysPerYear / 12;
       if (totalDays == 0) {
         items.add(const ComplianceItem(
           id: 'leave',

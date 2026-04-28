@@ -5,12 +5,8 @@ import '../../inventory/services/inventory_repository.dart';
 import '../../../core/models/stock_movement.dart';
 import '../models/production_batch.dart';
 import '../models/production_batch_ingredient.dart';
-import '../models/recipe.dart';
-import '../models/recipe_ingredient.dart';
 import 'recipe_repository.dart';
 import '../services/dryer_batch_repository.dart';
-import '../models/dryer_batch.dart';
-import '../models/dryer_batch_ingredient.dart';
 
 /// Blueprint §5.5: Production batches — input → output; deduct ingredients, add output product.
 class ProductionBatchRepository {
@@ -88,7 +84,7 @@ class ProductionBatchRepository {
           .insert(batchData)
           .select()
           .single();
-      final splitBatch = ProductionBatch.fromJson(row as Map<String, dynamic>);
+      final splitBatch = ProductionBatch.fromJson(row);
       created.add(splitBatch);
 
       // Add output product to inventory
@@ -173,7 +169,7 @@ class ProductionBatchRepository {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return null;
-    return ProductionBatch.fromJson(row as Map<String, dynamic>);
+    return ProductionBatch.fromJson(row);
   }
 
   /// Start a batch: create batch, scale ingredients, deduct from inventory immediately.
@@ -205,7 +201,7 @@ class ProductionBatchRepository {
         .insert(batchData)
         .select()
         .single();
-    final batch = ProductionBatch.fromJson(batchRow as Map<String, dynamic>);
+    final batch = ProductionBatch.fromJson(batchRow);
 
     // Create batch ingredients + deduct from inventory immediately
     for (final ing in ingredients) {
@@ -258,7 +254,7 @@ class ProductionBatchRepository {
         .eq('id', batchId)
         .select()
         .single();
-    return ProductionBatch.fromJson(response as Map<String, dynamic>);
+    return ProductionBatch.fromJson(response);
   }
 
   /// Complete batch: add output product to inventory.
@@ -388,7 +384,7 @@ class ProductionBatchRepository {
       );
     }
 
-    return ProductionBatch.fromJson(response as Map<String, dynamic>);
+    return ProductionBatch.fromJson(response);
   }
 
   String _dryerTypeFromCategory(String? category) {
@@ -446,7 +442,7 @@ class ProductionBatchRepository {
       entityId: batchId,
     );
 
-    return ProductionBatch.fromJson(response as Map<String, dynamic>);
+    return ProductionBatch.fromJson(response);
   }
 
   /// Returns true if any batch has parent_batch_id == batchId.

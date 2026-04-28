@@ -141,9 +141,9 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
           children: [
             const Icon(Icons.error_outline, size: 64, color: AppColors.danger),
             const SizedBox(height: 16),
-            Text(
+            const Text(
               'Error loading modifier groups',
-              style: const TextStyle(color: AppColors.danger, fontSize: 18, fontWeight: FontWeight.w500),
+              style: TextStyle(color: AppColors.danger, fontSize: 18, fontWeight: FontWeight.w500),
             ),
             const SizedBox(height: 8),
             Padding(
@@ -162,15 +162,15 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
     }
     if (_groups.isEmpty) {
       if (_isOffline) {
-        return Center(
+        return const Center(
           child: Padding(
-            padding: const EdgeInsets.all(24),
+            padding: EdgeInsets.all(24),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(Icons.cloud_off, size: 64, color: AppColors.textSecondary),
-                const SizedBox(height: 16),
-                const Text(
+                SizedBox(height: 16),
+                Text(
                   'No cached data available. Connect to the internet to load data.',
                   style: TextStyle(color: AppColors.textSecondary, fontSize: 16),
                   textAlign: TextAlign.center,

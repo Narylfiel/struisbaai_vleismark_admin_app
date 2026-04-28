@@ -452,16 +452,18 @@ class _PromotionFormScreenState
         child: Stepper(
           currentStep: _step,
           onStepContinue: () {
-            if (_step < 2)
+            if (_step < 2) {
               setState(() => _step++);
-            else
+            } else {
               _save();
+            }
           },
           onStepCancel: () {
-            if (_step > 0)
+            if (_step > 0) {
               setState(() => _step--);
-            else
+            } else {
               Navigator.of(context).pop();
+            }
           },
           controlsBuilder: (ctx, details) => Padding(
             padding: const EdgeInsets.only(top: 16),
@@ -847,7 +849,7 @@ class _PromotionFormScreenState
                 fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         DropdownButtonFormField<String>(
-          value: _spendRewardType,
+          initialValue: _spendRewardType,
           decoration: const InputDecoration(
               labelText: 'What does the customer get?'),
           items: const [
@@ -976,7 +978,7 @@ class _PromotionFormScreenState
         ),
         const SizedBox(height: 16),
         DropdownButtonFormField<String>(
-          value: _birthdayRewardType,
+          initialValue: _birthdayRewardType,
           decoration: const InputDecoration(
               labelText: 'Default birthday reward'),
           items: const [
@@ -1134,12 +1136,14 @@ class _PromotionFormScreenState
               onSelected: widget.viewOnly
                   ? null
                   : (v) => setState(() {
-                        if (v)
+                        if (v) {
                           _audience.add(a);
-                        else
+                        } else {
                           _audience.remove(a);
-                        if (_audience.isEmpty)
+                        }
+                        if (_audience.isEmpty) {
                           _audience = ['all'];
+                        }
                       }),
             );
           }).toList(),
@@ -1234,7 +1238,7 @@ class _PromotionFormScreenState
                   .replaceAll('_', ' ')),
               Text(
                   'Audience: ${_audience.join(", ")}'),
-              Text(
+              const Text(
                   'Channel: Loyalty App only'),
               if (_promoType == 'birthday_reward')
                 const Text(
@@ -1276,8 +1280,9 @@ class _PromotionFormScreenState
   }
 
   Widget _buildMarginIndicator() {
-    if (_calculatedMarginPct == null)
+    if (_calculatedMarginPct == null) {
       return const SizedBox.shrink();
+    }
     return Container(
       margin: const EdgeInsets.only(top: 12),
       padding: const EdgeInsets.all(10),
