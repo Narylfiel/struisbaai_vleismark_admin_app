@@ -8,6 +8,7 @@ import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/core/services/permission_service.dart';
 import 'base_service.dart';
 import '../constants/admin_config.dart';
+import 'package:flutter/foundation.dart';
 
 /// Authentication service: single identity source and session for the admin app.
 ///

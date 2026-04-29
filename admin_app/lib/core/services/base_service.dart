@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'supabase_service.dart';
+import 'package:flutter/foundation.dart';
 
 /// Base service class providing common Supabase operations.
 /// All services extend this for consistent error handling and single client source.

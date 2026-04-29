@@ -86,9 +86,9 @@ flutter:
     - assets/images/Admin_App.jpeg
 
 flutter_launcher_icons:
-  image_path: "assets/images/Admin_App.jpeg"
+  image_path: "assets/images/icon_1024.png"
   android: true
   ios: false
   windows:
     generate: true
-    icon_size: 256
+    icon_size: 1024
