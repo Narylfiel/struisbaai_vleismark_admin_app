@@ -183,7 +183,9 @@ profiles!transactions_staff_id_fkey(full_name),
       final txns = await _client
           .from('transactions')
           .select('id, total_amount, payment_method')
-          .eq('till_session_id', sessionId);
+          .eq('till_session_id', sessionId)
+          .eq('is_voided', false)
+          .eq('is_refund', false);
       final txnList = List<Map<String, dynamic>>.from(txns);
       session['transactions'] = txnList;
 

@@ -80,8 +80,8 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
   Widget _buildHeader() {
     final t = _txn!;
     final createdAt = t['created_at'] != null ? DateTime.tryParse(t['created_at'] as String) : null;
-    final dateStr = createdAt != null ? DateFormat('dd MMM yyyy').format(createdAt) : '—';
-    final timeStr = createdAt != null ? DateFormat('HH:mm:ss').format(createdAt) : '—';
+    final dateStr = createdAt != null ? DateFormat('dd MMM yyyy').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
+    final timeStr = createdAt != null ? DateFormat('HH:mm:ss').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
@@ -141,7 +141,7 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
     final reason = _txn!['void_reason'] as String? ?? '';
     final voidedByName = _txn!['voided_by_name'] as String? ?? '—';
     final voidedAt = _txn!['voided_at'] != null ? DateTime.tryParse(_txn!['voided_at'] as String) : null;
-    final voidedAtStr = voidedAt != null ? DateFormat('dd MMM yyyy HH:mm').format(voidedAt) : '';
+    final voidedAtStr = voidedAt != null ? DateFormat('dd MMM yyyy HH:mm').format(voidedAt.toUtc().add(const Duration(hours: 2))) : '';
 
     return Container(
       margin: const EdgeInsets.only(top: 12),

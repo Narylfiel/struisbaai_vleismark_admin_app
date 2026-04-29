@@ -248,6 +248,7 @@ class _OrderCard extends StatelessWidget {
     final paymentMethod = order['payment_method'] as String? ?? 'cod';
     final createdAt =
         DateTime.tryParse(order['created_at'] as String? ?? '');
+    final createdAtSast = createdAt?.toUtc().add(const Duration(hours: 2));
     final collectionDate = order['collection_date'] as String? ?? '';
     final collectionSlot = order['collection_slot'] as String? ?? '';
     final itemCount =
@@ -371,7 +372,7 @@ class _OrderCard extends StatelessWidget {
                   ),
                   if (createdAt != null)
                     Text(
-                      '${createdAt.day.toString().padLeft(2, '0')}/${createdAt.month.toString().padLeft(2, '0')} ${createdAt.hour.toString().padLeft(2, '0')}:${createdAt.minute.toString().padLeft(2, '0')}',
+                      '${createdAtSast!.day.toString().padLeft(2, '0')}/${createdAtSast.month.toString().padLeft(2, '0')} ${createdAtSast.hour.toString().padLeft(2, '0')}:${createdAtSast.minute.toString().padLeft(2, '0')}',
                       style: const TextStyle(
                         fontSize: 11,
                         color: AppColors.textSecondary,

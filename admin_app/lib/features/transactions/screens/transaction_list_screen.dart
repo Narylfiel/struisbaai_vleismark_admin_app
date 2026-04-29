@@ -262,7 +262,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
   Widget _buildRow(Map<String, dynamic> t) {
     final createdAt = t['created_at'] != null ? DateTime.tryParse(t['created_at'] as String) : null;
-    final timeStr = createdAt != null ? DateFormat('HH:mm').format(createdAt) : '—';
+    final timeStr = createdAt != null ? DateFormat('HH:mm').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
