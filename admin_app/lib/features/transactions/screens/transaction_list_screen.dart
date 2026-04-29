@@ -88,16 +88,23 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
   }
 
   Future<void> _pickDateRange() async {
-    final picked = await showDateRangePicker(
+    final start = await showDatePicker(
       context: context,
+      initialDate: _dateFrom,
       firstDate: DateTime(2020),
       lastDate: DateTime.now(),
-      initialDateRange: DateTimeRange(start: _dateFrom, end: _dateTo),
     );
-    if (picked != null && mounted) {
+    if (start == null || !mounted) return;
+    final end = await showDatePicker(
+      context: context,
+      initialDate: _dateTo.isBefore(start) ? start : _dateTo,
+      firstDate: start,
+      lastDate: DateTime.now(),
+    );
+    if (end != null && mounted) {
       setState(() {
-        _dateFrom = DateTime(picked.start.year, picked.start.month, picked.start.day);
-        _dateTo = DateTime(picked.end.year, picked.end.month, picked.end.day, 23, 59, 59);
+        _dateFrom = DateTime(start.year, start.month, start.day);
+        _dateTo = DateTime(end.year, end.month, end.day, 23, 59, 59);
       });
       await _load();
     }
@@ -262,7 +269,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
   Widget _buildRow(Map<String, dynamic> t) {
     final createdAt = t['created_at'] != null ? DateTime.tryParse(t['created_at'] as String) : null;
-    final timeStr = createdAt != null ? DateFormat('HH:mm').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
+    final timeStr = createdAt != null ? DateFormat('dd MMM\nHH:mm').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
@@ -293,7 +300,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              SizedBox(width: 48, child: Text(timeStr, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))),
+              SizedBox(width: 64, child: Text(timeStr, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))),  
               Expanded(flex: 2, child: Text(receiptNumber, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
               Expanded(flex: 2, child: Text(cashierName, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
               Expanded(flex: 2, child: Text(customerDisplay, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
