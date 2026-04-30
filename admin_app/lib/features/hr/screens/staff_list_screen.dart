@@ -1001,12 +1001,24 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
     final clockInCtrl    = TextEditingController(text: formatTime(t['clock_in']));
     final clockOutCtrl   = TextEditingController(text: formatTime(t['clock_out']));
-    final b1StartCtrl    = TextEditingController(text: formatTime(t['break_1_start']));
-    final b1EndCtrl      = TextEditingController(text: formatTime(t['break_1_end']));
-    final b2StartCtrl    = TextEditingController(text: formatTime(t['break_2_start']));
-    final b2EndCtrl      = TextEditingController(text: formatTime(t['break_2_end']));
-    final b3StartCtrl    = TextEditingController(text: formatTime(t['break_3_start']));
-    final b3EndCtrl      = TextEditingController(text: formatTime(t['break_3_end']));
+
+    final breaks = ((t['timecard_breaks'] as List?) ?? [])
+        .cast<Map<String, dynamic>>()
+        ..sort((a, b) => (a['break_start'] as String? ?? '')
+            .compareTo(b['break_start'] as String? ?? ''));
+    final b1 = breaks.length > 0 ? breaks[0] : null;
+    final b2 = breaks.length > 1 ? breaks[1] : null;
+    final b3 = breaks.length > 2 ? breaks[2] : null;
+
+    final b1StartCtrl = TextEditingController(text: b1 != null ? formatTime(b1['break_start']) : '');
+    final b1EndCtrl   = TextEditingController(text: b1 != null ? formatTime(b1['break_end'])   : '');
+    final b2StartCtrl = TextEditingController(text: b2 != null ? formatTime(b2['break_start']) : '');
+    final b2EndCtrl   = TextEditingController(text: b2 != null ? formatTime(b2['break_end'])   : '');
+    final b3StartCtrl = TextEditingController(text: b3 != null ? formatTime(b3['break_start']) : '');
+    final b3EndCtrl   = TextEditingController(text: b3 != null ? formatTime(b3['break_end'])   : '');
+    final b1Id = b1?['id'] as String?;
+    final b2Id = b2?['id'] as String?;
+    final b3Id = b3?['id'] as String?;
     final reasonCtrl     = TextEditingController();
 
     bool isSaving = false;
@@ -1221,6 +1233,34 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                       try {
                         final timeRepo = TimecardRepository(client: SupabaseService.client);
                         await timeRepo.update(timecardId, newData);
+
+                        // Update timecard_breaks records
+                        final breakUpdates = [
+                          {'id': b1Id, 'start': b1StartCtrl.text, 'end': b1EndCtrl.text},
+                          {'id': b2Id, 'start': b2StartCtrl.text, 'end': b2EndCtrl.text},
+                          {'id': b3Id, 'start': b3StartCtrl.text, 'end': b3EndCtrl.text},
+                        ];
+                        for (final bu in breakUpdates) {
+                          final bId = bu['id'] as String?;
+                          final bStart = (bu['start'] as String).trim();
+                          final bEnd = (bu['end'] as String).trim();
+                          if (bId == null || bStart.isEmpty || bEnd.isEmpty) continue;
+                          final startIso = parseToIso(bStart, shiftDate);
+                          final endIso = parseToIso(bEnd, shiftDate);
+                          if (startIso == null || endIso == null) continue;
+                          final startDt = DateTime.parse(startIso);
+                          final endDt = DateTime.parse(endIso);
+                          final durationMins = endDt.difference(startDt).inMinutes;
+                          if (durationMins <= 0) continue;
+                          await SupabaseService.client
+                              .from('timecard_breaks')
+                              .update({
+                                'break_start': startDt.toUtc().toIso8601String(),
+                                'break_end': endDt.toUtc().toIso8601String(),
+                                'break_duration_minutes': durationMins,
+                              })
+                              .eq('id', bId);
+                        }
 
                         // Write to audit log
                         await AuditService.log(
