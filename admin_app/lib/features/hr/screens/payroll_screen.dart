@@ -1109,7 +1109,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(
-                          'Reg: ${regHrs}h  |  OT: ${otHrs}h  |  Sun: ${sunHrs}h  |  PH: ${phHrs}h',
+                          'Reg: ${regHrs.toStringAsFixed(2)}h  |  OT: ${otHrs.toStringAsFixed(2)}h  |  Sun: ${sunHrs.toStringAsFixed(2)}h  |  PH: ${phHrs.toStringAsFixed(2)}h',
                           style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
                         ),
                       ),
@@ -1125,10 +1125,10 @@ class _PayrollScreenState extends State<PayrollScreen> {
                               if (employmentType == 'monthly_salary')
                                 _RowItem('Monthly salary:', 'R${monthlySalary.toStringAsFixed(2)}/month', (e['gross_pay'] as num?)?.toDouble() ?? 0)
                               else ...[
-                                _RowItem('Regular hours:', '${regHrs}h × R${rate.toStringAsFixed(2)}', regPay),
-                                _RowItem('Overtime hours:', '${otHrs}h × R${rate.toStringAsFixed(2)} × 1.5', otPay),
-                                _RowItem('Sunday hours:', '${sunHrs}h × R${rate.toStringAsFixed(2)} × 2.0', sunPay),
-                                _RowItem('Public holiday hours:', '${phHrs}h × R${rate.toStringAsFixed(2)} × 1.5', phPay),
+                                _RowItem('Regular hours:', '${regHrs.toStringAsFixed(2)}h × R${rate.toStringAsFixed(2)}', regPay),
+                                _RowItem('Overtime hours:', '${otHrs.toStringAsFixed(2)}h × R${rate.toStringAsFixed(2)} × 1.5', otPay),
+                                _RowItem('Sunday hours:', '${sunHrs.toStringAsFixed(2)}h × R${rate.toStringAsFixed(2)} × 2.0', sunPay),
+                                _RowItem('Public holiday hours:', '${phHrs.toStringAsFixed(2)}h × R${rate.toStringAsFixed(2)} × 1.5', phPay),
                               ],
                               const Divider(height: 16),
                               Row(
