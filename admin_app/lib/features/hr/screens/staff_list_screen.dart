@@ -574,7 +574,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   double get _totalOT => _timecards.fold(
       0, (s, t) => s + ((t['overtime_hours'] as num?)?.toDouble() ?? 0));
   int get _totalBreakMins => _timecards.fold(0, (s, t) {
-    final breaks = (t['breaks'] as List?)?.cast<Map<String,dynamic>>() ?? [];
+    final breaks = (t['timecard_breaks'] as List?)?.cast<Map<String,dynamic>>() ?? [];
     return s + breaks.fold<int>(0,
         (bs, b) => bs + ((b['break_duration_minutes'] as num?)?.toInt() ?? 0));
   });

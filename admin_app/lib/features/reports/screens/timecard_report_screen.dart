@@ -355,8 +355,12 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
                     itemBuilder: (_, i) {
                       final r = _records[i];
                       final staffName = r['staff_profiles']?['full_name'] ?? 'Unknown';
-                      final clockIn = r['clock_in'] != null ? r['clock_in'].toString().substring(11, 16) : '—';
-                      final clockOut = r['clock_out'] != null ? r['clock_out'].toString().substring(11, 16) : '—';
+                      final clockIn = r['clock_in'] != null
+                          ? () { final d = DateTime.parse(r['clock_in'].toString()).toUtc().add(const Duration(hours: 2)); return '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}'; }()
+                          : '—';
+                      final clockOut = r['clock_out'] != null
+                          ? () { final d = DateTime.parse(r['clock_out'].toString()).toUtc().add(const Duration(hours: 2)); return '${d.hour.toString().padLeft(2,'0')}:${d.minute.toString().padLeft(2,'0')}'; }()
+                          : '—';
                       final totalHrs = (r['total_hours'] as num?)?.toDouble() ?? 0.0;
                       final breakMins = (r['break_minutes'] as num?)?.toInt() ?? 0;
                       
