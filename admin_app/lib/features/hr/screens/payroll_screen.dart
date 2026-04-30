@@ -36,6 +36,8 @@ class _PayrollScreenState extends State<PayrollScreen> {
   final Set<String> _generatingPayslipIds = <String>{};
   bool _isGeneratingAllPayslips = false;
 
+  String _selectedPaymentMethod = 'bank_eft';
+
   @override
   void initState() {
     super.initState();
@@ -623,17 +625,50 @@ class _PayrollScreenState extends State<PayrollScreen> {
     
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Mark as Paid'),
-        content: const Text('Mark this payroll as paid?\n\nThis cannot be undone.'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: AppColors.success),
-            onPressed: () => Navigator.pop(ctx, true), 
-            child: const Text('Mark as Paid')
-          ),
-        ],
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            title: const Text('Mark as Paid'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Payment Method:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 8),
+                RadioListTile<String>(
+                  title: const Text('Cash'),
+                  value: 'cash',
+                  groupValue: _selectedPaymentMethod,
+                  onChanged: (value) {
+                    setDialogState(() => _selectedPaymentMethod = value!);
+                    setState(() => _selectedPaymentMethod = value!);
+                  },
+                  contentPadding: EdgeInsets.zero,
+                ),
+                RadioListTile<String>(
+                  title: const Text('Bank EFT'),
+                  value: 'bank_eft',
+                  groupValue: _selectedPaymentMethod,
+                  onChanged: (value) {
+                    setDialogState(() => _selectedPaymentMethod = value!);
+                    setState(() => _selectedPaymentMethod = value!);
+                  },
+                  contentPadding: EdgeInsets.zero,
+                ),
+                const SizedBox(height: 16),
+                const Text('Mark this payroll as paid?\n\nThis cannot be undone.'),
+              ],
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+              FilledButton(
+                style: FilledButton.styleFrom(backgroundColor: AppColors.success),
+                onPressed: () => Navigator.pop(ctx, true), 
+                child: const Text('Mark as Paid')
+              ),
+            ],
+          );
+        },
       )
     );
 
@@ -674,14 +709,19 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .maybeSingle();
         final payrollPeriodId = periodRow?['id']?.toString();
         if (payrollPeriodId != null && payrollPeriodId.isNotEmpty) {
+          final debitCode = '6000';
+          final debitName = 'Salaries & Wages';
+          final creditCode = _selectedPaymentMethod == 'cash' ? '1000' : '1050';
+          final creditName = _selectedPaymentMethod == 'cash' ? 'Cash/Bank' : 'Bank Account — Cheque';
+          final paymentMethodLabel = _selectedPaymentMethod == 'cash' ? 'Cash' : 'Bank EFT';
           await LedgerRepository(client: _client).createDoubleEntry(
             date: DateTime.now(),
-            debitAccountCode: '6100',
-            debitAccountName: 'Wages & Salaries',
-            creditAccountCode: '1100',
-            creditAccountName: 'Bank',
+            debitAccountCode: debitCode,
+            debitAccountName: debitName,
+            creditAccountCode: creditCode,
+            creditAccountName: creditName,
             amount: periodNetPay,
-            description: 'Payroll: $periodDescription',
+            description: 'Payroll ($paymentMethodLabel): $periodDescription',
             referenceType: 'payroll',
             referenceId: payrollPeriodId,
             recordedBy: currentUserId,
