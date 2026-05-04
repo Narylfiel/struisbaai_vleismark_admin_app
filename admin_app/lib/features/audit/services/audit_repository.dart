@@ -20,6 +20,7 @@ class AuditRepository {
     String? dateRangeEnd,
     String? actionType,
     String? staffMember,
+    String? searchText,
     String? severity,
     int limit = 100,
     int offset = 0,
@@ -44,6 +45,13 @@ class AuditRepository {
       if (staffMember != null && staffMember.isNotEmpty) {
         query = query.ilike('staff_name', '%$staffMember%');
       }
+      if (searchText != null && searchText.isNotEmpty) {
+        query = query.or(
+          'details.ilike.%$searchText%,'
+          'description.ilike.%$searchText%,'
+          'table_name.ilike.%$searchText%',
+        );
+      }
       if (severity != null && severity.isNotEmpty && severity != 'All') {
         // Assuming severity is tracked in details or a specific column. 
         // We'll map it to ilike on details for robust searching 
@@ -64,23 +72,62 @@ class AuditRepository {
   /// Get distinct action types for the filter dropdown
   Future<List<String>> getDistinctActions() async {
     try {
-      // Ideal way: .select('action').distinct() 
-      // Supabase POSTGREST workaround for distinct if not directly supported by flutter wrapper:
-      // Group by action to emulate distinct. 
-      // But for offline safe handling, we'll return known blueprint bounds,
-      // or fetch a small batch and map them.
+      final staticActions = <String>[
+        'All',
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'CREATE',
+        'LOGOUT',
+        'RECEIVE',
+        'void_sale',
+        'Clock In',
+        'Clock Out',
+        'Break Start',
+        'Break End',
+        'Sale Completed',
+        'Sale Offline',
+        'Refund',
+        'Parked Sale',
+        'Account Sale',
+      ];
+
+      final rows = await _client.from('audit_log').select('action');
+      final dbActions = <String>{
+        for (final row in rows as List)
+          (row['action']?.toString() ?? '').trim()
+      }..remove('');
+
+      final merged = <String>{
+        ...staticActions,
+        ...dbActions,
+      }.toList();
+      merged.sort((a, b) {
+        if (a == 'All') return -1;
+        if (b == 'All') return 1;
+        return a.toLowerCase().compareTo(b.toLowerCase());
+      });
+      return merged;
+    } catch (_) {
       return [
         'All',
-        'Void Transaction',
-        'Stock Adjustment',
-        'Price Override',
-        'Login Attempt',
-        'Settings Update',
-        'Print Duplicate',
-        'Close Register'
+        'INSERT',
+        'UPDATE',
+        'DELETE',
+        'CREATE',
+        'LOGOUT',
+        'RECEIVE',
+        'void_sale',
+        'Clock In',
+        'Clock Out',
+        'Break Start',
+        'Break End',
+        'Sale Completed',
+        'Sale Offline',
+        'Refund',
+        'Parked Sale',
+        'Account Sale',
       ];
-    } catch (_) {
-      return ['All'];
     }
   }
 }

@@ -98,6 +98,12 @@ class PayslipPdfService {
     final publicHolidayPay = _num(entry['public_holiday_pay']);
     final grossPay = _num(entry['gross_pay']);
 
+    final annualLeaveDays = _num(entry['annual_leave_days']);
+    final sickLeaveDays = _num(entry['sick_leave_days']);
+    final familyLeaveDays = _num(entry['family_leave_days']);
+    final unpaidLeaveDays = _num(entry['unpaid_leave_days']);
+    final storedHourlyRate = _num(entry['hourly_rate']);
+
     final uifEmployee = _num(entry['uif_employee']);
     final uifEmployer = _num(entry['uif_employer']);
     // meatDeduction and advanceDeduction already calculated above
@@ -138,11 +144,39 @@ class PayslipPdfService {
               amount: sundayPay,
             ),
             _EarningRow(
-              description: 'Public Holiday',
+              description: 'Public Holiday (x1.5)',
               hours: publicHolidayHours,
               rate: hourlyRate * 1.5,
               amount: publicHolidayPay,
             ),
+            if (annualLeaveDays > 0)
+              _EarningRow(
+                description: 'Annual Leave (${annualLeaveDays.toStringAsFixed(1)} days)',
+                hours: annualLeaveDays * 7.5,
+                rate: storedHourlyRate,
+                amount: annualLeaveDays * 7.5 * storedHourlyRate,
+              ),
+            if (sickLeaveDays > 0)
+              _EarningRow(
+                description: 'Sick Leave (${sickLeaveDays.toStringAsFixed(1)} days)',
+                hours: sickLeaveDays * 7.5,
+                rate: storedHourlyRate,
+                amount: sickLeaveDays * 7.5 * storedHourlyRate,
+              ),
+            if (familyLeaveDays > 0)
+              _EarningRow(
+                description: 'Family Responsibility Leave (${familyLeaveDays.toStringAsFixed(1)} days)',
+                hours: familyLeaveDays * 7.5,
+                rate: storedHourlyRate,
+                amount: familyLeaveDays * 7.5 * storedHourlyRate,
+              ),
+            if (unpaidLeaveDays > 0)
+              _EarningRow(
+                description: 'Unpaid Leave (${unpaidLeaveDays.toStringAsFixed(1)} days)',
+                hours: unpaidLeaveDays * 7.5,
+                rate: 0,
+                amount: 0,
+              ),
           ].where((r) => r.hours > 0 || r.amount > 0).toList();
 
     final deductionRows = <_DeductionRow>[

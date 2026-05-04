@@ -11,6 +11,8 @@ class CachedSupplier {
   late String supplierId;
 
   late String name;
+  /// Mirrors DB `supplier_type` (default stock).
+  late String supplierType;
   String? contactName;
   String? phone;
   String? email;
@@ -20,11 +22,13 @@ class CachedSupplier {
 
   CachedSupplier();
 
-  /// From Supabase suppliers row (id, name, contact_name, phone, email, account_number, is_active).
+  /// From Supabase suppliers row (id, name, supplier_type, contact_name, phone, email, account_number, is_active).
   factory CachedSupplier.fromSupabase(Map<String, dynamic> row) {
     final c = CachedSupplier();
     c.supplierId = row['id']?.toString() ?? '';
     c.name = row['name']?.toString() ?? '';
+    final t = row['supplier_type']?.toString().trim();
+    c.supplierType = (t != null && t.isNotEmpty) ? t : 'stock';
     c.contactName = row['contact_name']?.toString() ?? row['contact_person']?.toString();
     c.phone = row['phone']?.toString();
     c.email = row['email']?.toString();
@@ -38,6 +42,7 @@ class CachedSupplier {
   Map<String, dynamic> toMap() => {
         'id': supplierId,
         'name': name,
+        'supplier_type': supplierType,
         'contact_name': contactName,
         'phone': phone,
         'email': email,

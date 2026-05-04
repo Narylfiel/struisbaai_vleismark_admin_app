@@ -391,7 +391,15 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
       final list = await _repo.getAll(status: _statusFilter?.isEmpty == true ? null : _statusFilter);
       if (mounted) setState(() => _invoices = list);
     } catch (e) {
-      debugPrint('Supplier invoices load: $e');
+      debugPrint('[INVOICES] Load failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load invoices. Please retry.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
     if (mounted) setState(() => _isLoading = false);
   }
@@ -774,6 +782,130 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     }
   }
 
+  Future<void> _showPaymentDialog(Map<String, dynamic> invoice) async {
+    final invoiceId = invoice['id']?.toString();
+    final balanceDue = (invoice['balance_due'] as num?)?.toDouble() ?? 0.0;
+
+    if (invoiceId == null || balanceDue <= 0) {
+      return;
+    }
+
+    String selectedMethod = 'Bank EFT';
+    double amount = balanceDue;
+    final amountController = TextEditingController(
+      text: balanceDue.toStringAsFixed(2),
+    );
+
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, setDialogState) => AlertDialog(
+            title: const Text('Record Payment'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Invoice: ${invoice['invoice_number']}'),
+                Text('Balance due: R ${balanceDue.toStringAsFixed(2)}'),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: amountController,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Payment amount',
+                    prefixText: 'R ',
+                  ),
+                  onChanged: (v) {
+                    amount = double.tryParse(v.trim()) ?? 0;
+                  },
+                ),
+                const SizedBox(height: 16),
+                DropdownButtonFormField<String>(
+                  value: selectedMethod,
+                  decoration: const InputDecoration(
+                    labelText: 'Payment method',
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'Bank EFT',
+                      child: Text('Bank EFT'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'cash',
+                      child: Text('Cash'),
+                    ),
+                  ],
+                  onChanged: (v) {
+                    if (v != null) {
+                      setDialogState(() => selectedMethod = v);
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(false),
+                child: const Text('Cancel'),
+              ),
+              ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(true),
+                child: const Text('Confirm Payment'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (confirmed != true || !mounted) return;
+
+      final payAmount =
+          double.tryParse(amountController.text.trim()) ?? amount;
+
+      final recordedBy = AuthService().getCurrentStaffId();
+      if (recordedBy.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Sign in with PIN to record payments'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+        return;
+      }
+
+      try {
+        await _repo.recordPayment(
+          invoiceId: invoiceId,
+          amount: payAmount,
+          paymentMethod: selectedMethod,
+          recordedBy: recordedBy,
+        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Payment of R ${payAmount.toStringAsFixed(2)} recorded',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _load();
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Payment failed: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } finally {
+      amountController.dispose();
+    }
+  }
+
   Future<void> _openMappingScreen(Map<String, dynamic> invoice) async {
     final lineItems = (invoice['line_items'] as List?)
         ?.map((e) => e as Map<String, dynamic>)
@@ -805,7 +937,17 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
 
   Future<void> _approveInvoice(Map<String, dynamic> invoice) async {
     final invoiceId = invoice['id']?.toString();
-    if (invoiceId == null) return;
+    if (invoiceId == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Invoice ID missing — cannot approve'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
 
     final invNumRaw = invoice['invoice_number']?.toString().trim() ?? '';
     if (invNumRaw.isEmpty ||
@@ -1616,6 +1758,25 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
                                   TextButton(
                                     onPressed: () => _receiveGoods(inv),
                                     child: const Text('Receive goods'),
+                                  ),
+                                if ((inv.status == SupplierInvoiceStatus.approved ||
+                                        inv.status ==
+                                            SupplierInvoiceStatus.received) &&
+                                    inv.balanceDue > 0)
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: Colors.green,
+                                    ),
+                                    onPressed: () {
+                                      final m = inv.toJson();
+                                      m['supplier_name'] = inv.supplierName;
+                                      m['suppliers'] =
+                                          inv.supplierName != null
+                                              ? {'name': inv.supplierName}
+                                              : null;
+                                      _showPaymentDialog(m);
+                                    },
+                                    child: const Text('Pay'),
                                   ),
                               ],
                             ),

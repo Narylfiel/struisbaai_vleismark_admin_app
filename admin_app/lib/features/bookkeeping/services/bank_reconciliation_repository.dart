@@ -1,3 +1,4 @@
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
@@ -244,84 +245,157 @@ class BankReconciliationRepository {
   /// transaction maps ready for bulk insert.
   ///
   /// Expected columns (in order):
-  ///   Post Date, Trans. Date, Description, Reference, Fees, Amount, Balance
-  /// Date format: DD/MM/YY
-  /// Skips: header row, blank rows, 'Balance brought forward' rows,
-  ///        'Fee Total' rows, 'VAT @' rows.
-  /// Fees-only rows (Amount blank): uses Fees value as amount.
+  ///   Account, Date, Description, Reference, Amount, Fees, Balance
+  /// Date format: DD/MM/YYYY (4-digit year)
+  /// Skips: 'Balance brought forward', 'Total:', 'Account,' header row,
+  ///        blank rows.
+  /// Fees-only rows (Amount=0.00): uses Fees value as amount.
   List<Map<String, dynamic>> parseCapitecCsv(String csvContent) {
-    final lines = csvContent
-        .split('\n')
-        .map((l) => l.trim())
-        .where((l) => l.isNotEmpty)
-        .toList();
-
+    final lines = csvContent.split('\n');
+    final dateFormat = DateFormat('dd/MM/yyyy');
     final results = <Map<String, dynamic>>[];
 
-    for (int i = 0; i < lines.length; i++) {
-      final line = lines[i];
+    for (final line in lines) {
+      final trimmed = line.trim();
 
-      // Skip header row
-      if (line.toLowerCase().startsWith('post date') ||
-          line.toLowerCase().startsWith('post,date')) {
-        continue;
-      }
+      // Skip blank rows
+      if (trimmed.isEmpty) continue;
+
+      // Skip metadata rows
+      if (trimmed.startsWith('Balance brought forward')) continue;
+      if (trimmed.startsWith('Total:')) continue;
+      if (trimmed.startsWith('Account,')) continue;
 
       // Parse CSV columns (handle quoted fields)
-      final cols = _splitCsvLine(line);
-      if (cols.length < 3) continue;
+      final cols = _splitCsvLine(trimmed);
+      if (cols.length < 7) continue;
 
-      final description = cols.length > 2 ? cols[2].trim() : '';
+      // Column mapping:
+      // [0] Account → ignore
+      // [1] Date → post_date & trans_date
+      // [2] Description → description
+      // [3] Reference → reference
+      // [4] Amount → amount
+      // [5] Fees → fees
+      // [6] Balance → balance
 
-      // Skip summary/metadata rows
+      final rawDateStr = cols[1].trim();
+      final description = cols[2].trim();
+      final reference = cols[3].trim();
+      final amountStr = cols[4].trim();
+      final feesStr = cols[5].trim();
+      final balanceStr = cols[6].trim();
+
+      // Skip if description is empty
       if (description.isEmpty) continue;
-      if (description.toLowerCase().contains('balance brought forward')) {
+
+      // Parse date — format DD/MM/YYYY
+      DateTime? parsedDate;
+      try {
+        parsedDate = dateFormat.parse(rawDateStr);
+      } catch (_) {
         continue;
       }
-      if (description.toLowerCase().contains('fee total')) continue;
-      if (description.toLowerCase().contains('vat @')) continue;
-      if (description.toLowerCase().contains('interest rate')) continue;
+      if (parsedDate == null) continue;
 
-      // Parse dates — format DD/MM/YY
-      final postDate = _parseCapitecDate(cols[0].trim());
-      final transDate = _parseCapitecDate(
-          cols.length > 1 ? cols[1].trim() : cols[0].trim());
-      if (postDate == null) continue;
+      final dateStr = parsedDate.toIso8601String().substring(0, 10);
 
-      final reference = cols.length > 3 ? cols[3].trim() : null;
-      final feesStr = cols.length > 4 ? cols[4].trim() : '';
-      final amountStr = cols.length > 5 ? cols[5].trim() : '';
-      final balanceStr = cols.length > 6 ? cols[6].trim() : '';
-
-      final fees = double.tryParse(
-              feesStr.replaceAll(RegExp(r'[^\d.\-]'), '')) ??
-          0.0;
-      var amount = double.tryParse(
+      // Parse amounts (already signed in CSV)
+      final amount = double.tryParse(
           amountStr.replaceAll(RegExp(r'[^\d.\-]'), ''));
+      final fees = double.tryParse(
+          feesStr.replaceAll(RegExp(r'[^\d.\-]'), '')) ?? 0.0;
       final balance = double.tryParse(
           balanceStr.replaceAll(RegExp(r'[^\d.\-]'), ''));
 
-      // Fees-only row: amount blank, use fees value as amount
-      if (amount == null && fees != 0) {
-        amount = fees;
-      }
+      // Fee-only row: amount == 0.0 && fees != 0.0, use fees as amount
+      final finalAmount = (amount == 0.0 && fees != 0.0) ? fees : amount;
 
       // Skip if still no amount
-      if (amount == null) continue;
+      if (finalAmount == null) continue;
+
+      // Auto-coding rules (priority order: 1-7, first match wins)
+      String? accountCode;
+      String? notes;
+      String status = 'unmatched';
+
+      final descLower = description.toLowerCase();
+      final refLower = reference.toLowerCase();
+
+      // Rule 1: Bank charges (auto-code + auto-status)
+      if (descLower.contains('month s/fee') ||
+          descLower.contains('sms notification fee') ||
+          descLower.contains('cash fee') ||
+          refLower.contains('service fee') ||
+          refLower.contains('notification fee')) {
+        accountCode = '6400';
+        notes = 'Bank charge — auto-coded';
+        status = 'manually_coded';
+      }
+      // Rule 2: Old POS software fee (Willow)
+      else if (refLower.contains('willow') && descLower.contains('debit order')) {
+        accountCode = '6300';
+        notes = 'Old POS system fee (Willow) — auto-coded';
+        status = 'manually_coded';
+      }
+      // Rule 3: POS card settlements (flag only)
+      else if (refLower.contains('possettle') && finalAmount > 0) {
+        accountCode = null;
+        notes = 'Capitec card settlement — match to till session';
+        status = 'unmatched';
+      }
+      // Rule 4: Business account payments (flag only)
+      else if ((descLower.contains('retail cr transfer') ||
+                descLower.contains('cr trf') ||
+                descLower.contains('inward eft credit')) &&
+          finalAmount > 0 &&
+          !refLower.contains('possettle')) {
+        accountCode = '1100';
+        notes = 'Business account payment received — verify customer';
+        status = 'unmatched';
+      }
+      // Rule 5: Supplier payments (flag only)
+      else if ((refLower.contains('elim slaghuis') ||
+                refLower.contains('ice box') ||
+                refLower.contains('primal masters') ||
+                refLower.contains('crown national') ||
+                refLower.contains('avocet scales') ||
+                refLower.contains('cape agulhas sanitation') ||
+                refLower.contains('mat overberg') ||
+                refLower.contains('charlies transport')) &&
+          finalAmount < 0) {
+        accountCode = '5000';
+        notes = 'Supplier payment — match to invoice';
+        status = 'unmatched';
+      }
+      // Rule 6: Salary payments (flag only)
+      else if ((refLower.contains('sbvm salary') || refLower.contains('salary')) &&
+          finalAmount < 0) {
+        accountCode = '6000';
+        notes = 'Salary payment — match to payroll ledger';
+        status = 'unmatched';
+      }
+      // Rule 7: Directors loan (flag only)
+      else if ((refLower.contains('directors loan') ||
+                refLower.contains('directors loan acc') ||
+                refLower.contains('directods loan')) &&
+          finalAmount < 0) {
+        accountCode = '2400';
+        notes = 'Directors loan withdrawal — verify with accountant';
+        status = 'unmatched';
+      }
 
       results.add({
-        'post_date': postDate.toIso8601String().substring(0, 10),
-        'trans_date': (transDate ?? postDate)
-            .toIso8601String()
-            .substring(0, 10),
+        'post_date': dateStr,
+        'trans_date': dateStr,
         'description': description,
-        'reference': (reference == null || reference.isEmpty)
-            ? null
-            : reference,
+        'reference': (reference.isEmpty) ? null : reference,
         'fees': fees,
-        'amount': amount,
+        'amount': finalAmount,
         'balance': balance,
-        'status': 'unmatched',
+        'account_code': accountCode,
+        'notes': notes,
+        'status': status,
       });
     }
 
@@ -381,19 +455,5 @@ class BankReconciliationRepository {
     }
     result.add(buffer.toString());
     return result;
-  }
-
-  /// Parse Capitec date format DD/MM/YY.
-  DateTime? _parseCapitecDate(String raw) {
-    if (raw.isEmpty) return null;
-    final parts = raw.split('/');
-    if (parts.length != 3) return null;
-    final day = int.tryParse(parts[0]);
-    final month = int.tryParse(parts[1]);
-    var year = int.tryParse(parts[2]);
-    if (day == null || month == null || year == null) return null;
-    // Two-digit year: 00–49 → 2000–2049, 50–99 → 1950–1999
-    if (year < 100) year += year < 50 ? 2000 : 1900;
-    return DateTime(year, month, day);
   }
 }

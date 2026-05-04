@@ -1,8 +1,11 @@
 import '../../../core/models/base_model.dart';
 
 /// Blueprint §4.6: Supplier Management — Name, Contact Person, Phone, Email, Address, Payment Terms, BBBEE Level, Active.
+/// `supplier_type`: DB `supplier_type` — stock | service | utilities | rent | mixed.
 class Supplier extends BaseModel {
   final String name;
+  /// Maps to `supplier_type`: controls invoice mapping behaviour (Phase 1+).
+  final String supplierType;
   final String? contactPerson;
   final String? phone;
   final String? email;
@@ -14,6 +17,7 @@ class Supplier extends BaseModel {
   const Supplier({
     required super.id,
     required this.name,
+    this.supplierType = 'stock',
     this.contactPerson,
     this.phone,
     this.email,
@@ -25,12 +29,13 @@ class Supplier extends BaseModel {
     super.updatedAt,
   });
 
-  /// DB columns: id, name, contact_name, phone, email, account_number, notes, is_active, created_at, updated_at, vat_number, address, city, postal_code, payment_terms, bank_name, bank_account, bank_branch_code, bbbee_level.
+  /// DB columns: id, name, supplier_type, contact_name, phone, email, account_number, notes, is_active, created_at, updated_at, vat_number, address, city, postal_code, payment_terms, bank_name, bank_account, bank_branch_code, bbbee_level.
   @override
   Map<String, dynamic> toJson() {
     return {
       'id': id,
       'name': name,
+      'supplier_type': supplierType,
       'contact_name': contactPerson,
       'phone': phone,
       'email': email,
@@ -44,9 +49,12 @@ class Supplier extends BaseModel {
   }
 
   factory Supplier.fromJson(Map<String, dynamic> json) {
+    final rawType = json['supplier_type']?.toString().trim();
     return Supplier(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
+      supplierType:
+          (rawType != null && rawType.isNotEmpty) ? rawType : 'stock',
       contactPerson: json['contact_name'] as String? ?? json['contact_person'] as String?,
       phone: json['phone'] as String?,
       email: json['email'] as String?,
@@ -60,6 +68,36 @@ class Supplier extends BaseModel {
       updatedAt: json['updated_at'] != null
           ? DateTime.tryParse(json['updated_at'] as String)
           : null,
+    );
+  }
+
+  Supplier copyWith({
+    String? id,
+    String? name,
+    String? supplierType,
+    String? contactPerson,
+    String? phone,
+    String? email,
+    String? address,
+    String? paymentTerms,
+    String? bbbeeLevel,
+    bool? isActive,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return Supplier(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      supplierType: supplierType ?? this.supplierType,
+      contactPerson: contactPerson ?? this.contactPerson,
+      phone: phone ?? this.phone,
+      email: email ?? this.email,
+      address: address ?? this.address,
+      paymentTerms: paymentTerms ?? this.paymentTerms,
+      bbbeeLevel: bbbeeLevel ?? this.bbbeeLevel,
+      isActive: isActive ?? this.isActive,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 

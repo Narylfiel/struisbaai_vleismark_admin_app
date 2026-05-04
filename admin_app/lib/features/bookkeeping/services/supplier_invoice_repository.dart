@@ -431,49 +431,6 @@ class SupplierInvoiceRepository {
     return create(invoice);
   }
 
-  /// WARNING:
-  /// This method is deprecated.
-  /// Approval must be handled via invoice_list_screen to ensure
-  /// correct multi-line ledger entries.
-  /// Do NOT use this method.
-  ///
-  /// Approve and post to ledger (Debit 5000, Credit 2000 AP).
-  @Deprecated(
-    'Use invoice_list_screen approval flow for multi-line ledger entries',
-  )
-  Future<void> approve(String invoiceId, String approvedBy) async {
-    final invoice = await getById(invoiceId);
-    if (invoice == null) throw ArgumentError('Invoice not found');
-    if (!invoice.canApprove) {
-      throw StateError('Invoice cannot be approved (status: ${invoice.status.dbValue})');
-    }
-    if (invoice.total <= 0) throw StateError('Invoice total must be positive to post');
-    await _ledgerRepo.createDoubleEntry(
-      date: invoice.invoiceDate,
-      debitAccountCode: _coaPurchases,
-      debitAccountName: _coaPurchasesName,
-      creditAccountCode: _coaAP,
-      creditAccountName: _coaAPName,
-      amount: invoice.total,
-      description: 'Supplier invoice ${invoice.invoiceNumber}',
-      referenceType: 'supplier_invoice',
-      referenceId: invoiceId,
-      source: 'supplier_invoice',
-      metadata: {'invoice_number': invoice.invoiceNumber, 'supplier_id': invoice.supplierId},
-      recordedBy: approvedBy,
-    );
-    await setStatus(invoiceId, SupplierInvoiceStatus.approved);
-    
-    // Audit log - invoice approval
-    await AuditService.log(
-      action: 'APPROVE',
-      module: 'Bookkeeping',
-      description: 'Supplier invoice approved and posted to ledger: ${invoice.invoiceNumber} - ${invoice.supplierName ?? "Unknown"} R${invoice.total.toStringAsFixed(2)}',
-      entityType: 'SupplierInvoice',
-      entityId: invoiceId,
-    );
-  }
-
   /// Mark invoice as received: create stock movements for lines with inventory_item_id, then set status to received.
   /// Only allowed when status is approved. Once received cannot receive again.
   /// Returns number of line items that had stock movements (0 if none linked).
@@ -576,7 +533,7 @@ class SupplierInvoiceRepository {
 
   /// Records a supplier payment against [invoiceId]. Updates `amount_paid`,
   /// `balance_due`, and sets status to `paid` when fully settled.
-  /// Posts ledger entries (DR Accounts Payable / CR Cash or Bank) via
+  /// Posts ledger entries (DR Accounts Payable / CR Cash or bank cheque) via
   /// [LedgerRepository.createDoubleEntry]; posting failure is fatal.
   Future<void> recordPayment({
     required String invoiceId,
@@ -593,9 +550,12 @@ class SupplierInvoiceRepository {
     final invoice = await getById(invoiceId);
     if (invoice == null) throw ArgumentError('Invoice not found');
     if (invoice.status == SupplierInvoiceStatus.draft ||
-        invoice.status == SupplierInvoiceStatus.cancelled) {
-      throw StateError(
-        'Cannot record payment for invoice in status ${invoice.status.dbValue}',
+        invoice.status == SupplierInvoiceStatus.cancelled ||
+        invoice.status == SupplierInvoiceStatus.pendingReview) {
+      throw Exception(
+        'Cannot record payment for invoice '
+        'with status: ${invoice.status.dbValue}. '
+        'Approve the invoice first.',
       );
     }
 
@@ -643,8 +603,10 @@ class SupplierInvoiceRepository {
     // Ledger post is fatal — failure rolls back the payment flow to the caller.
     final supplierPaymentId = insertedPayment['id']?.toString();
     final lowerMethod = method.toLowerCase();
-    final creditAccountCode = lowerMethod == 'cash' ? '1000' : '1100';
-    final creditAccountName = lowerMethod == 'cash' ? 'Cash' : 'Bank';
+    final creditAccountCode = lowerMethod == 'cash' ? '1000' : '1050';
+    final creditAccountName = lowerMethod == 'cash'
+        ? 'Cash/Bank'
+        : 'Bank Account — Cheque';
     final invoiceRef = invoice.supplierName?.trim().isNotEmpty == true
         ? invoice.supplierName!.trim()
         : invoice.invoiceNumber;

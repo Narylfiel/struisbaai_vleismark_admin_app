@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
@@ -170,7 +172,7 @@ class _BankReconciliationScreenState
     final bytes = result.files.single.bytes;
     if (bytes == null) return;
 
-    final content = String.fromCharCodes(bytes);
+    final content = utf8.decode(bytes, allowMalformed: true);
     final rows = _repo.parseCapitecCsv(content);
 
     if (rows.isEmpty) {

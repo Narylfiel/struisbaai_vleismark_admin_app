@@ -17,6 +17,7 @@ class SupplierFormScreen extends StatefulWidget {
 
 class _SupplierFormScreenState extends State<SupplierFormScreen> {
   final _formKey = GlobalKey<FormState>();
+  String _supplierType = 'stock';
   final _nameController = TextEditingController();
   final _contactPersonController = TextEditingController();
   final _phoneController = TextEditingController();
@@ -28,10 +29,55 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
   bool _saving = false;
   final _repo = SupplierRepository();
 
+  static const _supplierTypeKeys = <String>[
+    'stock',
+    'service',
+    'utilities',
+    'rent',
+    'mixed',
+  ];
+
+  static String _labelForSupplierType(String key) {
+    switch (key) {
+      case 'stock':
+        return '📦 Stock / Inventory';
+      case 'service':
+        return '🔧 Service Provider';
+      case 'utilities':
+        return '💡 Utilities';
+      case 'rent':
+        return '🏠 Rent';
+      case 'mixed':
+        return '🔀 Mixed (Stock + Services)';
+      default:
+        return key;
+    }
+  }
+
+  static String _helperForSupplierType(String key) {
+    switch (key) {
+      case 'stock':
+        return 'Physical stock items (meat, ingredients, packaging)';
+      case 'service':
+        return 'Services (transport, labour, maintenance)';
+      case 'utilities':
+        return 'Utilities and municipal services';
+      case 'rent':
+        return 'Property or equipment rental';
+      case 'mixed':
+        return 'Both stock items and services';
+      default:
+        return '';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     if (widget.supplier != null) {
+      final t = widget.supplier!.supplierType.trim();
+      _supplierType =
+          _supplierTypeKeys.contains(t) ? t : 'stock';
       _nameController.text = widget.supplier!.name;
       _contactPersonController.text = widget.supplier!.contactPerson ?? '';
       _phoneController.text = widget.supplier!.phone ?? '';
@@ -95,6 +141,7 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
         final updated = Supplier(
           id: widget.supplier!.id,
           name: _nameController.text.trim(),
+          supplierType: _supplierType,
           contactPerson: _contactPersonController.text.trim().isEmpty ? null : _contactPersonController.text.trim(),
           phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
           email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
@@ -110,6 +157,7 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
         final created = Supplier(
           id: '',
           name: _nameController.text.trim(),
+          supplierType: _supplierType,
           contactPerson: _contactPersonController.text.trim().isEmpty ? null : _contactPersonController.text.trim(),
           phone: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
           email: _emailController.text.trim().isEmpty ? null : _emailController.text.trim(),
@@ -166,6 +214,38 @@ class _SupplierFormScreenState extends State<SupplierFormScreen> {
                 hint: 'e.g. Karan Beef',
                 validator: (v) => (v == null || v.trim().isEmpty) ? 'Name is required' : null,
                 prefixIcon: const Icon(Icons.business),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: _supplierType,
+                decoration: const InputDecoration(
+                  labelText: 'Supplier Type',
+                  border: OutlineInputBorder(),
+                ),
+                items: _supplierTypeKeys
+                    .map(
+                      (k) => DropdownMenuItem<String>(
+                        value: k,
+                        child: Text(_labelForSupplierType(k)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (v) {
+                  if (v != null) setState(() => _supplierType = v);
+                },
+                validator: (v) =>
+                    v == null ? 'Select a supplier type' : null,
+              ),
+              Padding(
+                padding: const EdgeInsets.only(top: 8, left: 4, right: 4),
+                child: Text(
+                  _helperForSupplierType(_supplierType),
+                  textAlign: TextAlign.start,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey[600],
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
               FormWidgets.textFormField(

@@ -56,6 +56,11 @@ const CachedSupplierSchema = CollectionSchema(
       id: 7,
       name: r'supplierId',
       type: IsarType.string,
+    ),
+    r'supplierType': PropertySchema(
+      id: 8,
+      name: r'supplierType',
+      type: IsarType.string,
     )
   },
   estimateSize: _cachedSupplierEstimateSize,
@@ -118,6 +123,7 @@ int _cachedSupplierEstimateSize(
     }
   }
   bytesCount += 3 + object.supplierId.length * 3;
+  bytesCount += 3 + object.supplierType.length * 3;
   return bytesCount;
 }
 
@@ -135,6 +141,7 @@ void _cachedSupplierSerialize(
   writer.writeString(offsets[5], object.name);
   writer.writeString(offsets[6], object.phone);
   writer.writeString(offsets[7], object.supplierId);
+  writer.writeString(offsets[8], object.supplierType);
 }
 
 CachedSupplier _cachedSupplierDeserialize(
@@ -153,6 +160,7 @@ CachedSupplier _cachedSupplierDeserialize(
   object.name = reader.readString(offsets[5]);
   object.phone = reader.readStringOrNull(offsets[6]);
   object.supplierId = reader.readString(offsets[7]);
+  object.supplierType = reader.readString(offsets[8]);
   return object;
 }
 
@@ -178,6 +186,8 @@ P _cachedSupplierDeserializeProp<P>(
     case 6:
       return (reader.readStringOrNull(offset)) as P;
     case 7:
+      return (reader.readString(offset)) as P;
+    case 8:
       return (reader.readString(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1389,6 +1399,142 @@ extension CachedSupplierQueryFilter
       ));
     });
   }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeEqualTo(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeGreaterThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        include: include,
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeLessThan(
+    String value, {
+    bool include = false,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.lessThan(
+        include: include,
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeBetween(
+    String lower,
+    String upper, {
+    bool includeLower = true,
+    bool includeUpper = true,
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.between(
+        property: r'supplierType',
+        lower: lower,
+        includeLower: includeLower,
+        upper: upper,
+        includeUpper: includeUpper,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeStartsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.startsWith(
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeEndsWith(
+    String value, {
+    bool caseSensitive = true,
+  }) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.endsWith(
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeContains(String value, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.contains(
+        property: r'supplierType',
+        value: value,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeMatches(String pattern, {bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.matches(
+        property: r'supplierType',
+        wildcard: pattern,
+        caseSensitive: caseSensitive,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeIsEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'supplierType',
+        value: '',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterFilterCondition>
+      supplierTypeIsNotEmpty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.greaterThan(
+        property: r'supplierType',
+        value: '',
+      ));
+    });
+  }
 }
 
 extension CachedSupplierQueryObject
@@ -1500,6 +1646,20 @@ extension CachedSupplierQuerySortBy
       sortBySupplierIdDesc() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'supplierId', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterSortBy>
+      sortBySupplierType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'supplierType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterSortBy>
+      sortBySupplierTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'supplierType', Sort.desc);
     });
   }
 }
@@ -1621,6 +1781,20 @@ extension CachedSupplierQuerySortThenBy
       return query.addSortBy(r'supplierId', Sort.desc);
     });
   }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterSortBy>
+      thenBySupplierType() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'supplierType', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QAfterSortBy>
+      thenBySupplierTypeDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'supplierType', Sort.desc);
+    });
+  }
 }
 
 extension CachedSupplierQueryWhereDistinct
@@ -1677,6 +1851,13 @@ extension CachedSupplierQueryWhereDistinct
       {bool caseSensitive = true}) {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'supplierId', caseSensitive: caseSensitive);
+    });
+  }
+
+  QueryBuilder<CachedSupplier, CachedSupplier, QDistinct>
+      distinctBySupplierType({bool caseSensitive = true}) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'supplierType', caseSensitive: caseSensitive);
     });
   }
 }
@@ -1736,6 +1917,13 @@ extension CachedSupplierQueryProperty
   QueryBuilder<CachedSupplier, String, QQueryOperations> supplierIdProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'supplierId');
+    });
+  }
+
+  QueryBuilder<CachedSupplier, String, QQueryOperations>
+      supplierTypeProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'supplierType');
     });
   }
 }

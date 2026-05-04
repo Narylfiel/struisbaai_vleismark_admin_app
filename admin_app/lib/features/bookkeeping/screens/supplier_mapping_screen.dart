@@ -136,6 +136,9 @@ class _SupplierMappingScreenState extends State<SupplierMappingScreen>
                   supplierId: widget.supplierId,
                   mappingService: _mappingService,
                   onMappingSaved: _load,
+                  onApproveInvoice: pendingCount == 0
+                      ? widget.onMappingsComplete
+                      : null,
                 ),
                 _AllMappingsTab(
                   mappings: _allMappings,
@@ -160,6 +163,8 @@ class _PendingMappingsTab extends StatelessWidget {
   final String? supplierId;
   final SupplierMappingService mappingService;
   final VoidCallback onMappingSaved;
+  /// Same callback as AppBar 'Done — Approve Invoice'; only non-null when all lines are mapped.
+  final VoidCallback? onApproveInvoice;
 
   const _PendingMappingsTab({
     required this.items,
@@ -168,22 +173,52 @@ class _PendingMappingsTab extends StatelessWidget {
     this.supplierId,
     required this.mappingService,
     required this.onMappingSaved,
+    this.onApproveInvoice,
   });
 
   @override
   Widget build(BuildContext context) {
     if (items.isEmpty) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 48),
-            SizedBox(height: 12),
-            Text('No items to map',
+            const Icon(Icons.check_circle, color: Color(0xFF2E7D32), size: 48),
+            const SizedBox(height: 12),
+            const Text('No items to map',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            SizedBox(height: 4),
-            Text('All line items are mapped',
+            const SizedBox(height: 4),
+            const Text('All line items are mapped',
                 style: TextStyle(color: Color(0xFF666666))),
+            if (onApproveInvoice != null) ...[
+              const SizedBox(height: 24),
+              Text(
+                'All items are ready. Tap to approve this invoice.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 16),
+              ElevatedButton.icon(
+                icon: const Icon(Icons.check_circle),
+                label: const Text(
+                  'Approve Invoice',
+                  style: TextStyle(fontSize: 18),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF2E7D32),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 48,
+                    vertical: 20,
+                  ),
+                  minimumSize: const Size(300, 60),
+                ),
+                onPressed: onApproveInvoice,
+              ),
+            ],
           ],
         ),
       );

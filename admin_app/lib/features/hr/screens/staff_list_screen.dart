@@ -1224,7 +1224,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                           shiftDate,
                         ),
                         // Audit trail
-                        'edited_by': SupabaseService.client.auth.currentUser?.id,
+                        'edited_by': AuthService().currentStaffId,
                         'edited_at': DateTime.now().toIso8601String(),
                         'edit_reason': reasonCtrl.text.trim(),
                       };
@@ -1244,7 +1244,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                           final bId = bu['id'] as String?;
                           final bStart = (bu['start'] as String).trim();
                           final bEnd = (bu['end'] as String).trim();
-                          if (bId == null || bStart.isEmpty || bEnd.isEmpty) continue;
+                          if (bStart.isEmpty || bEnd.isEmpty) continue;
                           final startIso = parseToIso(bStart, shiftDate);
                           final endIso = parseToIso(bEnd, shiftDate);
                           if (startIso == null || endIso == null) continue;
@@ -1252,14 +1252,30 @@ class _TimecardsTabState extends State<_TimecardsTab> {
                           final endDt = DateTime.parse(endIso);
                           final durationMins = endDt.difference(startDt).inMinutes;
                           if (durationMins <= 0) continue;
-                          await SupabaseService.client
-                              .from('timecard_breaks')
-                              .update({
-                                'break_start': startDt.toUtc().toIso8601String(),
-                                'break_end': endDt.toUtc().toIso8601String(),
-                                'break_duration_minutes': durationMins,
-                              })
-                              .eq('id', bId);
+                          if (bId != null) {
+                            await SupabaseService.client
+                                .from('timecard_breaks')
+                                .update({
+                                  'break_start': startDt.toUtc().toIso8601String(),
+                                  'break_end': endDt.toUtc().toIso8601String(),
+                                  'break_duration_minutes': durationMins,
+                                })
+                                .eq('id', bId);
+                          } else {
+                            try {
+                              await SupabaseService.client
+                                  .from('timecard_breaks')
+                                  .insert({
+                                    'timecard_id': timecardId,
+                                    'break_start': startDt.toUtc().toIso8601String(),
+                                    'break_end': endDt.toUtc().toIso8601String(),
+                                    'break_duration_minutes': durationMins,
+                                    'break_type': 'short',
+                                  });
+                            } catch (e) {
+                              debugPrint('[TIMECARD] Break insert failed: $e');
+                            }
+                          }
                         }
 
                         // Write to audit log
@@ -2899,6 +2915,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
   final _maxDiscountController = TextEditingController();
   String _empType = 'hourly';
   String _payFrequency = 'weekly';
+  String _paymentMethod = 'bank_eft';
   DateTime? _startDate;
 
   // Banking
@@ -3250,6 +3267,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
     _maxDiscountController.text = s['max_discount_pct']?.toString() ?? '0';
     _empType = s['employment_type'] ?? 'hourly';
     _payFrequency = s['pay_frequency'] ?? 'weekly';
+    _paymentMethod = s['payment_method'] ?? 'bank_eft';
     _bankNameController.text = s['bank_name'] ?? '';
     _bankAccController.text = s['bank_account'] ?? '';
     _bankBranchController.text = s['bank_branch_code'] ?? '';
@@ -3327,6 +3345,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
       'hourly_rate': double.tryParse(_hourlyRateController.text),
       'monthly_salary': double.tryParse(_monthlySalaryController.text),
       'pay_frequency': _payFrequency,
+      'payment_method': _paymentMethod,
       'max_discount_pct': double.tryParse(_maxDiscountController.text) ?? 0,
       'bank_name': _bankNameController.text.trim(),
       'bank_account': _bankAccController.text.trim(),
@@ -3682,6 +3701,27 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
             hint: '5',
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             note: 'Discounts above this % require manager override'),
+        const SizedBox(height: 16),
+        Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('Payment Method', style: _labelStyle),
+              const SizedBox(height: 6),
+              DropdownButtonFormField<String>(
+                initialValue: _paymentMethod,
+                decoration: const InputDecoration(isDense: true),
+                items: const [
+                  DropdownMenuItem(value: 'cash', child: Text('Cash')),
+                  DropdownMenuItem(value: 'bank_eft', child: Text('Bank EFT')),
+                ],
+                onChanged: (v) =>
+                    setState(() => _paymentMethod = v ?? 'bank_eft'),
+              ),
+            ]),
+          ),
+          const SizedBox(width: 16),
+          const Expanded(child: SizedBox()),
+        ]),
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(12),

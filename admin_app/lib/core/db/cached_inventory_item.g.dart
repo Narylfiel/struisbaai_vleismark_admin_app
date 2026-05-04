@@ -78,128 +78,133 @@ const CachedInventoryItemSchema = CollectionSchema(
       name: r'isBestSeller',
       type: IsarType.bool,
     ),
-    r'isFeatured': PropertySchema(
+    r'isBundle': PropertySchema(
       id: 12,
+      name: r'isBundle',
+      type: IsarType.bool,
+    ),
+    r'isFeatured': PropertySchema(
+      id: 13,
       name: r'isFeatured',
       type: IsarType.bool,
     ),
     r'itemId': PropertySchema(
-      id: 13,
+      id: 14,
       name: r'itemId',
       type: IsarType.string,
     ),
     r'name': PropertySchema(
-      id: 14,
+      id: 15,
       name: r'name',
       type: IsarType.string,
     ),
     r'onlineAllergens': PropertySchema(
-      id: 15,
+      id: 16,
       name: r'onlineAllergens',
       type: IsarType.string,
     ),
     r'onlineCookingTips': PropertySchema(
-      id: 16,
+      id: 17,
       name: r'onlineCookingTips',
       type: IsarType.string,
     ),
     r'onlineDisplayName': PropertySchema(
-      id: 17,
+      id: 18,
       name: r'onlineDisplayName',
       type: IsarType.string,
     ),
     r'onlineImageUrl': PropertySchema(
-      id: 18,
+      id: 19,
       name: r'onlineImageUrl',
       type: IsarType.string,
     ),
     r'onlineIngredients': PropertySchema(
-      id: 19,
+      id: 20,
       name: r'onlineIngredients',
       type: IsarType.string,
     ),
     r'onlineMinStockThreshold': PropertySchema(
-      id: 20,
+      id: 21,
       name: r'onlineMinStockThreshold',
       type: IsarType.double,
     ),
     r'onlineSortOrder': PropertySchema(
-      id: 21,
+      id: 22,
       name: r'onlineSortOrder',
       type: IsarType.long,
     ),
     r'onlineWeightDescription': PropertySchema(
-      id: 22,
+      id: 23,
       name: r'onlineWeightDescription',
       type: IsarType.string,
     ),
     r'parentStockItemId': PropertySchema(
-      id: 23,
+      id: 24,
       name: r'parentStockItemId',
       type: IsarType.string,
     ),
     r'pluCode': PropertySchema(
-      id: 24,
+      id: 25,
       name: r'pluCode',
       type: IsarType.long,
     ),
     r'posDisplayName': PropertySchema(
-      id: 25,
+      id: 26,
       name: r'posDisplayName',
       type: IsarType.string,
     ),
     r'reorderLevel': PropertySchema(
-      id: 26,
+      id: 27,
       name: r'reorderLevel',
       type: IsarType.double,
     ),
     r'scaleItem': PropertySchema(
-      id: 27,
+      id: 28,
       name: r'scaleItem',
       type: IsarType.bool,
     ),
     r'sellPrice': PropertySchema(
-      id: 28,
+      id: 29,
       name: r'sellPrice',
       type: IsarType.double,
     ),
     r'stockControlType': PropertySchema(
-      id: 29,
+      id: 30,
       name: r'stockControlType',
       type: IsarType.string,
     ),
     r'stockDeductionQty': PropertySchema(
-      id: 30,
+      id: 31,
       name: r'stockDeductionQty',
       type: IsarType.double,
     ),
     r'stockDeductionUnit': PropertySchema(
-      id: 31,
+      id: 32,
       name: r'stockDeductionUnit',
       type: IsarType.string,
     ),
     r'stockOnHandFresh': PropertySchema(
-      id: 32,
+      id: 33,
       name: r'stockOnHandFresh',
       type: IsarType.double,
     ),
     r'stockOnHandFrozen': PropertySchema(
-      id: 33,
+      id: 34,
       name: r'stockOnHandFrozen',
       type: IsarType.double,
     ),
     r'targetMarginPct': PropertySchema(
-      id: 34,
+      id: 35,
       name: r'targetMarginPct',
       type: IsarType.double,
     ),
     r'unitType': PropertySchema(
-      id: 35,
+      id: 36,
       name: r'unitType',
       type: IsarType.string,
     ),
     r'vatGroup': PropertySchema(
-      id: 36,
+      id: 37,
       name: r'vatGroup',
       type: IsarType.string,
     )
@@ -341,31 +346,32 @@ void _cachedInventoryItemSerialize(
   writer.writeDouble(offsets[9], object.currentStock);
   writer.writeBool(offsets[10], object.isActive);
   writer.writeBool(offsets[11], object.isBestSeller);
-  writer.writeBool(offsets[12], object.isFeatured);
-  writer.writeString(offsets[13], object.itemId);
-  writer.writeString(offsets[14], object.name);
-  writer.writeString(offsets[15], object.onlineAllergens);
-  writer.writeString(offsets[16], object.onlineCookingTips);
-  writer.writeString(offsets[17], object.onlineDisplayName);
-  writer.writeString(offsets[18], object.onlineImageUrl);
-  writer.writeString(offsets[19], object.onlineIngredients);
-  writer.writeDouble(offsets[20], object.onlineMinStockThreshold);
-  writer.writeLong(offsets[21], object.onlineSortOrder);
-  writer.writeString(offsets[22], object.onlineWeightDescription);
-  writer.writeString(offsets[23], object.parentStockItemId);
-  writer.writeLong(offsets[24], object.pluCode);
-  writer.writeString(offsets[25], object.posDisplayName);
-  writer.writeDouble(offsets[26], object.reorderLevel);
-  writer.writeBool(offsets[27], object.scaleItem);
-  writer.writeDouble(offsets[28], object.sellPrice);
-  writer.writeString(offsets[29], object.stockControlType);
-  writer.writeDouble(offsets[30], object.stockDeductionQty);
-  writer.writeString(offsets[31], object.stockDeductionUnit);
-  writer.writeDouble(offsets[32], object.stockOnHandFresh);
-  writer.writeDouble(offsets[33], object.stockOnHandFrozen);
-  writer.writeDouble(offsets[34], object.targetMarginPct);
-  writer.writeString(offsets[35], object.unitType);
-  writer.writeString(offsets[36], object.vatGroup);
+  writer.writeBool(offsets[12], object.isBundle);
+  writer.writeBool(offsets[13], object.isFeatured);
+  writer.writeString(offsets[14], object.itemId);
+  writer.writeString(offsets[15], object.name);
+  writer.writeString(offsets[16], object.onlineAllergens);
+  writer.writeString(offsets[17], object.onlineCookingTips);
+  writer.writeString(offsets[18], object.onlineDisplayName);
+  writer.writeString(offsets[19], object.onlineImageUrl);
+  writer.writeString(offsets[20], object.onlineIngredients);
+  writer.writeDouble(offsets[21], object.onlineMinStockThreshold);
+  writer.writeLong(offsets[22], object.onlineSortOrder);
+  writer.writeString(offsets[23], object.onlineWeightDescription);
+  writer.writeString(offsets[24], object.parentStockItemId);
+  writer.writeLong(offsets[25], object.pluCode);
+  writer.writeString(offsets[26], object.posDisplayName);
+  writer.writeDouble(offsets[27], object.reorderLevel);
+  writer.writeBool(offsets[28], object.scaleItem);
+  writer.writeDouble(offsets[29], object.sellPrice);
+  writer.writeString(offsets[30], object.stockControlType);
+  writer.writeDouble(offsets[31], object.stockDeductionQty);
+  writer.writeString(offsets[32], object.stockDeductionUnit);
+  writer.writeDouble(offsets[33], object.stockOnHandFresh);
+  writer.writeDouble(offsets[34], object.stockOnHandFrozen);
+  writer.writeDouble(offsets[35], object.targetMarginPct);
+  writer.writeString(offsets[36], object.unitType);
+  writer.writeString(offsets[37], object.vatGroup);
 }
 
 CachedInventoryItem _cachedInventoryItemDeserialize(
@@ -388,31 +394,32 @@ CachedInventoryItem _cachedInventoryItemDeserialize(
   object.id = id;
   object.isActive = reader.readBool(offsets[10]);
   object.isBestSeller = reader.readBoolOrNull(offsets[11]);
-  object.isFeatured = reader.readBoolOrNull(offsets[12]);
-  object.itemId = reader.readString(offsets[13]);
-  object.name = reader.readString(offsets[14]);
-  object.onlineAllergens = reader.readStringOrNull(offsets[15]);
-  object.onlineCookingTips = reader.readStringOrNull(offsets[16]);
-  object.onlineDisplayName = reader.readStringOrNull(offsets[17]);
-  object.onlineImageUrl = reader.readStringOrNull(offsets[18]);
-  object.onlineIngredients = reader.readStringOrNull(offsets[19]);
-  object.onlineMinStockThreshold = reader.readDoubleOrNull(offsets[20]);
-  object.onlineSortOrder = reader.readLongOrNull(offsets[21]);
-  object.onlineWeightDescription = reader.readStringOrNull(offsets[22]);
-  object.parentStockItemId = reader.readStringOrNull(offsets[23]);
-  object.pluCode = reader.readLong(offsets[24]);
-  object.posDisplayName = reader.readStringOrNull(offsets[25]);
-  object.reorderLevel = reader.readDoubleOrNull(offsets[26]);
-  object.scaleItem = reader.readBoolOrNull(offsets[27]);
-  object.sellPrice = reader.readDoubleOrNull(offsets[28]);
-  object.stockControlType = reader.readString(offsets[29]);
-  object.stockDeductionQty = reader.readDoubleOrNull(offsets[30]);
-  object.stockDeductionUnit = reader.readStringOrNull(offsets[31]);
-  object.stockOnHandFresh = reader.readDoubleOrNull(offsets[32]);
-  object.stockOnHandFrozen = reader.readDoubleOrNull(offsets[33]);
-  object.targetMarginPct = reader.readDoubleOrNull(offsets[34]);
-  object.unitType = reader.readString(offsets[35]);
-  object.vatGroup = reader.readStringOrNull(offsets[36]);
+  object.isBundle = reader.readBoolOrNull(offsets[12]);
+  object.isFeatured = reader.readBoolOrNull(offsets[13]);
+  object.itemId = reader.readString(offsets[14]);
+  object.name = reader.readString(offsets[15]);
+  object.onlineAllergens = reader.readStringOrNull(offsets[16]);
+  object.onlineCookingTips = reader.readStringOrNull(offsets[17]);
+  object.onlineDisplayName = reader.readStringOrNull(offsets[18]);
+  object.onlineImageUrl = reader.readStringOrNull(offsets[19]);
+  object.onlineIngredients = reader.readStringOrNull(offsets[20]);
+  object.onlineMinStockThreshold = reader.readDoubleOrNull(offsets[21]);
+  object.onlineSortOrder = reader.readLongOrNull(offsets[22]);
+  object.onlineWeightDescription = reader.readStringOrNull(offsets[23]);
+  object.parentStockItemId = reader.readStringOrNull(offsets[24]);
+  object.pluCode = reader.readLong(offsets[25]);
+  object.posDisplayName = reader.readStringOrNull(offsets[26]);
+  object.reorderLevel = reader.readDoubleOrNull(offsets[27]);
+  object.scaleItem = reader.readBoolOrNull(offsets[28]);
+  object.sellPrice = reader.readDoubleOrNull(offsets[29]);
+  object.stockControlType = reader.readString(offsets[30]);
+  object.stockDeductionQty = reader.readDoubleOrNull(offsets[31]);
+  object.stockDeductionUnit = reader.readStringOrNull(offsets[32]);
+  object.stockOnHandFresh = reader.readDoubleOrNull(offsets[33]);
+  object.stockOnHandFrozen = reader.readDoubleOrNull(offsets[34]);
+  object.targetMarginPct = reader.readDoubleOrNull(offsets[35]);
+  object.unitType = reader.readString(offsets[36]);
+  object.vatGroup = reader.readStringOrNull(offsets[37]);
   return object;
 }
 
@@ -450,11 +457,11 @@ P _cachedInventoryItemDeserializeProp<P>(
     case 12:
       return (reader.readBoolOrNull(offset)) as P;
     case 13:
-      return (reader.readString(offset)) as P;
+      return (reader.readBoolOrNull(offset)) as P;
     case 14:
       return (reader.readString(offset)) as P;
     case 15:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readString(offset)) as P;
     case 16:
       return (reader.readStringOrNull(offset)) as P;
     case 17:
@@ -464,38 +471,40 @@ P _cachedInventoryItemDeserializeProp<P>(
     case 19:
       return (reader.readStringOrNull(offset)) as P;
     case 20:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 21:
-      return (reader.readLongOrNull(offset)) as P;
-    case 22:
       return (reader.readStringOrNull(offset)) as P;
+    case 21:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 22:
+      return (reader.readLongOrNull(offset)) as P;
     case 23:
       return (reader.readStringOrNull(offset)) as P;
     case 24:
-      return (reader.readLong(offset)) as P;
+      return (reader.readStringOrNull(offset)) as P;
     case 25:
-      return (reader.readStringOrNull(offset)) as P;
+      return (reader.readLong(offset)) as P;
     case 26:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 27:
-      return (reader.readBoolOrNull(offset)) as P;
-    case 28:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 29:
-      return (reader.readString(offset)) as P;
-    case 30:
-      return (reader.readDoubleOrNull(offset)) as P;
-    case 31:
       return (reader.readStringOrNull(offset)) as P;
-    case 32:
+    case 27:
       return (reader.readDoubleOrNull(offset)) as P;
+    case 28:
+      return (reader.readBoolOrNull(offset)) as P;
+    case 29:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 30:
+      return (reader.readString(offset)) as P;
+    case 31:
+      return (reader.readDoubleOrNull(offset)) as P;
+    case 32:
+      return (reader.readStringOrNull(offset)) as P;
     case 33:
       return (reader.readDoubleOrNull(offset)) as P;
     case 34:
       return (reader.readDoubleOrNull(offset)) as P;
     case 35:
-      return (reader.readString(offset)) as P;
+      return (reader.readDoubleOrNull(offset)) as P;
     case 36:
+      return (reader.readString(offset)) as P;
+    case 37:
       return (reader.readStringOrNull(offset)) as P;
     default:
       throw IsarError('Unknown property with id $propertyId');
@@ -1623,6 +1632,34 @@ extension CachedInventoryItemQueryFilter on QueryBuilder<CachedInventoryItem,
     return QueryBuilder.apply(this, (query) {
       return query.addFilterCondition(FilterCondition.equalTo(
         property: r'isBestSeller',
+        value: value,
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBundleIsNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNull(
+        property: r'isBundle',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBundleIsNotNull() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(const FilterCondition.isNotNull(
+        property: r'isBundle',
+      ));
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterFilterCondition>
+      isBundleEqualTo(bool? value) {
+    return QueryBuilder.apply(this, (query) {
+      return query.addFilterCondition(FilterCondition.equalTo(
+        property: r'isBundle',
         value: value,
       ));
     });
@@ -4666,6 +4703,20 @@ extension CachedInventoryItemQuerySortBy
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsBundle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBundle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      sortByIsBundleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBundle', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
       sortByIsFeatured() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isFeatured', Sort.asc);
@@ -5201,6 +5252,20 @@ extension CachedInventoryItemQuerySortThenBy
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsBundle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBundle', Sort.asc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
+      thenByIsBundleDesc() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addSortBy(r'isBundle', Sort.desc);
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QAfterSortBy>
       thenByIsFeatured() {
     return QueryBuilder.apply(this, (query) {
       return query.addSortBy(r'isFeatured', Sort.asc);
@@ -5639,6 +5704,13 @@ extension CachedInventoryItemQueryWhereDistinct
   }
 
   QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
+      distinctByIsBundle() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addDistinctBy(r'isBundle');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, CachedInventoryItem, QDistinct>
       distinctByIsFeatured() {
     return QueryBuilder.apply(this, (query) {
       return query.addDistinctBy(r'isFeatured');
@@ -5912,6 +5984,13 @@ extension CachedInventoryItemQueryProperty
       isBestSellerProperty() {
     return QueryBuilder.apply(this, (query) {
       return query.addPropertyName(r'isBestSeller');
+    });
+  }
+
+  QueryBuilder<CachedInventoryItem, bool?, QQueryOperations>
+      isBundleProperty() {
+    return QueryBuilder.apply(this, (query) {
+      return query.addPropertyName(r'isBundle');
     });
   }
 

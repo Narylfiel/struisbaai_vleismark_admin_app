@@ -36,7 +36,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
   final Set<String> _generatingPayslipIds = <String>{};
   bool _isGeneratingAllPayslips = false;
 
-  String _selectedPaymentMethod = 'bank_eft';
+  static const double kStandardHoursPerDay = 7.5;
 
   @override
   void initState() {
@@ -56,7 +56,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .maybeSingle();
       
       final entriesReq = await _client.from('payroll_entries')
-          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account)')
+          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account, payment_method)')
           .eq('pay_period_start', startStr)
           .eq('pay_period_end', endStr);
           
@@ -156,6 +156,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .lte('holiday_date', endStr);
       
       final phDates = (phResponse as List).map((row) => row['holiday_date'].toString()).toSet();
+      debugPrint('PH_CRITICAL phResponse_len=${(phResponse as List).length} phDates_len=${phDates.length} phDates=$phDates startStr=$startStr endStr=$endStr');
 
       // Ensure payroll_periods exists or create a draft
       double sumGross = 0;
@@ -167,8 +168,15 @@ class _PayrollScreenState extends State<PayrollScreen> {
       for (var staff in staffList) {
         final staffId = staff['id'] as String;
         final employmentType = staff['employment_type'] as String? ?? 'hourly';
+        final staffPaymentMethod =
+            staff['payment_method'] as String? ?? 'bank_eft';
         final monthlySalary = (staff['monthly_salary'] as num?)?.toDouble() ?? 0.0;
         final hourlyRate = (staff['hourly_rate'] as num?)?.toDouble() ?? 0.0;
+
+        double annualDays = 0.0;
+        double sickDays = 0.0;
+        double familyDays = 0.0;
+        double unpaidDays = 0.0;
         
         // 2a. Timecards
         final tcResponse = await TimecardRepository(client: _client).getForPeriod(
@@ -217,7 +225,11 @@ class _PayrollScreenState extends State<PayrollScreen> {
             
             final dt = DateTime.parse(tc['shift_date']);
             tc['_is_sun'] = dt.weekday == DateTime.sunday;
-            tc['_is_ph'] = phDates.contains(tc['shift_date']);
+            final shiftDateStr = tc['shift_date'].toString().substring(0, 10);
+            if (shiftDateStr == '2026-04-27' || shiftDateStr == '2026-04-03') {
+              debugPrint('PH_MATCH shiftDateStr=$shiftDateStr contains=${phDates.contains(shiftDateStr)} phDates=$phDates');
+            }
+            tc['_is_ph'] = phDates.contains(shiftDateStr);
           }
 
           if (weeklyTotal > 45) {
@@ -284,6 +296,43 @@ class _PayrollScreenState extends State<PayrollScreen> {
           sunPay = totalSunHrs * hourlyRate * 2.0;
           phPay = totalPhHrs * hourlyRate * 1.5;
           grossPay = regPay + otPay + sunPay + phPay;
+
+          // 2e2. Leave pay (hourly workers only)
+          final leaveHistory = await _client.from('leave_history')
+              .select('leave_type, days_taken')
+              .eq('staff_id', staffId)
+              .gte('start_date', startStr)
+              .lte('end_date', endStr);
+
+          annualDays = 0;
+          sickDays = 0;
+          familyDays = 0;
+          unpaidDays = 0;
+
+          for (final leave in leaveHistory as List) {
+            final type = leave['leave_type'] as String?;
+            final days = (leave['days_taken'] as num?)?.toDouble() ?? 0;
+            switch (type) {
+              case 'annual':
+                annualDays += days;
+                break;
+              case 'sick':
+                sickDays += days;
+                break;
+              case 'family_responsibility':
+                familyDays += days;
+                break;
+              case 'unpaid':
+                unpaidDays += days;
+                break;
+            }
+          }
+
+          // Add paid leave to gross pay (hourly_rate * 7.5 hours per day)
+          grossPay += annualDays * hourlyRate * kStandardHoursPerDay;
+          grossPay += sickDays * hourlyRate * kStandardHoursPerDay;
+          grossPay += familyDays * hourlyRate * kStandardHoursPerDay;
+          // unpaidDays = R0 (no pay added)
         }
 
         // 2f. UIF
@@ -301,8 +350,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'meat_purchase')
-            .inFilter('status', ['pending', 'partial', 'owing', 'deducted'])
-            .gte('deduct_from', startStr)
+            .inFilter('status', ['pending', 'owing'])
             .lte('deduct_from', endStr);
         double meatDed = (meatReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
@@ -311,8 +359,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'salary_advance')
-            .inFilter('status', ['pending', 'owing', 'deducted'])
-            .gte('deduct_from', startStr)
+            .inFilter('status', ['pending', 'owing'])
             .lte('deduct_from', endStr);
         double advDed = (advReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
@@ -347,6 +394,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
           'pay_period_start': startStr,
           'pay_period_end': endStr,
           'pay_frequency': staff['pay_frequency'] ?? 'monthly',
+          'payment_method': staffPaymentMethod,
           'gross_pay': grossPay,
           'deductions': totalDed,
           'net_pay': netPay,
@@ -359,6 +407,11 @@ class _PayrollScreenState extends State<PayrollScreen> {
           'overtime_pay': otPay,
           'sunday_pay': sunPay,
           'public_holiday_pay': phPay,
+          'annual_leave_days': annualDays,
+          'sick_leave_days': sickDays,
+          'family_leave_days': familyDays,
+          'unpaid_leave_days': unpaidDays,
+          'hourly_rate': hourlyRate,
           'uif_employee': uifEmployee,
           'uif_employer': uifEmployer,
           'advance_deduction': advDed,
@@ -408,7 +461,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
       // Reload from DB to show accurate saved data
       final saved = await _client
           .from('payroll_entries')
-          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account)')
+          .select('*, staff_profiles!payroll_entries_staff_id_fkey(full_name, hourly_rate, monthly_salary, employment_type, is_active, date_of_birth, uif_exempt, id_number, role, phone, hire_date, bank_name, bank_account, payment_method)')
           .eq('pay_period_start', startStr)
           .eq('pay_period_end', endStr)
           .order('full_name', referencedTable: 'staff_profiles');
@@ -622,49 +675,133 @@ class _PayrollScreenState extends State<PayrollScreen> {
   Future<void> _markAsPaid() async {
     final startStr = _periodStart!.toIso8601String().substring(0, 10);
     final endStr = _periodEnd!.toIso8601String().substring(0, 10);
-    
+    final approvedEntries = _calculatedEntries
+        .where((e) => e['status'] == 'approved')
+        .toList();
+    if (approvedEntries.isEmpty) return;
+
+    final Map<String, String> selectedMethods = {};
+    for (final entry in approvedEntries) {
+      final entryId = entry['id']?.toString();
+      if (entryId == null || entryId.isEmpty) continue;
+      final entryMethod = entry['payment_method']?.toString();
+      final staff = entry['staff_profiles'];
+      final staffMethod = staff is Map<String, dynamic>
+          ? staff['payment_method']?.toString()
+          : null;
+      selectedMethods[entryId] = (entryMethod == 'cash' || entryMethod == 'bank_eft')
+          ? entryMethod!
+          : ((staffMethod == 'cash' || staffMethod == 'bank_eft')
+              ? staffMethod!
+              : 'bank_eft');
+    }
+
+    final totalToPay = approvedEntries.fold<double>(
+      0.0,
+      (sum, entry) => sum + ((entry['net_pay'] as num?)?.toDouble() ?? 0.0),
+    );
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (context, setDialogState) {
           return AlertDialog(
-            title: const Text('Mark as Paid'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Payment Method:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                RadioListTile<String>(
-                  title: const Text('Cash'),
-                  value: 'cash',
-                  groupValue: _selectedPaymentMethod,
-                  onChanged: (value) {
-                    setDialogState(() => _selectedPaymentMethod = value!);
-                    setState(() => _selectedPaymentMethod = value!);
-                  },
-                  contentPadding: EdgeInsets.zero,
-                ),
-                RadioListTile<String>(
-                  title: const Text('Bank EFT'),
-                  value: 'bank_eft',
-                  groupValue: _selectedPaymentMethod,
-                  onChanged: (value) {
-                    setDialogState(() => _selectedPaymentMethod = value!);
-                    setState(() => _selectedPaymentMethod = value!);
-                  },
-                  contentPadding: EdgeInsets.zero,
-                ),
-                const SizedBox(height: 16),
-                const Text('Mark this payroll as paid?\n\nThis cannot be undone.'),
-              ],
+            title: const Text('Mark Payroll as Paid'),
+            content: SizedBox(
+              width: 760,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          flex: 4,
+                          child: Text('Staff Member',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Text('Net Pay',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                        Expanded(
+                          flex: 3,
+                          child: Text('Method',
+                              style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  Flexible(
+                    child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: approvedEntries.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (_, i) {
+                        final entry = approvedEntries[i];
+                        final entryId = entry['id']?.toString() ?? '';
+                        final staff = entry['staff_profiles'];
+                        final staffName = staff is Map<String, dynamic>
+                            ? (staff['full_name']?.toString() ?? 'Unknown Staff')
+                            : 'Unknown Staff';
+                        final netPay =
+                            (entry['net_pay'] as num?)?.toDouble() ?? 0.0;
+                        final currentMethod =
+                            selectedMethods[entryId] ?? 'bank_eft';
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 6),
+                          child: Row(
+                            children: [
+                              Expanded(flex: 4, child: Text(staffName)),
+                              Expanded(
+                                flex: 2,
+                                child: Text('R${netPay.toStringAsFixed(2)}'),
+                              ),
+                              Expanded(
+                                flex: 3,
+                                child: SegmentedButton<String>(
+                                  segments: const [
+                                    ButtonSegment<String>(
+                                        value: 'cash', label: Text('Cash')),
+                                    ButtonSegment<String>(
+                                        value: 'bank_eft',
+                                        label: Text('EFT')),
+                                  ],
+                                  selected: {currentMethod},
+                                  onSelectionChanged: (selection) {
+                                    final selected = selection.first;
+                                    setDialogState(() {
+                                      selectedMethods[entryId] = selected;
+                                    });
+                                  },
+                                  showSelectedIcon: false,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Total: R${totalToPay.toStringAsFixed(2)}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
             ),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
               FilledButton(
                 style: FilledButton.styleFrom(backgroundColor: AppColors.success),
                 onPressed: () => Navigator.pop(ctx, true), 
-                child: const Text('Mark as Paid')
+                child: const Text('Confirm Payment')
               ),
             ],
           );
@@ -677,57 +814,53 @@ class _PayrollScreenState extends State<PayrollScreen> {
 
     try {
       final currentUserId = AuthService().currentStaffId;
-      final periodNetPay = _calculatedEntries.fold<double>(
-        0.0,
-        (sum, entry) => sum + ((entry['net_pay'] as num?)?.toDouble() ?? 0.0),
-      );
-      final periodDescription = (_periodRecord?['description']?.toString().trim().isNotEmpty ?? false)
-          ? _periodRecord!['description'].toString().trim()
-          : '$startStr to $endStr';
+      final paidAt = DateTime.now().toIso8601String();
+      final periodDescription =
+          (_periodRecord?['description']?.toString().trim().isNotEmpty ??
+                  false)
+              ? _periodRecord!['description'].toString().trim()
+              : '$startStr to $endStr';
 
-      await _client.from('payroll_entries')
-        .update({
+      for (final entry in approvedEntries) {
+        final entryId = entry['id']?.toString();
+        if (entryId == null || entryId.isEmpty) continue;
+        final selectedMethod = selectedMethods[entryId] ?? 'bank_eft';
+        final staff = entry['staff_profiles'];
+        final staffName = staff is Map<String, dynamic>
+            ? (staff['full_name']?.toString() ?? 'Unknown Staff')
+            : 'Unknown Staff';
+        final netPay = (entry['net_pay'] as num?)?.toDouble() ?? 0.0;
+
+        await _client.from('payroll_entries').update({
           'status': 'paid',
-          'paid_at': DateTime.now().toIso8601String(),
-        })
-        .eq('pay_period_start', startStr)
-        .eq('pay_period_end', endStr)
-        .eq('status', 'approved');
+          'paid_at': paidAt,
+          'payment_method': selectedMethod,
+        }).eq('id', entryId);
+
+        if (currentUserId != null && netPay > 0) {
+          final creditCode = selectedMethod == 'cash' ? '1000' : '1050';
+          final creditName = selectedMethod == 'cash'
+              ? 'Cash/Bank'
+              : 'Bank Account — Cheque';
+          await LedgerRepository(client: _client).createDoubleEntry(
+            date: DateTime.now(),
+            debitAccountCode: '6000',
+            debitAccountName: 'Salaries & Wages',
+            creditAccountCode: creditCode,
+            creditAccountName: creditName,
+            amount: netPay,
+            description: 'Salary - $staffName - $periodDescription',
+            referenceType: 'payroll',
+            referenceId: entryId,
+            recordedBy: currentUserId,
+          );
+        }
+      }
 
       await _client.from('payroll_periods')
         .update({'status': 'paid'})
         .eq('start_date', startStr)
         .eq('end_date', endStr);
-
-      if (currentUserId != null && periodNetPay > 0) {
-        // Ledger post is fatal — failure surfaces to the outer catch and blocks paid status.
-        final periodRow = await _client
-            .from('payroll_periods')
-            .select('id')
-            .eq('start_date', startStr)
-            .eq('end_date', endStr)
-            .maybeSingle();
-        final payrollPeriodId = periodRow?['id']?.toString();
-        if (payrollPeriodId != null && payrollPeriodId.isNotEmpty) {
-          final debitCode = '6000';
-          final debitName = 'Salaries & Wages';
-          final creditCode = _selectedPaymentMethod == 'cash' ? '1000' : '1050';
-          final creditName = _selectedPaymentMethod == 'cash' ? 'Cash/Bank' : 'Bank Account — Cheque';
-          final paymentMethodLabel = _selectedPaymentMethod == 'cash' ? 'Cash' : 'Bank EFT';
-          await LedgerRepository(client: _client).createDoubleEntry(
-            date: DateTime.now(),
-            debitAccountCode: debitCode,
-            debitAccountName: debitName,
-            creditAccountCode: creditCode,
-            creditAccountName: creditName,
-            amount: periodNetPay,
-            description: 'Payroll ($paymentMethodLabel): $periodDescription',
-            referenceType: 'payroll',
-            referenceId: payrollPeriodId,
-            recordedBy: currentUserId,
-          );
-        }
-      }
       
       await _loadExistingPeriod();
 

@@ -286,13 +286,7 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         }
         return;
       }
-      final selectedStaff = _staffList.firstWhere(
-        (s) => s['id'] == selectedStaffId,
-        orElse: () => <String, dynamic>{},
-      );
-      final payFrequency =
-          selectedStaff['pay_frequency'] as String?;
-      final deductFrom = _calculateDeductionDate(selectedDate, payFrequency)
+      final deductFrom = _calculateDeductionDate(selectedDate)
           .toIso8601String()
           .substring(0, 10);
 
@@ -364,16 +358,9 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         'reviewed_at': DateTime.now().toIso8601String(),
       }).eq('id', request['id']);
 
-      final staffPayData = await _client
-          .from('staff_profiles')
-          .select('pay_frequency')
-          .eq('id', request['staff_id'].toString())
-          .single();
-      final advancePayFreq =
-          staffPayData['pay_frequency'] as String?;
       final advanceGrantedDate = DateTime.now();
       final advanceDeductFrom =
-          _calculateDeductionDate(advanceGrantedDate, advancePayFreq)
+          _calculateDeductionDate(advanceGrantedDate)
               .toIso8601String()
               .substring(0, 10);
 
@@ -557,9 +544,6 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
     );
     final staffName =
         staffData['full_name'] as String? ?? 'Unknown';
-    final payFrequency =
-        staffData['pay_frequency'] as String?;
-
     DateTime initialDate = credit.grantedDate;
 
     final picked = await showDatePicker(
@@ -567,15 +551,13 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
       initialDate: initialDate,
       firstDate: DateTime(2020),
       lastDate: DateTime.now().add(const Duration(days: 365)),
-      helpText: payFrequency == 'weekly'
-          ? 'Select any date in the target pay week'
-          : 'Select any date in the target month',
+      helpText: 'Select any date in the target month',
     );
 
     if (picked == null || !mounted) return;
 
     final newDeductFrom =
-        _calculateDeductionDate(picked, payFrequency)
+        _calculateDeductionDate(picked)
             .toIso8601String()
             .substring(0, 10);
 
@@ -653,21 +635,10 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
         '${months[date.month]} ${date.year}';
   }
 
-  DateTime _calculateDeductionDate(
-      DateTime grantedDate, String? payFrequency) {
-    if (payFrequency == 'weekly') {
-      // Next Saturday. If granted ON Saturday, use following Saturday.
-      final dow = grantedDate.weekday; // 1=Mon ... 6=Sat, 7=Sun
-      final daysToSat = dow == 6 ? 7 : (6 - dow);
-      return DateTime(
-        grantedDate.year,
-        grantedDate.month,
-        grantedDate.day,
-      ).add(Duration(days: daysToSat));
-    } else {
-      // Monthly: first day of granted month
-      return DateTime(grantedDate.year, grantedDate.month, 1);
-    }
+  DateTime _calculateDeductionDate(DateTime grantedDate) {
+    // Last day of the month the credit was granted.
+    // Works for all pay frequencies (weekly no longer used).
+    return DateTime(grantedDate.year, grantedDate.month + 1, 0);
   }
 
   @override

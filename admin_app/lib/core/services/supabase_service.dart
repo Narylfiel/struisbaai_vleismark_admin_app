@@ -8,6 +8,10 @@ class SupabaseService {
     await Supabase.initialize(
       url: AdminConfig.supabaseUrl,
       anonKey: AdminConfig.supabaseAnonKey,
+      authOptions: FlutterAuthClientOptions(
+        authFlowType: AuthFlowType.implicit,
+        autoRefreshToken: true,
+      ),
     );
   }
 
