@@ -6,6 +6,14 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 
+const String _kAfAnnouncementHelper =
+    'Optional — shown to users when app language is Afrikaans';
+
+String? _announcementDbNullable(String value) {
+  final t = value.trim();
+  return t.isEmpty ? null : t;
+}
+
 class AnnouncementScreen extends StatefulWidget {
   const AnnouncementScreen(
       {super.key, this.embedded = false});
@@ -66,10 +74,16 @@ class _ComposeTab extends StatefulWidget {
   State<_ComposeTab> createState() => _ComposeTabState();
 }
 
-class _ComposeTabState extends State<_ComposeTab> {
+class _ComposeTabState extends State<_ComposeTab>
+    with SingleTickerProviderStateMixin {
   final _client = SupabaseService.client;
   final _titleCtrl = TextEditingController();
+  final _titleAfCtrl = TextEditingController();
   final _bodyCtrl = TextEditingController();
+  final _bodyAfCtrl = TextEditingController();
+  final _summaryAfCtrl = TextEditingController();
+  late TabController _contentLangTab;
+
   String _audience = 'all';
   DateTime? _endDate;
   File? _pickedImage;
@@ -85,9 +99,19 @@ class _ComposeTabState extends State<_ComposeTab> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _contentLangTab = TabController(length: 2, vsync: this);
+  }
+
+  @override
   void dispose() {
+    _contentLangTab.dispose();
     _titleCtrl.dispose();
+    _titleAfCtrl.dispose();
     _bodyCtrl.dispose();
+    _bodyAfCtrl.dispose();
+    _summaryAfCtrl.dispose();
     super.dispose();
   }
 
@@ -137,6 +161,9 @@ class _ComposeTabState extends State<_ComposeTab> {
       await _client.from('announcements').insert({
         'title': title,
         'content': body,
+        'title_af': _announcementDbNullable(_titleAfCtrl.text),
+        'content_af': _announcementDbNullable(_bodyAfCtrl.text),
+        'summary_af': _announcementDbNullable(_summaryAfCtrl.text),
         'announcement_type': 'general',
         'priority': 'normal',
         'start_date': DateTime.now().toIso8601String().substring(0, 10),
@@ -149,7 +176,10 @@ class _ComposeTabState extends State<_ComposeTab> {
 
       if (mounted) {
         _titleCtrl.clear();
+        _titleAfCtrl.clear();
         _bodyCtrl.clear();
+        _bodyAfCtrl.clear();
+        _summaryAfCtrl.clear();
         setState(() {
           _pickedImage = null;
           _endDate = null;
@@ -216,30 +246,104 @@ class _ComposeTabState extends State<_ComposeTab> {
             ]),
           ),
 
-          // Title
-          TextFormField(
-            controller: _titleCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Title *',
-              hintText:
-                  'e.g. Weekend Special — Rump Steak',
-              border: OutlineInputBorder(),
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.border),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ),
-          const SizedBox(height: 16),
-
-          // Body
-          TextField(
-            controller: _bodyCtrl,
-            maxLines: 6,
-            maxLength: 1500,
-            decoration: const InputDecoration(
-              labelText: 'Message *',
-              hintText:
-                  'Tell your customers about the '
-                  'special or announcement...',
-              border: OutlineInputBorder(),
-              alignLabelWithHint: true,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TabBar(
+                  controller: _contentLangTab,
+                  labelColor: AppColors.primary,
+                  unselectedLabelColor: AppColors.textSecondary,
+                  tabs: const [
+                    Tab(text: 'English'),
+                    Tab(text: 'Afrikaans'),
+                  ],
+                ),
+                SizedBox(
+                  height: 320,
+                  child: TabBarView(
+                    controller: _contentLangTab,
+                    physics: const NeverScrollableScrollPhysics(),
+                    children: [
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: _titleCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Title *',
+                                hintText:
+                                    'e.g. Weekend Special — Rump Steak',
+                                border: OutlineInputBorder(),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _bodyCtrl,
+                              maxLines: 8,
+                              maxLength: 1500,
+                              decoration: const InputDecoration(
+                                labelText: 'Message *',
+                                hintText:
+                                    'Tell your customers about the '
+                                    'special or announcement...',
+                                border: OutlineInputBorder(),
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SingleChildScrollView(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: _titleAfCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Title (Afrikaans)',
+                                border: OutlineInputBorder(),
+                                helperText: _kAfAnnouncementHelper,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _bodyAfCtrl,
+                              maxLines: 8,
+                              maxLength: 1500,
+                              decoration: const InputDecoration(
+                                labelText: 'Message (Afrikaans)',
+                                hintText: 'Mapped to content_af in the database',
+                                border: OutlineInputBorder(),
+                                helperText: _kAfAnnouncementHelper,
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            TextField(
+                              controller: _summaryAfCtrl,
+                              maxLines: 2,
+                              decoration: const InputDecoration(
+                                labelText: 'Summary (Afrikaans, optional)',
+                                border: OutlineInputBorder(),
+                                helperText: _kAfAnnouncementHelper,
+                                alignLabelWithHint: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
           const SizedBox(height: 16),

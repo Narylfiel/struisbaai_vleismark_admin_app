@@ -100,8 +100,14 @@ extension PromotionTypeExt on PromotionType {
 /// Promotion model — matches DB: promotions table.
 class Promotion extends BaseModel {
   final String name;
+  /// DB: `name_af` — Afrikaans promotion title (optional).
+  final String? nameAf;
   final String? description;
+  /// DB: `description_af`
+  final String? descriptionAf;
   final String? termsAndConditions;
+  /// DB: `terms_af`
+  final String? termsAf;
   final PromotionStatus status;
   final PromotionType promotionType;
   /// JSON structure depends on promotion_type (e.g. bogo: buy_quantity, get_quantity).
@@ -128,8 +134,11 @@ class Promotion extends BaseModel {
   Promotion({
     required super.id,
     required this.name,
+    this.nameAf,
     this.description,
+    this.descriptionAf,
     this.termsAndConditions,
+    this.termsAf,
     this.status = PromotionStatus.draft,
     required this.promotionType,
     this.triggerConfig = const {},
@@ -172,8 +181,11 @@ class Promotion extends BaseModel {
     return {
       'id': id,
       'name': name,
+      'name_af': nameAf,
       'description': description,
+      'description_af': descriptionAf,
       'terms_and_conditions': termsAndConditions,
+      'terms_af': termsAf,
       'status': status.dbValue,
       'promotion_type': promotionType.dbValue,
       'trigger_config': triggerConfig,
@@ -204,8 +216,11 @@ class Promotion extends BaseModel {
     return Promotion(
       id: json['id'] as String,
       name: json['name'] as String? ?? '',
+      nameAf: json['name_af'] as String?,
       description: json['description'] as String?,
+      descriptionAf: json['description_af'] as String?,
       termsAndConditions: json['terms_and_conditions'] as String?,
+      termsAf: json['terms_af'] as String?,
       status: PromotionStatusExt.fromDb(json['status'] as String?),
       promotionType: PromotionTypeExt.fromDb(json['promotion_type'] as String?),
       triggerConfig: (json['trigger_config'] is Map<String, dynamic>) ? json['trigger_config'] as Map<String, dynamic> : (json['trigger_config'] != null ? Map<String, dynamic>.from(json['trigger_config'] as Map) : {}),
@@ -239,7 +254,11 @@ class Promotion extends BaseModel {
   Promotion copyWith({
     String? id,
     String? name,
+    String? nameAf,
     String? description,
+    String? descriptionAf,
+    String? termsAndConditions,
+    String? termsAf,
     PromotionStatus? status,
     PromotionType? promotionType,
     Map<String, dynamic>? triggerConfig,
@@ -261,7 +280,11 @@ class Promotion extends BaseModel {
     return Promotion(
       id: id ?? this.id,
       name: name ?? this.name,
+      nameAf: nameAf ?? this.nameAf,
       description: description ?? this.description,
+      descriptionAf: descriptionAf ?? this.descriptionAf,
+      termsAndConditions: termsAndConditions ?? this.termsAndConditions,
+      termsAf: termsAf ?? this.termsAf,
       status: status ?? this.status,
       promotionType: promotionType ?? this.promotionType,
       triggerConfig: triggerConfig ?? this.triggerConfig,

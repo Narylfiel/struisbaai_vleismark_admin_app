@@ -34,6 +34,22 @@ import 'package:admin_app/core/services/supabase_service.dart';
 /// Shrinkage status levels
 enum ShrinkageStatus { normal, warning, critical, unanalyzable }
 
+const Map<String, double> _defaultBaselineLossForFactory = {
+  'beef': 5.0,
+  'beef_cuts': 5.0,
+  'bone_in': 8.0,
+  'pork': 5.0,
+  'pork_cuts': 5.0,
+  'chicken': 4.0,
+  'poultry': 4.0,
+  'processed': 2.0,
+  'burger': 2.0,
+  'mince': 2.0,
+  'sausage': 2.0,
+  'packaging': 1.0,
+  'default': 5.0,
+};
+
 /// DTO for product-level shrinkage data
 class ProductShrinkage {
   final String productId;
@@ -79,7 +95,7 @@ class ProductShrinkage {
     DateTime windowEnd, {
     double absoluteThreshold = 0.3,
     double percentThreshold = 5.0,
-    Map<String, double> baselineByCategory = _defaultBaselineLoss,
+    Map<String, double> baselineByCategory = _defaultBaselineLossForFactory,
   }) {
     final expected = (row['expected_qty'] as num?)?.toDouble() ?? 0.0;
     final actual = (row['actual_qty'] as num?)?.toDouble() ?? 0.0;
@@ -645,7 +661,7 @@ class ShrinkageDetectionService {
       final id = row['item_id']?.toString();
       if (id == null) continue;
       
-      final qty = -(row['quantity'] as num?)?.toDouble() ?? 0.0;
+      final qty = -((row['quantity'] as num?)?.toDouble() ?? 0.0);
       final inventoryData = row['inventory_items'] as Map<String, dynamic>?;
       final name = inventoryData?['name']?.toString() ?? 'Unknown';
       

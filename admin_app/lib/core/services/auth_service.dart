@@ -36,6 +36,8 @@ class AuthService extends BaseService {
   String? get currentStaffId => _currentStaffId;
   String? get currentStaffName => _currentStaffName;
   String? get currentRole => _currentRole;
+  _AuthSessionUser? get currentUser =>
+      _currentStaffId == null ? null : _AuthSessionUser(id: _currentStaffId!);
   bool get isLoggedIn => _currentStaffId != null;
 
   /// Reusable audit helper: current staff id for completedBy, recorded_by, created_by. Returns empty string if not logged in.
@@ -389,4 +391,9 @@ class AuthService extends BaseService {
     }
     return super.handleAuthError(error);
   }
+}
+
+class _AuthSessionUser {
+  final String id;
+  const _AuthSessionUser({required this.id});
 }

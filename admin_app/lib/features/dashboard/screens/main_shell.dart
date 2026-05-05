@@ -21,6 +21,10 @@ import 'package:admin_app/features/bookkeeping/screens/invoice_list_screen.dart'
 import 'package:admin_app/features/analytics/screens/shrinkage_screen.dart';
 import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
 import 'package:admin_app/features/customers/screens/customer_list_screen.dart';
+import 'package:admin_app/features/loyalty/screens/tier_config_screen.dart';
+import 'package:admin_app/features/delivery/screens/delivery_window_screen.dart';
+import 'package:admin_app/features/delivery/screens/delivery_zone_screen.dart';
+import 'package:admin_app/features/delivery/screens/delivery_settings_screen.dart';
 import 'package:admin_app/features/audit/screens/audit_log_screen.dart';
 import 'package:admin_app/features/settings/screens/business_settings_screen.dart';
 import 'package:admin_app/features/transactions/screens/transaction_list_screen.dart';
@@ -159,9 +163,33 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           locked: !ps.can(Permissions.manageCustomers),
         ),
         _NavItem(
+          icon: Icons.emoji_events,
+          label: 'Tier Configuration',
+          screen: const TierConfigScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
           icon: Icons.shopping_bag,
           label: 'Online Orders',
           screen: const UnifiedOrdersDashboardScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
+          icon: Icons.schedule,
+          label: 'Delivery Windows',
+          screen: const DeliveryWindowScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
+          icon: Icons.map,
+          label: 'Delivery Zones',
+          screen: const DeliveryZoneScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
+          icon: Icons.tune,
+          label: 'Delivery Settings',
+          screen: const DeliverySettingsScreen(),
           locked: !ps.can(Permissions.manageCustomers),
         ),
         _NavItem(

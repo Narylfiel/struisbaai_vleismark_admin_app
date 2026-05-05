@@ -444,7 +444,11 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
     final copy = Promotion(
       id: '',
       name: '${p.name} (copy)',
+      nameAf: p.nameAf,
       description: p.description,
+      descriptionAf: p.descriptionAf,
+      termsAndConditions: p.termsAndConditions,
+      termsAf: p.termsAf,
       status: PromotionStatus.draft,
       promotionType: p.promotionType,
       triggerConfig: Map.from(p.triggerConfig),

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../shared/widgets/loading_widget.dart';
 import '../blocs/product_suggestion/product_suggestion_bloc.dart';
 import '../widgets/add_suggestion_dialog.dart';
 import '../widgets/suggestion_section_widget.dart';
@@ -60,7 +59,9 @@ class _ProductSuggestionManagerScreenState extends State<ProductSuggestionManage
       body: BlocBuilder<ProductSuggestionBloc, ProductSuggestionState>(
         builder: (context, state) {
           if (state is ProductSuggestionLoading) {
-            return const LoadingWidget();
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
           }
 
           if (state is ProductSuggestionError) {

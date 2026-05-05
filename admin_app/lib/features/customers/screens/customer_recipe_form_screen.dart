@@ -7,6 +7,10 @@ import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/features/customers/models/customer_recipe.dart';
 import 'package:admin_app/features/customers/services/customer_recipe_repository.dart';
 
+/// Shown under optional Afrikaans CMS fields.
+const String kAfCmsFieldHelper =
+    'Optional — shown to users when app language is Afrikaans';
+
 /// Add / Edit screen for a customer recipe.
 /// [existingRecipe] is null when creating, non-null when editing.
 class CustomerRecipeFormScreen extends StatefulWidget {
@@ -19,17 +23,24 @@ class CustomerRecipeFormScreen extends StatefulWidget {
       _CustomerRecipeFormScreenState();
 }
 
-class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
+class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen>
+    with SingleTickerProviderStateMixin {
   final _repo = CustomerRecipeRepository();
   final _auth = AuthService();
   final _formKey = GlobalKey<FormState>();
 
   // ── Controllers ──────────────────────────────────────────
   final _titleCtrl = TextEditingController();
+  final _titleAfCtrl = TextEditingController();
   final _descriptionCtrl = TextEditingController();
+  final _descriptionAfCtrl = TextEditingController();
+  final _instructionsCtrl = TextEditingController();
+  final _instructionsAfCtrl = TextEditingController();
   final _servingSizeCtrl = TextEditingController(text: '4');
   final _prepTimeCtrl = TextEditingController(text: '0');
   final _cookTimeCtrl = TextEditingController(text: '0');
+
+  late TabController _langTabController;
 
   String _status = 'draft';
   bool _saving = false;
@@ -41,6 +52,7 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
 
   // ── Steps ────────────────────────────────────────────────
   final List<TextEditingController> _stepControllers = [];
+  final List<TextEditingController> _stepAfControllers = [];
 
   // ── Categories ───────────────────────────────────────────
   List<CustomerRecipeCategoryType> _categoryTypes = [];
@@ -58,6 +70,7 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
   @override
   void initState() {
     super.initState();
+    _langTabController = TabController(length: 2, vsync: this);
     _initForm();
     _loadCategories();
   }
@@ -66,7 +79,11 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
     final r = widget.existingRecipe;
     if (r != null) {
       _titleCtrl.text = r.title;
+      _titleAfCtrl.text = r.titleAf ?? '';
       _descriptionCtrl.text = r.description ?? '';
+      _descriptionAfCtrl.text = r.descriptionAf ?? '';
+      _instructionsCtrl.text = r.instructions ?? '';
+      _instructionsAfCtrl.text = r.instructionsAf ?? '';
       _servingSizeCtrl.text = r.servingSize.toString();
       _prepTimeCtrl.text = r.prepTimeMinutes.toString();
       _cookTimeCtrl.text = r.cookTimeMinutes.toString();
@@ -75,11 +92,19 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
 
       for (final ing in r.ingredients) {
         final ctrl = TextEditingController(text: ing.ingredientText);
-        _ingredients.add({'controller': ctrl, 'optional': ing.isOptional});
+        final afCtrl =
+            TextEditingController(text: ing.ingredientTextAf ?? '');
+        _ingredients.add({
+          'controller': ctrl,
+          'controllerAf': afCtrl,
+          'optional': ing.isOptional
+        });
       }
       for (final step in r.steps) {
-        _stepControllers.add(
-            TextEditingController(text: step.instructionText));
+        _stepControllers
+            .add(TextEditingController(text: step.instructionText));
+        _stepAfControllers
+            .add(TextEditingController(text: step.instructionTextAf ?? ''));
       }
       for (final opt in r.categoryAssignments) {
         _selectedOptionIds.add(opt.id);
@@ -107,6 +132,7 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
     setState(() {
       _ingredients.add({
         'controller': TextEditingController(),
+        'controllerAf': TextEditingController(),
         'optional': false,
       });
     });
@@ -114,19 +140,29 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
 
   void _removeIngredientRow(int index) {
     final ctrl = _ingredients[index]['controller'] as TextEditingController;
+    final afCtrl =
+        _ingredients[index]['controllerAf'] as TextEditingController;
     ctrl.dispose();
+    afCtrl.dispose();
     setState(() => _ingredients.removeAt(index));
   }
 
   // ── Step helpers ──────────────────────────────────────────
 
   void _addStepRow() {
-    setState(() => _stepControllers.add(TextEditingController()));
+    setState(() {
+      _stepControllers.add(TextEditingController());
+      _stepAfControllers.add(TextEditingController());
+    });
   }
 
   void _removeStepRow(int index) {
     _stepControllers[index].dispose();
-    setState(() => _stepControllers.removeAt(index));
+    _stepAfControllers[index].dispose();
+    setState(() {
+      _stepControllers.removeAt(index);
+      _stepAfControllers.removeAt(index);
+    });
   }
 
   // ── Image helpers ─────────────────────────────────────────
@@ -189,10 +225,14 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
 
     final ingredientLines =
         _ingredients.map((i) => (i['controller'] as TextEditingController).text).toList();
+    final ingredientLinesAf =
+        _ingredients.map((i) => (i['controllerAf'] as TextEditingController).text).toList();
     final ingredientOptional =
         _ingredients.map((i) => i['optional'] as bool).toList();
     final stepInstructions =
         _stepControllers.map((c) => c.text).toList();
+    final stepInstructionsAf =
+        _stepAfControllers.map((c) => c.text).toList();
 
     setState(() => _saving = true);
     try {
@@ -204,28 +244,46 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
           recipeId: recipeId,
           title: title,
           description: description.isEmpty ? null : description,
+          titleAf: CustomerRecipeRepository.dbNullableText(_titleAfCtrl.text),
+          descriptionAf:
+              CustomerRecipeRepository.dbNullableText(_descriptionAfCtrl.text),
+          instructionsText:
+              CustomerRecipeRepository.dbNullableText(_instructionsCtrl.text),
+          instructionsAf:
+              CustomerRecipeRepository.dbNullableText(_instructionsAfCtrl.text),
           servingSize: servingSize,
           prepTimeMinutes: prepTime,
           cookTimeMinutes: cookTime,
           status: _status,
           updatedBy: staffId,
           ingredientLines: ingredientLines,
+          ingredientLinesAf: ingredientLinesAf,
           ingredientOptional: ingredientOptional,
           stepInstructions: stepInstructions,
+          stepInstructionsAf: stepInstructionsAf,
           selectedOptionIds: _selectedOptionIds.toList(),
         );
       } else {
         recipeId = await _repo.createRecipe(
           title: title,
           description: description.isEmpty ? null : description,
+          titleAf: CustomerRecipeRepository.dbNullableText(_titleAfCtrl.text),
+          descriptionAf:
+              CustomerRecipeRepository.dbNullableText(_descriptionAfCtrl.text),
+          instructionsText:
+              CustomerRecipeRepository.dbNullableText(_instructionsCtrl.text),
+          instructionsAf:
+              CustomerRecipeRepository.dbNullableText(_instructionsAfCtrl.text),
           servingSize: servingSize,
           prepTimeMinutes: prepTime,
           cookTimeMinutes: cookTime,
           status: _status,
           createdBy: staffId,
           ingredientLines: ingredientLines,
+          ingredientLinesAf: ingredientLinesAf,
           ingredientOptional: ingredientOptional,
           stepInstructions: stepInstructions,
+          stepInstructionsAf: stepInstructionsAf,
           selectedOptionIds: _selectedOptionIds.toList(),
         );
       }
@@ -264,15 +322,24 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
 
   @override
   void dispose() {
+    _langTabController.dispose();
     _titleCtrl.dispose();
+    _titleAfCtrl.dispose();
     _descriptionCtrl.dispose();
+    _descriptionAfCtrl.dispose();
+    _instructionsCtrl.dispose();
+    _instructionsAfCtrl.dispose();
     _servingSizeCtrl.dispose();
     _prepTimeCtrl.dispose();
     _cookTimeCtrl.dispose();
     for (final i in _ingredients) {
       (i['controller'] as TextEditingController).dispose();
+      (i['controllerAf'] as TextEditingController).dispose();
     }
     for (final c in _stepControllers) {
+      c.dispose();
+    }
+    for (final c in _stepAfControllers) {
       c.dispose();
     }
     super.dispose();
@@ -322,26 +389,6 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
             // ── BASIC INFO ──────────────────────────────────
             _sectionHeader('Basic Info'),
             const SizedBox(height: 12),
-            TextFormField(
-              controller: _titleCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Recipe Title *',
-                border: OutlineInputBorder(),
-              ),
-              textCapitalization: TextCapitalization.words,
-              validator: (v) =>
-                  v == null || v.trim().isEmpty ? 'Title is required' : null,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _descriptionCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Short description',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 2,
-            ),
-            const SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -378,6 +425,279 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
                 ),
               ],
             ),
+            const SizedBox(height: 16),
+            Container(
+              decoration: BoxDecoration(
+                border: Border.all(color: AppColors.border),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TabBar(
+                      controller: _langTabController,
+                      labelColor: AppColors.primary,
+                      unselectedLabelColor: AppColors.textSecondary,
+                      tabs: const [
+                        Tab(text: 'English'),
+                        Tab(text: 'Afrikaans'),
+                      ],
+                    ),
+                    SizedBox(
+                      height: 680,
+                      child: TabBarView(
+                        controller: _langTabController,
+                        physics: const NeverScrollableScrollPhysics(),
+                        children: [
+                          SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionHeader('Content (English)',
+                                    muted: true),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _titleCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Recipe Title *',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  textCapitalization:
+                                      TextCapitalization.words,
+                                  validator: (v) =>
+                                      v == null || v.trim().isEmpty
+                                          ? 'Title is required'
+                                          : null,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _descriptionCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Short description',
+                                    border: OutlineInputBorder(),
+                                  ),
+                                  maxLines: 2,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _instructionsCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText:
+                                        'Full instructions (optional)',
+                                    helperText:
+                                        'Optional plain-text block — numbered steps below are shown as structured instructions.',
+                                    border: OutlineInputBorder(),
+                                    alignLabelWithHint: true,
+                                  ),
+                                  maxLines: 4,
+                                ),
+                                const SizedBox(height: 20),
+                                _sectionHeader('Ingredients (English)',
+                                    muted: true),
+                                const SizedBox(height: 8),
+                                ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  itemCount: _ingredients.length,
+                                  onReorder: (oldIdx, newIdx) {
+                                    setState(() {
+                                      if (newIdx > oldIdx) newIdx--;
+                                      final item =
+                                          _ingredients.removeAt(oldIdx);
+                                      _ingredients.insert(newIdx, item);
+                                    });
+                                  },
+                                  itemBuilder: (_, i) {
+                                    final ing = _ingredients[i];
+                                    final ctrl = ing['controller']
+                                        as TextEditingController;
+                                    return _IngredientRow(
+                                      key: ValueKey('ing_en_$i'),
+                                      controller: ctrl,
+                                      isOptional: ing['optional'] as bool,
+                                      onOptionalChanged: (v) => setState(
+                                          () => _ingredients[i]['optional'] =
+                                              v),
+                                      onRemove: _ingredients.length > 1
+                                          ? () => _removeIngredientRow(i)
+                                          : null,
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: _addIngredientRow,
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: const Text('Add ingredient'),
+                                  ),
+                                ),
+                                const SizedBox(height: 20),
+                                _sectionHeader('Instructions (English)',
+                                    muted: true),
+                                const SizedBox(height: 8),
+                                ReorderableListView.builder(
+                                  shrinkWrap: true,
+                                  physics:
+                                      const NeverScrollableScrollPhysics(),
+                                  itemCount: _stepControllers.length,
+                                  onReorder: (oldIdx, newIdx) {
+                                    setState(() {
+                                      if (newIdx > oldIdx) newIdx--;
+                                      final c =
+                                          _stepControllers.removeAt(oldIdx);
+                                      final af =
+                                          _stepAfControllers.removeAt(oldIdx);
+                                      _stepControllers.insert(newIdx, c);
+                                      _stepAfControllers.insert(newIdx, af);
+                                    });
+                                  },
+                                  itemBuilder: (_, i) {
+                                    return _StepRow(
+                                      key: ValueKey('step_en_$i'),
+                                      stepNumber: i + 1,
+                                      controller: _stepControllers[i],
+                                      onRemove: _stepControllers.length > 1
+                                          ? () => _removeStepRow(i)
+                                          : null,
+                                    );
+                                  },
+                                ),
+                                const SizedBox(height: 8),
+                                Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: TextButton.icon(
+                                    onPressed: _addStepRow,
+                                    icon: const Icon(Icons.add, size: 16),
+                                    label: const Text('Add step'),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          SingleChildScrollView(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _sectionHeader('Content (Afrikaans)',
+                                    muted: true),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  kAfCmsFieldHelper,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _titleAfCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Recipe Title (Afrikaans)',
+                                    border: OutlineInputBorder(),
+                                    helperText: kAfCmsFieldHelper,
+                                  ),
+                                  textCapitalization:
+                                      TextCapitalization.words,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _descriptionAfCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText:
+                                        'Short description (Afrikaans)',
+                                    border: OutlineInputBorder(),
+                                    helperText: kAfCmsFieldHelper,
+                                  ),
+                                  maxLines: 2,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _instructionsAfCtrl,
+                                  decoration: const InputDecoration(
+                                    labelText:
+                                        'Full instructions (Afrikaans, optional)',
+                                    border: OutlineInputBorder(),
+                                    helperText: kAfCmsFieldHelper,
+                                    alignLabelWithHint: true,
+                                  ),
+                                  maxLines: 4,
+                                ),
+                                const SizedBox(height: 20),
+                                _sectionHeader(
+                                  'Ingredients (Afrikaans)',
+                                  muted: true,
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  kAfCmsFieldHelper,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ...List.generate(_ingredients.length, (i) {
+                                  final af = _ingredients[i]['controllerAf']
+                                      as TextEditingController;
+                                  return Padding(
+                                    padding: const EdgeInsets.only(bottom: 10),
+                                    child: TextFormField(
+                                      controller: af,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Ingredient (Afrikaans)',
+                                        helperText: kAfCmsFieldHelper,
+                                        hintText:
+                                            'e.g. 2 koppies meel',
+                                        isDense: true,
+                                        border: OutlineInputBorder(),
+                                        contentPadding:
+                                            EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                }),
+                                const SizedBox(height: 12),
+                                _sectionHeader(
+                                  'Instructions — steps (Afrikaans)',
+                                  muted: true,
+                                ),
+                                const SizedBox(height: 8),
+                                const Text(
+                                  kAfCmsFieldHelper,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: AppColors.textSecondary,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                ...List.generate(_stepAfControllers.length,
+                                    (i) {
+                                  return _StepAfRow(
+                                    key: ValueKey('step_af_$i'),
+                                    stepNumber: i + 1,
+                                    controller: _stepAfControllers[i],
+                                  );
+                                }),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
             const SizedBox(height: 24),
 
             // ── CATEGORIES ──────────────────────────────────
@@ -390,82 +710,6 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
               )
             else
               ..._categoryTypes.map((type) => _buildCategoryTypeSection(type)),
-            const SizedBox(height: 24),
-
-            // ── INGREDIENTS ─────────────────────────────────
-            _sectionHeader('Ingredients'),
-            const SizedBox(height: 12),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _ingredients.length,
-              onReorder: (oldIdx, newIdx) {
-                setState(() {
-                  if (newIdx > oldIdx) newIdx--;
-                  final item = _ingredients.removeAt(oldIdx);
-                  _ingredients.insert(newIdx, item);
-                });
-              },
-              itemBuilder: (_, i) {
-                final ing = _ingredients[i];
-                final ctrl = ing['controller'] as TextEditingController;
-                return _IngredientRow(
-                  key: ValueKey('ing_$i'),
-                  controller: ctrl,
-                  isOptional: ing['optional'] as bool,
-                  onOptionalChanged: (v) =>
-                      setState(() => _ingredients[i]['optional'] = v),
-                  onRemove: _ingredients.length > 1
-                      ? () => _removeIngredientRow(i)
-                      : null,
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _addIngredientRow,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add ingredient'),
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // ── STEPS ───────────────────────────────────────
-            _sectionHeader('Instructions'),
-            const SizedBox(height: 12),
-            ReorderableListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _stepControllers.length,
-              onReorder: (oldIdx, newIdx) {
-                setState(() {
-                  if (newIdx > oldIdx) newIdx--;
-                  final ctrl = _stepControllers.removeAt(oldIdx);
-                  _stepControllers.insert(newIdx, ctrl);
-                });
-              },
-              itemBuilder: (_, i) {
-                return _StepRow(
-                  key: ValueKey('step_$i'),
-                  stepNumber: i + 1,
-                  controller: _stepControllers[i],
-                  onRemove: _stepControllers.length > 1
-                      ? () => _removeStepRow(i)
-                      : null,
-                );
-              },
-            ),
-            const SizedBox(height: 8),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: _addStepRow,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add step'),
-              ),
-            ),
             const SizedBox(height: 24),
 
             // ── IMAGES ──────────────────────────────────────
@@ -487,9 +731,6 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
                                 imageId: img.id,
                               );
                               setState(() {
-                                for (final i in _existingImages) {
-                                  // ignore: avoid_function_literals_in_foreach_calls
-                                }
                                 _existingImages = _existingImages
                                     .map((i) => CustomerRecipeImage(
                                           id: i.id,
@@ -521,11 +762,11 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen> {
     );
   }
 
-  Widget _sectionHeader(String title) {
+  Widget _sectionHeader(String title, {bool muted = false}) {
     return Text(
       title,
-      style: const TextStyle(
-        fontSize: 16,
+      style: TextStyle(
+        fontSize: muted ? 14 : 16,
         fontWeight: FontWeight.bold,
         color: AppColors.primary,
       ),
@@ -699,6 +940,63 @@ class _StepRow extends StatelessWidget {
                 padding: EdgeInsets.zero,
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Afrikaans line matching [CustomerRecipeStep] — same numbering as English tab.
+class _StepAfRow extends StatelessWidget {
+  final int stepNumber;
+  final TextEditingController controller;
+
+  const _StepAfRow({
+    super.key,
+    required this.stepNumber,
+    required this.controller,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            margin: const EdgeInsets.only(top: 6),
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AppColors.textSecondary.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              '$stepNumber',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textSecondary,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextFormField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: 'Describe this step in Afrikaans...',
+                helperText: kAfCmsFieldHelper,
+                isDense: true,
+                border: OutlineInputBorder(),
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              maxLines: 2,
+            ),
+          ),
         ],
       ),
     );

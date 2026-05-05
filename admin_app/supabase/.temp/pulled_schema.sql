@@ -1,4 +1,8 @@
 --
+-- Generated reference: 2026-05-04. Do not edit manually.
+-- Regenerate from the connected project with: supabase db dump --schema public
+-- (or pg_dump equivalent). This file may lag live migrations until re-dumped.
+--
 -- PostgreSQL database dump
 --
 

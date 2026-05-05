@@ -113,6 +113,7 @@ class CustomerRecipeIngredient {
   final String id;
   final String recipeId;
   final String ingredientText;
+  final String? ingredientTextAf;
   final bool isOptional;
   final int sortOrder;
 
@@ -120,6 +121,7 @@ class CustomerRecipeIngredient {
     required this.id,
     required this.recipeId,
     required this.ingredientText,
+    this.ingredientTextAf,
     required this.isOptional,
     required this.sortOrder,
   });
@@ -129,6 +131,7 @@ class CustomerRecipeIngredient {
       id: json['id'] as String,
       recipeId: json['recipe_id'] as String,
       ingredientText: json['ingredient_text'] as String,
+      ingredientTextAf: json['ingredient_text_af'] as String?,
       isOptional: json['is_optional'] as bool? ?? false,
       sortOrder: (json['sort_order'] as num?)?.toInt() ?? 0,
     );
@@ -137,6 +140,7 @@ class CustomerRecipeIngredient {
   Map<String, dynamic> toJson() => {
         'recipe_id': recipeId,
         'ingredient_text': ingredientText,
+        'ingredient_text_af': ingredientTextAf,
         'is_optional': isOptional,
         'sort_order': sortOrder,
       };
@@ -150,12 +154,14 @@ class CustomerRecipeStep {
   final String recipeId;
   final int stepNumber;
   final String instructionText;
+  final String? instructionTextAf;
 
   const CustomerRecipeStep({
     required this.id,
     required this.recipeId,
     required this.stepNumber,
     required this.instructionText,
+    this.instructionTextAf,
   });
 
   factory CustomerRecipeStep.fromJson(Map<String, dynamic> json) {
@@ -164,6 +170,7 @@ class CustomerRecipeStep {
       recipeId: json['recipe_id'] as String,
       stepNumber: (json['step_number'] as num).toInt(),
       instructionText: json['instruction_text'] as String,
+      instructionTextAf: json['instruction_text_af'] as String?,
     );
   }
 
@@ -171,6 +178,7 @@ class CustomerRecipeStep {
         'recipe_id': recipeId,
         'step_number': stepNumber,
         'instruction_text': instructionText,
+        'instruction_text_af': instructionTextAf,
       };
 }
 
@@ -219,7 +227,12 @@ class CustomerRecipeImage {
 class CustomerRecipe {
   final String id;
   final String title;
+  final String? titleAf;
   final String? description;
+  final String? descriptionAf;
+  /// Optional legacy/plain-text block (separate from numbered steps).
+  final String? instructions;
+  final String? instructionsAf;
   final int servingSize;
   final int prepTimeMinutes;
   final int cookTimeMinutes;
@@ -237,7 +250,11 @@ class CustomerRecipe {
   const CustomerRecipe({
     required this.id,
     required this.title,
+    this.titleAf,
     this.description,
+    this.descriptionAf,
+    this.instructions,
+    this.instructionsAf,
     required this.servingSize,
     required this.prepTimeMinutes,
     required this.cookTimeMinutes,
@@ -270,7 +287,11 @@ class CustomerRecipe {
     return CustomerRecipe(
       id: json['id'] as String,
       title: json['title'] as String,
+      titleAf: json['title_af'] as String?,
       description: json['description'] as String?,
+      descriptionAf: json['description_af'] as String?,
+      instructions: json['instructions'] as String?,
+      instructionsAf: json['instructions_af'] as String?,
       servingSize: (json['serving_size'] as num?)?.toInt() ?? 4,
       prepTimeMinutes: (json['prep_time_minutes'] as num?)?.toInt() ?? 0,
       cookTimeMinutes: (json['cook_time_minutes'] as num?)?.toInt() ?? 0,
@@ -309,7 +330,11 @@ class CustomerRecipe {
 
   Map<String, dynamic> toJson() => {
         'title': title,
+        'title_af': titleAf,
         'description': description,
+        'description_af': descriptionAf,
+        'instructions': instructions,
+        'instructions_af': instructionsAf,
         'serving_size': servingSize,
         'prep_time_minutes': prepTimeMinutes,
         'cook_time_minutes': cookTimeMinutes,
@@ -319,7 +344,11 @@ class CustomerRecipe {
 
   CustomerRecipe copyWith({
     String? title,
+    String? titleAf,
     String? description,
+    String? descriptionAf,
+    String? instructions,
+    String? instructionsAf,
     int? servingSize,
     int? prepTimeMinutes,
     int? cookTimeMinutes,
@@ -332,7 +361,11 @@ class CustomerRecipe {
     return CustomerRecipe(
       id: id,
       title: title ?? this.title,
+      titleAf: titleAf ?? this.titleAf,
       description: description ?? this.description,
+      descriptionAf: descriptionAf ?? this.descriptionAf,
+      instructions: instructions ?? this.instructions,
+      instructionsAf: instructionsAf ?? this.instructionsAf,
       servingSize: servingSize ?? this.servingSize,
       prepTimeMinutes: prepTimeMinutes ?? this.prepTimeMinutes,
       cookTimeMinutes: cookTimeMinutes ?? this.cookTimeMinutes,

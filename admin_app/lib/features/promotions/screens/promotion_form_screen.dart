@@ -16,8 +16,8 @@ class PromotionFormScreen extends StatefulWidget {
       _PromotionFormScreenState();
 }
 
-class _PromotionFormScreenState
-    extends State<PromotionFormScreen> {
+class _PromotionFormScreenState extends State<PromotionFormScreen>
+    with SingleTickerProviderStateMixin {
   final _repo = PromotionRepository();
   final _formKey = GlobalKey<FormState>();
   int _step = 0;
@@ -25,9 +25,13 @@ class _PromotionFormScreenState
 
   // ── Step 1: Basic ──────────────────────────────────
   final _nameCtrl = TextEditingController();
+  final _nameAfCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
+  final _descAfCtrl = TextEditingController();
   final _termsCtrl = TextEditingController();
+  final _termsAfCtrl = TextEditingController();
   String _promoType = 'weekly_special';
+  late TabController _promoTextLangTab;
   // promoType values:
   // weekly_special | buy_x_get_y | spend_reward |
   // points_multiplier | birthday_reward | early_access
@@ -89,15 +93,20 @@ class _PromotionFormScreenState
   @override
   void initState() {
     super.initState();
+    _promoTextLangTab = TabController(length: 2, vsync: this);
     _loadSlowMovers();
     if (widget.promotion != null) _populateFromExisting();
   }
 
   @override
   void dispose() {
+    _promoTextLangTab.dispose();
     _nameCtrl.dispose();
+    _nameAfCtrl.dispose();
     _descCtrl.dispose();
+    _descAfCtrl.dispose();
     _termsCtrl.dispose();
+    _termsAfCtrl.dispose();
     _discountValueCtrl.dispose();
     _buyQtyCtrl.dispose();
     _getQtyCtrl.dispose();
@@ -134,8 +143,11 @@ class _PromotionFormScreenState
   void _populateFromExisting() {
     final p = widget.promotion!;
     _nameCtrl.text = p.name;
+    _nameAfCtrl.text = p.nameAf ?? '';
     _descCtrl.text = p.description ?? '';
+    _descAfCtrl.text = p.descriptionAf ?? '';
     _termsCtrl.text = p.termsAndConditions ?? '';
+    _termsAfCtrl.text = p.termsAf ?? '';
     _audience = List.from(p.audience);
     _startDate = p.startDate;
     _endDate = p.endDate;
@@ -368,12 +380,21 @@ class _PromotionFormScreenState
     return Promotion(
       id: widget.promotion?.id ?? '',
       name: _nameCtrl.text.trim(),
+      nameAf: _nameAfCtrl.text.trim().isEmpty
+          ? null
+          : _nameAfCtrl.text.trim(),
       description: _descCtrl.text.isEmpty
           ? null
           : _descCtrl.text.trim(),
+      descriptionAf: _descAfCtrl.text.trim().isEmpty
+          ? null
+          : _descAfCtrl.text.trim(),
       termsAndConditions: _termsCtrl.text.isEmpty
           ? null
           : _termsCtrl.text.trim(),
+      termsAf: _termsAfCtrl.text.trim().isEmpty
+          ? null
+          : _termsAfCtrl.text.trim(),
       status: widget.promotion?.status ??
           PromotionStatus.draft,
       promotionType: type,
@@ -632,34 +653,128 @@ class _PromotionFormScreenState
         }),
 
         const SizedBox(height: 12),
-        TextFormField(
-          controller: _nameCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Promotion name *'),
-          readOnly: widget.viewOnly,
-          validator: (v) =>
-              v?.trim().isEmpty == true
-                  ? 'Required'
-                  : null,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _descCtrl,
-          decoration: const InputDecoration(
-              labelText:
-                  'Description (shown to customers)'),
-          maxLines: 2,
-          readOnly: widget.viewOnly,
-        ),
-        const SizedBox(height: 12),
-        TextFormField(
-          controller: _termsCtrl,
-          decoration: const InputDecoration(
-              labelText: 'Terms & Conditions',
-              hintText: 'e.g. Cannot be combined with other offers. While stocks last.'),
-          maxLines: 3,
-          maxLength: 500,
-          readOnly: widget.viewOnly,
+        Container(
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.border),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TabBar(
+                controller: _promoTextLangTab,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: Colors.black54,
+                tabs: const [
+                  Tab(text: 'English'),
+                  Tab(text: 'Afrikaans'),
+                ],
+              ),
+              SizedBox(
+                height: 286,
+                child: TabBarView(
+                  controller: _promoTextLangTab,
+                  physics: widget.viewOnly
+                      ? const NeverScrollableScrollPhysics()
+                      : null,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: _nameCtrl,
+                              decoration: const InputDecoration(
+                                  labelText: 'Promotion name *'),
+                              readOnly: widget.viewOnly,
+                              validator: (v) =>
+                                  v?.trim().isEmpty == true
+                                      ? 'Required'
+                                      : null,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _descCtrl,
+                              decoration: const InputDecoration(
+                                  labelText:
+                                      'Description (shown to customers)'),
+                              maxLines: 2,
+                              readOnly: widget.viewOnly,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _termsCtrl,
+                              decoration: const InputDecoration(
+                                labelText: 'Terms & Conditions',
+                                hintText:
+                                    'e.g. Cannot be combined with other offers. '
+                                    'While stocks last.',
+                              ),
+                              maxLines: 3,
+                              maxLength: 500,
+                              readOnly: widget.viewOnly,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
+                          children: [
+                            TextFormField(
+                              controller: _nameAfCtrl,
+                              decoration: const InputDecoration(
+                                labelText:
+                                    'Promotion name (Afrikaans)',
+                                helperText:
+                                    'Optional — shown to users when app language '
+                                    'is Afrikaans',
+                              ),
+                              readOnly: widget.viewOnly,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _descAfCtrl,
+                              decoration: const InputDecoration(
+                                labelText:
+                                    'Description (Afrikaans)',
+                                helperText:
+                                    'Optional — shown to users when app language '
+                                    'is Afrikaans',
+                              ),
+                              maxLines: 2,
+                              readOnly: widget.viewOnly,
+                            ),
+                            const SizedBox(height: 12),
+                            TextFormField(
+                              controller: _termsAfCtrl,
+                              decoration: const InputDecoration(
+                                labelText:
+                                    'Terms & Conditions (Afrikaans)',
+                                helperText:
+                                    'Optional — shown to users when app language '
+                                    'is Afrikaans',
+                              ),
+                              maxLines: 3,
+                              maxLength: 500,
+                              readOnly: widget.viewOnly,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );

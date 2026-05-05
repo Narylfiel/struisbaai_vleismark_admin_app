@@ -7,6 +7,13 @@ import '../models/promotion_product.dart';
 class PromotionRepository {
   final SupabaseClient _client = SupabaseService.client;
 
+  /// Empty or whitespace-only optional CMS strings stored as null.
+  static String? _nullableDbText(String? v) {
+    if (v == null) return null;
+    final t = v.trim();
+    return t.isEmpty ? null : t;
+  }
+
   /// Format time string to HH:mm:ss for DB.
   static String? _formatTimeForDb(String? t) {
     if (t == null || t.trim().isEmpty) return null;
@@ -20,7 +27,11 @@ class PromotionRepository {
   Map<String, dynamic> _promotionPayload(Promotion promo, {bool forInsert = false}) {
     final payload = <String, dynamic>{
       'name': promo.name,
+      'name_af': _nullableDbText(promo.nameAf),
       'description': promo.description,
+      'description_af': _nullableDbText(promo.descriptionAf),
+      'terms_and_conditions': _nullableDbText(promo.termsAndConditions),
+      'terms_af': _nullableDbText(promo.termsAf),
       'status': promo.status.dbValue,
       'promotion_type': promo.promotionType.dbValue,
       'trigger_config': promo.triggerConfig,

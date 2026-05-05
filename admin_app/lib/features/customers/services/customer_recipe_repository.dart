@@ -28,6 +28,13 @@ class CustomerRecipeRepository {
   CustomerRecipeRepository({SupabaseClient? client})
       : _client = client ?? SupabaseService.client;
 
+  /// Empty or whitespace-only strings are stored as null in Supabase.
+  static String? dbNullableText(String? value) {
+    if (value == null) return null;
+    final t = value.trim();
+    return t.isEmpty ? null : t;
+  }
+
   // ═══════════════════════════════════════════════════════════
   // RECIPES
   // ═══════════════════════════════════════════════════════════
@@ -40,7 +47,8 @@ class CustomerRecipeRepository {
       var query = _client
           .from('customer_recipes')
           .select('''
-            id, title, description, serving_size,
+            id, title, title_af, description, description_af,
+            instructions, instructions_af, serving_size,
             prep_time_minutes, cook_time_minutes,
             status, created_by, created_at, updated_at,
             customer_recipe_images(id, image_url, sort_order, is_primary)
@@ -67,14 +75,15 @@ class CustomerRecipeRepository {
       final response = await _client
           .from('customer_recipes')
           .select('''
-            id, title, description, serving_size,
+            id, title, title_af, description, description_af,
+            instructions, instructions_af, serving_size,
             prep_time_minutes, cook_time_minutes,
             status, created_by, created_at, updated_at,
             customer_recipe_ingredients(
-              id, recipe_id, ingredient_text, is_optional, sort_order
+              id, recipe_id, ingredient_text, ingredient_text_af, is_optional, sort_order
             ),
             customer_recipe_steps(
-              id, recipe_id, step_number, instruction_text
+              id, recipe_id, step_number, instruction_text, instruction_text_af
             ),
             customer_recipe_images(
               id, recipe_id, image_url, sort_order, is_primary, created_at
@@ -117,6 +126,10 @@ class CustomerRecipeRepository {
   Future<String> createRecipe({
     required String title,
     String? description,
+    String? titleAf,
+    String? descriptionAf,
+    String? instructionsText,
+    String? instructionsAf,
     required int servingSize,
     required int prepTimeMinutes,
     required int cookTimeMinutes,
@@ -124,7 +137,9 @@ class CustomerRecipeRepository {
     required String createdBy,
     required List<String> ingredientLines,
     required List<bool> ingredientOptional,
+    List<String>? ingredientLinesAf,
     required List<String> stepInstructions,
+    List<String>? stepInstructionsAf,
     required List<String> selectedOptionIds,
   }) async {
     try {
@@ -133,7 +148,11 @@ class CustomerRecipeRepository {
           .from('customer_recipes')
           .insert({
             'title': title,
+            'title_af': dbNullableText(titleAf),
             'description': description,
+            'description_af': dbNullableText(descriptionAf),
+            'instructions': dbNullableText(instructionsText),
+            'instructions_af': dbNullableText(instructionsAf),
             'serving_size': servingSize,
             'prep_time_minutes': prepTimeMinutes,
             'cook_time_minutes': cookTimeMinutes,
@@ -147,13 +166,16 @@ class CustomerRecipeRepository {
 
       // 2. Insert ingredients
       if (ingredientLines.isNotEmpty) {
+        final afList = ingredientLinesAf ?? [];
         final ingredients = <Map<String, dynamic>>[];
         for (int i = 0; i < ingredientLines.length; i++) {
           final text = ingredientLines[i].trim();
           if (text.isEmpty) continue;
+          final afRaw = i < afList.length ? afList[i] : null;
           ingredients.add({
             'recipe_id': recipeId,
             'ingredient_text': text,
+            'ingredient_text_af': dbNullableText(afRaw),
             'is_optional': i < ingredientOptional.length
                 ? ingredientOptional[i]
                 : false,
@@ -167,15 +189,19 @@ class CustomerRecipeRepository {
 
       // 3. Insert steps
       if (stepInstructions.isNotEmpty) {
+        final stepsAf = stepInstructionsAf ?? [];
         final steps = <Map<String, dynamic>>[];
         int stepNum = 1;
-        for (final text in stepInstructions) {
+        for (int s = 0; s < stepInstructions.length; s++) {
+          final text = stepInstructions[s];
           final trimmed = text.trim();
           if (trimmed.isEmpty) continue;
+          final afRaw = s < stepsAf.length ? stepsAf[s] : null;
           steps.add({
             'recipe_id': recipeId,
             'step_number': stepNum++,
             'instruction_text': trimmed,
+            'instruction_text_af': dbNullableText(afRaw),
           });
         }
         if (steps.isNotEmpty) {
@@ -350,6 +376,10 @@ class CustomerRecipeRepository {
     required String recipeId,
     required String title,
     String? description,
+    String? titleAf,
+    String? descriptionAf,
+    String? instructionsText,
+    String? instructionsAf,
     required int servingSize,
     required int prepTimeMinutes,
     required int cookTimeMinutes,
@@ -357,14 +387,20 @@ class CustomerRecipeRepository {
     required String updatedBy,
     required List<String> ingredientLines,
     required List<bool> ingredientOptional,
+    List<String>? ingredientLinesAf,
     required List<String> stepInstructions,
+    List<String>? stepInstructionsAf,
     required List<String> selectedOptionIds,
   }) async {
     try {
       // 1. Update recipe header
       await _client.from('customer_recipes').update({
         'title': title,
+        'title_af': dbNullableText(titleAf),
         'description': description,
+        'description_af': dbNullableText(descriptionAf),
+        'instructions': dbNullableText(instructionsText),
+        'instructions_af': dbNullableText(instructionsAf),
         'serving_size': servingSize,
         'prep_time_minutes': prepTimeMinutes,
         'cook_time_minutes': cookTimeMinutes,
@@ -379,13 +415,16 @@ class CustomerRecipeRepository {
           .eq('recipe_id', recipeId);
 
       if (ingredientLines.isNotEmpty) {
+        final afList = ingredientLinesAf ?? [];
         final ingredients = <Map<String, dynamic>>[];
         for (int i = 0; i < ingredientLines.length; i++) {
           final text = ingredientLines[i].trim();
           if (text.isEmpty) continue;
+          final afRaw = i < afList.length ? afList[i] : null;
           ingredients.add({
             'recipe_id': recipeId,
             'ingredient_text': text,
+            'ingredient_text_af': dbNullableText(afRaw),
             'is_optional': i < ingredientOptional.length
                 ? ingredientOptional[i]
                 : false,
@@ -404,15 +443,19 @@ class CustomerRecipeRepository {
           .eq('recipe_id', recipeId);
 
       if (stepInstructions.isNotEmpty) {
+        final stepsAf = stepInstructionsAf ?? [];
         final steps = <Map<String, dynamic>>[];
         int stepNum = 1;
-        for (final text in stepInstructions) {
+        for (int s = 0; s < stepInstructions.length; s++) {
+          final text = stepInstructions[s];
           final trimmed = text.trim();
           if (trimmed.isEmpty) continue;
+          final afRaw = s < stepsAf.length ? stepsAf[s] : null;
           steps.add({
             'recipe_id': recipeId,
             'step_number': stepNum++,
             'instruction_text': trimmed,
+            'instruction_text_af': dbNullableText(afRaw),
           });
         }
         if (steps.isNotEmpty) {

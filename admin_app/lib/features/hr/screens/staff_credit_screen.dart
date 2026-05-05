@@ -351,27 +351,13 @@ class _StaffCreditScreenState extends State<StaffCreditScreen> {
       final currentUserId = AuthService().currentStaffId;
       if (currentUserId == null) return;
 
-      await _client.from('staff_requests').update({
-        'status': 'approved',
-        'amount_approved': approvedAmt,
-        'reviewed_by': currentUserId,
-        'reviewed_at': DateTime.now().toIso8601String(),
-      }).eq('id', request['id']);
-
-      final advanceGrantedDate = DateTime.now();
-      final advanceDeductFrom =
-          _calculateDeductionDate(advanceGrantedDate)
-              .toIso8601String()
-              .substring(0, 10);
-
-      await _repo.create(
-        staffId: request['staff_id'],
-        creditType: StaffCreditType.salaryAdvance,
-        amount: approvedAmt,
-        reason: request['advance_reason']?.toString() ?? 'Salary advance',
-        grantedDate: advanceGrantedDate,
-        grantedBy: currentUserId,
-        deductFrom: advanceDeductFrom,
+      await _client.rpc(
+        'approve_advance_request',
+        params: {
+          'p_request_id': request['id'] as String,
+          'p_amount': approvedAmt,
+          'p_reviewer_id': currentUserId,
+        },
       );
 
       _loadAdvances();

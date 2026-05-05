@@ -350,7 +350,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'meat_purchase')
-            .inFilter('status', ['pending', 'owing'])
+            .inFilter('status', ['pending', 'owing', 'partial'])
             .lte('deduct_from', endStr);
         double meatDed = (meatReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
@@ -359,7 +359,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
             .select('credit_amount')
             .eq('staff_id', staffId)
             .eq('credit_type', 'salary_advance')
-            .inFilter('status', ['pending', 'owing'])
+            .inFilter('status', ['pending', 'owing', 'partial'])
             .lte('deduct_from', endStr);
         double advDed = (advReq as List).fold(0.0, (sum, row) => sum + (row['credit_amount'] as num).toDouble());
 
@@ -591,7 +591,69 @@ class _PayrollScreenState extends State<PayrollScreen> {
   Future<void> _approvePayroll() async {
     final startStr = _periodStart!.toIso8601String().substring(0, 10);
     final endStr = _periodEnd!.toIso8601String().substring(0, 10);
-    
+
+    final payrollStaffIds = _calculatedEntries
+        .map((e) => e['staff_id'] as String?)
+        .whereType<String>()
+        .toSet()
+        .toList();
+
+    if (payrollStaffIds.isNotEmpty) {
+      final openRes = await _client
+          .from('timecards')
+          .select(
+            'staff_id, staff_profiles!timecards_staff_id_fkey(full_name)',
+          )
+          .inFilter('status', ['clocked_in', 'on_break'])
+          .gte('shift_date', startStr)
+          .lte('shift_date', endStr)
+          .inFilter('staff_id', payrollStaffIds);
+
+      if (!mounted) return;
+
+      final openRows = List<Map<String, dynamic>>.from(openRes as List);
+      if (openRows.isNotEmpty) {
+        final names = <String>{};
+        for (final row in openRows) {
+          final sp = row['staff_profiles'];
+          if (sp is Map && sp['full_name'] != null) {
+            names.add(sp['full_name'] as String);
+          }
+        }
+        final nameList = names.toList()..sort();
+        final listed = nameList.take(8).join(', ');
+        final suffix = nameList.length > 8 ? ' …' : '';
+
+        final choice = await showDialog<String>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Open clock-in sessions'),
+            content: Text(
+              'Warning: ${nameList.length} staff '
+              '${nameList.length == 1 ? 'member has' : 'members have'} open '
+              'clock-in sessions — $listed$suffix.\n\n'
+              'Fix these before approving payroll or their hours will be excluded '
+              'from this run.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, 'cancel'),
+                child: const Text('Go fix timecards'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'force'),
+                child: const Text('Approve anyway (exclude open sessions)'),
+              ),
+            ],
+          ),
+        );
+        if (choice != 'force') return;
+      }
+    }
+
+    if (!mounted) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -621,8 +683,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
         .eq('pay_period_end', endStr)
         .eq('status', 'draft');
 
-      final staffIds = _calculatedEntries.map((e) => e['staff_id']).toList();
-      if (staffIds.isNotEmpty) {
+      if (payrollStaffIds.isNotEmpty) {
         // 2. UPDATE Meat Purchases
         await _client.from('staff_credit')
           .update({'status': 'deducted'})
@@ -630,16 +691,16 @@ class _PayrollScreenState extends State<PayrollScreen> {
           .inFilter('status', ['pending', 'partial', 'owing'])
           .gte('deduct_from', startStr)
           .lte('deduct_from', endStr)
-          .inFilter('staff_id', staffIds);
+          .inFilter('staff_id', payrollStaffIds);
 
-        // 3. UPDATE Salary Advances
+        // 3. UPDATE Salary Advances (include partial — same as meat)
         await _client.from('staff_credit')
           .update({'status': 'deducted'})
           .eq('credit_type', 'salary_advance')
-          .inFilter('status', ['pending', 'owing'])
+          .inFilter('status', ['pending', 'owing', 'partial'])
           .gte('deduct_from', startStr)
           .lte('deduct_from', endStr)
-          .inFilter('staff_id', staffIds);
+          .inFilter('staff_id', payrollStaffIds);
       }
 
       // 4. Update period

@@ -49,7 +49,7 @@ class PayslipPdfService {
               .eq('staff_id', staffId)
               .eq('credit_type', 'salary_advance')
               .inFilter(
-                  'status', ['pending', 'owing', 'deducted'])
+                  'status', ['pending', 'owing', 'partial', 'deducted'])
               .gte('deduct_from', startStr)
               .lte('deduct_from', endStr);
           advanceDeduction = (advReq as List).fold(

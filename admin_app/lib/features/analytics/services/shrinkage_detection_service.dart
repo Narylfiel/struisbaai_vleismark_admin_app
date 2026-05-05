@@ -514,7 +514,7 @@ class ShrinkageDetectionService {
       if (id == null) continue;
       
       // quantity is negative for out movements, so we negate it to get positive usage
-      final qty = -(row['quantity'] as num?)?.toDouble() ?? 0.0;
+      final qty = -((row['quantity'] as num?)?.toDouble() ?? 0.0);
       final inventoryData = row['inventory_items'] as Map<String, dynamic>?;
       final name = inventoryData?['name']?.toString() ?? 'Unknown';
       
