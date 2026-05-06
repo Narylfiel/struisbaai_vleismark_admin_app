@@ -76,11 +76,12 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
     }
 
     final deliveryFee = double.tryParse(_deliveryFeeController.text.trim());
-    final minOrderValue =
-        double.tryParse(_minOrderValueController.text.trim());
+    final minOrderValue = double.tryParse(_minOrderValueController.text.trim());
     final autoCancelDays = int.tryParse(_autoCancelDaysController.text.trim());
 
-    if (deliveryFee == null || minOrderValue == null || autoCancelDays == null) {
+    if (deliveryFee == null ||
+        minOrderValue == null ||
+        autoCancelDays == null) {
       _showSnack('Please enter valid numeric values', isError: true);
       return;
     }
@@ -123,6 +124,7 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       backgroundColor: AppColors.scaffoldBg,
       body: Column(
@@ -158,92 +160,109 @@ class _DeliverySettingsScreenState extends State<DeliverySettingsScreen> {
                           style: const TextStyle(color: AppColors.error),
                         ),
                       )
-                    : Center(
-                        child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 560),
-                          child: Card(
-                            margin: const EdgeInsets.all(24),
-                            child: Padding(
-                              padding: const EdgeInsets.all(20),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text(
-                                    'Global Delivery Configuration',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 16,
+                    : Align(
+                        alignment: Alignment.topCenter,
+                        child: SingleChildScrollView(
+                          keyboardDismissBehavior:
+                              ScrollViewKeyboardDismissBehavior.onDrag,
+                          padding: EdgeInsets.fromLTRB(
+                            isMobile ? 12 : 24,
+                            isMobile ? 12 : 24,
+                            isMobile ? 12 : 24,
+                            24 + MediaQuery.viewInsetsOf(context).bottom,
+                          ),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 560),
+                            child: Card(
+                              margin: EdgeInsets.zero,
+                              child: Padding(
+                                padding: const EdgeInsets.all(20),
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Global Delivery Configuration',
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 16,
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  TextField(
-                                    controller: _deliveryFeeController,
-                                    keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true,
+                                    const SizedBox(height: 16),
+                                    TextField(
+                                      controller: _deliveryFeeController,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Delivery fee (R)',
+                                        border: OutlineInputBorder(),
+                                      ),
                                     ),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Delivery fee (R)',
-                                      border: OutlineInputBorder(),
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _minOrderValueController,
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                      decoration: const InputDecoration(
+                                        labelText: 'Minimum order value (R)',
+                                        border: OutlineInputBorder(),
+                                      ),
                                     ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _minOrderValueController,
-                                    keyboardType: const TextInputType.numberWithOptions(
-                                      decimal: true,
+                                    const SizedBox(height: 12),
+                                    TextField(
+                                      controller: _autoCancelDaysController,
+                                      keyboardType: TextInputType.number,
+                                      decoration: const InputDecoration(
+                                        labelText: 'Auto-cancel days',
+                                        border: OutlineInputBorder(),
+                                      ),
                                     ),
-                                    decoration: const InputDecoration(
-                                      labelText: 'Minimum order value (R)',
-                                      border: OutlineInputBorder(),
+                                    const SizedBox(height: 12),
+                                    SwitchListTile(
+                                      value: _isActive,
+                                      contentPadding: EdgeInsets.zero,
+                                      title: const Text('Delivery enabled'),
+                                      subtitle: const Text(
+                                        'Disable to stop new delivery orders system-wide',
+                                      ),
+                                      onChanged: _isSaving
+                                          ? null
+                                          : (value) =>
+                                              setState(() => _isActive = value),
                                     ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  TextField(
-                                    controller: _autoCancelDaysController,
-                                    keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Auto-cancel days',
-                                      border: OutlineInputBorder(),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  SwitchListTile(
-                                    value: _isActive,
-                                    contentPadding: EdgeInsets.zero,
-                                    title: const Text('Delivery enabled'),
-                                    subtitle: const Text(
-                                      'Disable to stop new delivery orders system-wide',
-                                    ),
-                                    onChanged: _isSaving
-                                        ? null
-                                        : (value) => setState(() => _isActive = value),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Row(
-                                    children: [
-                                      const Spacer(),
-                                      ElevatedButton.icon(
-                                        onPressed: _isSaving ? null : _saveSettings,
+                                    const SizedBox(height: 12),
+                                    Align(
+                                      alignment: isMobile
+                                          ? Alignment.centerLeft
+                                          : Alignment.centerRight,
+                                      child: ElevatedButton.icon(
+                                        onPressed:
+                                            _isSaving ? null : _saveSettings,
                                         icon: _isSaving
                                             ? const SizedBox(
                                                 width: 14,
                                                 height: 14,
-                                                child: CircularProgressIndicator(
+                                                child:
+                                                    CircularProgressIndicator(
                                                   strokeWidth: 2,
                                                   color: Colors.white,
                                                 ),
                                               )
                                             : const Icon(Icons.save),
-                                        label: Text(_isSaving ? 'Saving...' : 'Save'),
+                                        label: Text(
+                                            _isSaving ? 'Saving...' : 'Save'),
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor: AppColors.primary,
                                           foregroundColor: Colors.white,
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                ],
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),

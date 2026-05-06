@@ -11,6 +11,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
+import 'package:share_plus/share_plus.dart';
 
 class PayrollScreen extends StatefulWidget {
   final bool isEmbedded;
@@ -953,6 +954,8 @@ class _PayrollScreenState extends State<PayrollScreen> {
   Future<void> _openPdfFile(File file) async {
     if (Platform.isWindows) {
       await Process.run('cmd', ['/c', 'start', '', file.path]);
+    } else if (Platform.isAndroid || Platform.isIOS) {
+      await Share.shareXFiles([XFile(file.path)]);
     } else {
       await Process.run('open', [file.path]);
     }
@@ -1279,6 +1282,7 @@ class _PayrollScreenState extends State<PayrollScreen> {
                   final staffId = e['staff_id']?.toString() ?? '';
                   final staff = e['staff_profiles'] ?? {};
                   final isSkipped = e['is_skipped'] == true;
+                  final payrollMobile = MediaQuery.sizeOf(context).width < 600;
                   
                   final regHrs = (e['regular_hours'] as num?)?.toDouble() ?? 0;
                   final otHrs = (e['overtime_hours'] as num?)?.toDouble() ?? 0;
@@ -1303,43 +1307,117 @@ class _PayrollScreenState extends State<PayrollScreen> {
                     margin: const EdgeInsets.symmetric(vertical: 4),
                     child: ExpansionTile(
                       tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      title: Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
+                      title: payrollMobile
+                          ? Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                Row(
+                                Text(staff['full_name'] ?? 'Unknown Staff',
+                                    style:
+                                        const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 6,
+                                  crossAxisAlignment: WrapCrossAlignment.center,
                                   children: [
-                                    Text(staff['full_name'] ?? 'Unknown Staff', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-                                    const SizedBox(width: 8),
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                      decoration: BoxDecoration(color: AppColors.surfaceBg, borderRadius: BorderRadius.circular(4)),
-                                      child: Text(staff['pay_frequency'] ?? 'monthly', style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                                      padding: const EdgeInsets.symmetric(
+                                          horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                          color: AppColors.surfaceBg,
+                                          borderRadius: BorderRadius.circular(4)),
+                                      child: Text(staff['pay_frequency'] ?? 'monthly',
+                                          style: const TextStyle(
+                                              fontSize: 10,
+                                              color: AppColors.textSecondary)),
                                     ),
-                                    const SizedBox(width: 8),
                                     _buildStatusChip(e['status']),
                                   ],
                                 ),
                                 if (isSkipped)
                                   const Padding(
-                                    padding: EdgeInsets.only(top: 4),
-                                    child: Text('Period already approved/paid — cannot recalculate', style: TextStyle(color: AppColors.error, fontSize: 11)),
-                                  )
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Text(
+                                        'Period already approved/paid — cannot recalculate',
+                                        style:
+                                            TextStyle(color: AppColors.error, fontSize: 11)),
+                                  ),
+                                const SizedBox(height: 10),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                          'Gross: R ${(e['gross_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                          style: const TextStyle(fontSize: 13)),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                          'Net: R ${(e['net_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
+                                              color: AppColors.success)),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            )
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Text(staff['full_name'] ?? 'Unknown Staff',
+                                              style: const TextStyle(
+                                                  fontWeight: FontWeight.bold, fontSize: 14)),
+                                          const SizedBox(width: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(
+                                                horizontal: 6, vertical: 2),
+                                            decoration: BoxDecoration(
+                                                color: AppColors.surfaceBg,
+                                                borderRadius: BorderRadius.circular(4)),
+                                            child: Text(staff['pay_frequency'] ?? 'monthly',
+                                                style: const TextStyle(
+                                                    fontSize: 10,
+                                                    color: AppColors.textSecondary)),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          _buildStatusChip(e['status']),
+                                        ],
+                                      ),
+                                      if (isSkipped)
+                                        const Padding(
+                                          padding: EdgeInsets.only(top: 4),
+                                          child: Text(
+                                              'Period already approved/paid — cannot recalculate',
+                                              style: TextStyle(
+                                                  color: AppColors.error, fontSize: 11)),
+                                        )
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                        'Gross: R ${(e['gross_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                        style: const TextStyle(fontSize: 13)),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                        'Net: R ${(e['net_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}',
+                                        style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                            color: AppColors.success)),
+                                  ],
+                                ),
                               ],
                             ),
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            children: [
-                              Text('Gross: R ${(e['gross_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(fontSize: 13)),
-                              const SizedBox(height: 2),
-                              Text('Net: R ${(e['net_pay'] as num?)?.toStringAsFixed(2) ?? '0.00'}', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: AppColors.success)),
-                            ],
-                          ),
-                        ],
-                      ),
                       subtitle: Padding(
                         padding: const EdgeInsets.only(top: 8),
                         child: Text(

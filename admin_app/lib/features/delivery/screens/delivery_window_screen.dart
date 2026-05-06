@@ -118,7 +118,7 @@ class _DeliveryWindowScreenState extends State<DeliveryWindowScreen> {
             return AlertDialog(
               title: const Text('Create Window'),
               content: SizedBox(
-                width: 420,
+                width: MediaQuery.of(context).size.width < 600 ? double.infinity : 420,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,

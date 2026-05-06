@@ -216,12 +216,13 @@ class _PinScreenState extends State<PinScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       backgroundColor: AppColors.sidebarBg,
       body: Center(
         child: Container(
-          width: 380,
-          padding: const EdgeInsets.all(40),
+          width: isMobile ? MediaQuery.of(context).size.width - 24 : 380,
+          padding: EdgeInsets.all(isMobile ? 20 : 40),
           decoration: BoxDecoration(
             color: AppColors.cardBg,
             borderRadius: BorderRadius.circular(16),
@@ -347,6 +348,7 @@ class _PinScreenState extends State<PinScreen> {
   }
 
   Widget _buildNumpad() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Column(children: [
       _buildNumRow(['1', '2', '3']),
       const SizedBox(height: 12),
@@ -354,25 +356,47 @@ class _PinScreenState extends State<PinScreen> {
       const SizedBox(height: 12),
       _buildNumRow(['7', '8', '9']),
       const SizedBox(height: 12),
-      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-        _numButton('C', onTap: _onClear, isAction: true),
-        const SizedBox(width: 12),
-        _numButton('0', onTap: () => _onKeyTap('0')),
-        const SizedBox(width: 12),
-        _numButton('⌫', onTap: _onDelete, isAction: true),
-      ]),
+      if (isMobile)
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+            _numButton('C', onTap: _onClear, isAction: true),
+            const SizedBox(width: 12),
+            _numButton('0', onTap: () => _onKeyTap('0')),
+            const SizedBox(width: 12),
+            _numButton('⌫', onTap: _onDelete, isAction: true),
+          ]),
+        )
+      else
+        Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _numButton('C', onTap: _onClear, isAction: true),
+          const SizedBox(width: 12),
+          _numButton('0', onTap: () => _onKeyTap('0')),
+          const SizedBox(width: 12),
+          _numButton('⌫', onTap: _onDelete, isAction: true),
+        ]),
     ]);
   }
 
   Widget _buildNumRow(List<String> keys) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: keys
-          .map((k) => Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6),
-                child: _numButton(k, onTap: () => _onKeyTap(k)),
-              ))
-          .toList(),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = constraints.maxWidth < 600;
+        final row = Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: keys
+              .map((k) => Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 6),
+                    child: _numButton(k, onTap: () => _onKeyTap(k)),
+                  ))
+              .toList(),
+        );
+        if (!isMobile) return row;
+        return FittedBox(
+          fit: BoxFit.scaleDown,
+          child: row,
+        );
+      },
     );
   }
 

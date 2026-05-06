@@ -25,6 +25,7 @@ import 'package:admin_app/features/loyalty/screens/tier_config_screen.dart';
 import 'package:admin_app/features/delivery/screens/delivery_window_screen.dart';
 import 'package:admin_app/features/delivery/screens/delivery_zone_screen.dart';
 import 'package:admin_app/features/delivery/screens/delivery_settings_screen.dart';
+import 'package:admin_app/features/delivery/screens/delivery_polygon_screen.dart';
 import 'package:admin_app/features/audit/screens/audit_log_screen.dart';
 import 'package:admin_app/features/settings/screens/business_settings_screen.dart';
 import 'package:admin_app/features/transactions/screens/transaction_list_screen.dart';
@@ -62,7 +63,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   Future<void> _waitForPermissions() async {
     if (PermissionService().isLoaded) {
-      _buildNavItems();
+      _initializeNavItems();
       if (mounted) setState(() => _permissionsReady = true);
       return;
     }
@@ -70,11 +71,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       await Future.delayed(const Duration(milliseconds: 100));
       if (PermissionService().isLoaded) break;
     }
-    _buildNavItems();
+    _initializeNavItems();
     if (mounted) setState(() => _permissionsReady = true);
   }
 
-  void _buildNavItems() {
+  void _initializeNavItems() {
     final ps = PermissionService();
     setState(() {
       _navItems = [
@@ -187,6 +188,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           locked: !ps.can(Permissions.manageCustomers),
         ),
         _NavItem(
+          icon: Icons.draw,
+          label: 'Delivery Zones Map',
+          screen: const DeliveryPolygonScreen(),
+          locked: !ps.can(Permissions.manageCustomers),
+        ),
+        _NavItem(
           icon: Icons.tune,
           label: 'Delivery Settings',
           screen: const DeliverySettingsScreen(),
@@ -271,6 +278,323 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     );
   }
 
+  Widget _buildCurrentScreen() {
+    final items = _navItems;
+    if (items.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final selected = _selectedIndex.clamp(0, items.length - 1);
+    return StreamBuilder<bool>(
+      stream: SessionScope.connectivity(context).connectionStatus,
+      initialData: SessionScope.connectivity(context).isConnected,
+      builder: (context, snapshot) {
+        final isConnected = snapshot.data ?? true;
+        return StreamBuilder<int>(
+          stream: OfflineQueueService().pendingCountStream,
+          initialData: 0,
+          builder: (context, countSnapshot) {
+            final pendingCount = countSnapshot.data ?? 0;
+            final bannerWidget = !isConnected
+                ? Material(
+                    color: Colors.amber.shade700,
+                    child: InkWell(
+                      onTap: pendingCount > 0
+                          ? () => Navigator.of(context).push(
+                                MaterialPageRoute<void>(
+                                  builder: (_) => const PendingSyncsScreen(),
+                                ),
+                              )
+                          : null,
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 24, vertical: 10),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Icon(Icons.cloud_off,
+                                size: 20, color: Colors.amber.shade100),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                pendingCount > 0
+                                    ? 'No internet — $pendingCount actions pending sync'
+                                    : 'No internet — viewing cached data',
+                                maxLines: 3,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.amber.shade100,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  )
+                : null;
+            return Column(
+              children: [
+                Container(
+                  height: 52,
+                  color: AppColors.cardBg,
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          items[selected].label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        _formattedDate(),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (bannerWidget != null) bannerWidget,
+                const Divider(height: 1, color: AppColors.border),
+                Expanded(
+                  child: items[selected].locked
+                      ? _buildAccessDenied(items[selected].label)
+                      : items[selected].screen,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _currentScreenTitle() {
+    if (_navItems.isEmpty) return AdminConfig.appName;
+    final selected = _selectedIndex.clamp(0, _navItems.length - 1);
+    return _navItems[selected].label;
+  }
+
+  List<Widget> _buildNavItems({bool isDrawer = false}) {
+    final selected = _selectedIndex.clamp(0, _navItems.length - 1);
+    return List<Widget>.generate(_navItems.length, (i) {
+      final item = _navItems[i];
+      final isSelected = i == selected;
+      final onTap = item.locked
+          ? () {}
+          : () {
+              setState(() => _selectedIndex = i);
+              if (isDrawer) Navigator.of(context).pop();
+            };
+      if (!isDrawer) {
+        return _SidebarItem(
+          icon: item.icon,
+          label: item.label,
+          isSelected: isSelected,
+          locked: item.locked,
+          onTap: onTap,
+        );
+      }
+      return ListTile(
+        enabled: !item.locked,
+        dense: false,
+        minVerticalPadding: 8,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        selected: isSelected,
+        selectedTileColor: AppColors.sidebarSelected.withOpacity(0.2),
+        leading: Icon(
+          item.locked ? Icons.lock_outline : item.icon,
+          color: item.locked
+              ? AppColors.sidebarText.withOpacity(0.5)
+              : (isSelected ? AppColors.primary : AppColors.textPrimary),
+        ),
+        title: Text(
+          item.label,
+          style: TextStyle(
+            color: item.locked
+                ? AppColors.textSecondary
+                : (isSelected ? AppColors.primary : AppColors.textPrimary),
+            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
+        onTap: onTap,
+      );
+    });
+  }
+
+  Widget _buildSidebar() {
+    return Container(
+      color: AppColors.sidebarBg,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 36,
+                      height: 36,
+                      decoration: BoxDecoration(
+                        color: AppColors.primary,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child:
+                          const Icon(Icons.storefront, color: Colors.white, size: 20),
+                    ),
+                    const SizedBox(width: 10),
+                    const Expanded(
+                      child: Text(
+                        AdminConfig.appName,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.person,
+                          color: AppColors.sidebarText, size: 14),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          widget.staffName,
+                          style: const TextStyle(
+                            color: AppColors.sidebarText,
+                            fontSize: 12,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          widget.role.toUpperCase(),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 9,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          const SizedBox(height: 8),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              children: _buildNavItems(),
+            ),
+          ),
+          const Divider(color: Colors.white12, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(8),
+            child: _SidebarItem(
+              icon: Icons.logout,
+              label: 'Log Out',
+              isSelected: false,
+              onTap: _logout,
+              isDestructive: true,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDrawerContent() {
+    return SafeArea(
+      child: Column(
+        children: [
+          DrawerHeader(
+            margin: EdgeInsets.zero,
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+            decoration: const BoxDecoration(color: AppColors.sidebarBg),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  AdminConfig.appName,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  widget.staffName,
+                  style: const TextStyle(color: AppColors.sidebarText),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.role.toUpperCase(),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: _buildNavItems(isDrawer: true),
+            ),
+          ),
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.logout, color: AppColors.error),
+            title: const Text(
+              'Log Out',
+              style: TextStyle(color: AppColors.error),
+            ),
+            onTap: _logout,
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show minimal loading until permissions are confirmed loaded
@@ -283,231 +607,39 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       );
     }
 
-    final items = _navItems;
-    final selected = _selectedIndex.clamp(0, items.length - 1);
-
-    return Scaffold(
-      body: Row(
-        children: [
-          // Sidebar
-          SizedBox(
-            width: 220,
-            child: Container(
-              color: AppColors.sidebarBg,
-              child: Column(
-                children: [
-                  // Header
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.storefront,
-                                  color: Colors.white, size: 20),
-                            ),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                AdminConfig.appName,
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.08),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.person,
-                                  color: AppColors.sidebarText, size: 14),
-                              const SizedBox(width: 6),
-                              Expanded(
-                                child: Text(
-                                  widget.staffName,
-                                  style: const TextStyle(
-                                    color: AppColors.sidebarText,
-                                    fontSize: 12,
-                                  ),
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: Text(
-                                  widget.role.toUpperCase(),
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 9,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(color: Colors.white12, height: 1),
-                  const SizedBox(height: 8),
-
-                  // Nav items
-                  Expanded(
-                    child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      itemCount: items.length,
-                      itemBuilder: (context, i) {
-                        final item = items[i];
-                        final isSelected = i == selected;
-                        return _SidebarItem(
-                          icon: item.icon,
-                          label: item.label,
-                          isSelected: isSelected,
-                          locked: item.locked,
-                          onTap: item.locked
-                              ? () {}  // blocked — no navigation
-                              : () => setState(() => _selectedIndex = i),
-                        );
-                      },
-                    ),
-                  ),
-
-                  // Logout
-                  const Divider(color: Colors.white12, height: 1),
-                  Padding(
-                    padding: const EdgeInsets.all(8),
-                    child: _SidebarItem(
-                      icon: Icons.logout,
-                      label: 'Log Out',
-                      isSelected: false,
-                      onTap: _logout,
-                      isDestructive: true,
-                    ),
-                  ),
-                ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isDesktop =
+            constraints.maxWidth >= AdminConfig.mobileBreakpoint;
+        if (isDesktop) {
+          return Scaffold(
+            body: Row(
+              children: [
+                SizedBox(width: 220, child: _buildSidebar()),
+                Expanded(child: _buildCurrentScreen()),
+              ],
+            ),
+          );
+        }
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(_currentScreenTitle()),
+            backgroundColor: AppColors.primary,
+            foregroundColor: Colors.white,
+            leading: Builder(
+              builder: (context) => IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () => Scaffold.of(context).openDrawer(),
               ),
             ),
           ),
-
-          // Main content
-          Expanded(
-            child: StreamBuilder<bool>(
-              stream: SessionScope.connectivity(context).connectionStatus,
-              initialData: SessionScope.connectivity(context).isConnected,
-              builder: (context, snapshot) {
-                final isConnected = snapshot.data ?? true;
-                return StreamBuilder<int>(
-                  stream: OfflineQueueService().pendingCountStream,
-                  initialData: 0,
-                  builder: (context, countSnapshot) {
-                    final pendingCount = countSnapshot.data ?? 0;
-                    final bannerWidget = !isConnected
-                        ? Material(
-                            color: Colors.amber.shade700,
-                            child: InkWell(
-                              onTap: pendingCount > 0
-                                  ? () => Navigator.of(context).push(
-                                        MaterialPageRoute<void>(
-                                          builder: (_) => const PendingSyncsScreen(),
-                                        ),
-                                      )
-                                  : null,
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 24, vertical: 10),
-                                child: Row(
-                                  children: [
-                                    Icon(Icons.cloud_off,
-                                        size: 20, color: Colors.amber.shade100),
-                                    const SizedBox(width: 10),
-                                    Text(
-                                      pendingCount > 0
-                                          ? 'No internet — $pendingCount actions pending sync'
-                                          : 'No internet — viewing cached data',
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w600,
-                                        color: Colors.amber.shade100,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          )
-                        : null;
-                    return Column(
-                      children: [
-                        // Top bar
-                        Container(
-                          height: 52,
-                          color: AppColors.cardBg,
-                          padding: const EdgeInsets.symmetric(horizontal: 24),
-                          child: Row(
-                            children: [
-                              Text(
-                                items[selected].label,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: AppColors.textPrimary,
-                                ),
-                              ),
-                              const Spacer(),
-                              Text(
-                                _formattedDate(),
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        if (bannerWidget != null) bannerWidget,
-                        const Divider(height: 1, color: AppColors.border),
-
-                        // Screen content — protected
-                        Expanded(
-                          child: items[selected].locked
-                              ? _buildAccessDenied(items[selected].label)
-                              : items[selected].screen,
-                        ),
-                      ],
-                    );
-                  },
-                );
-              },
-            ),
+          drawer: Drawer(
+            width: 280,
+            child: _buildDrawerContent(),
           ),
-        ],
-      ),
+          body: _buildCurrentScreen(),
+        );
+      },
     );
   }
 

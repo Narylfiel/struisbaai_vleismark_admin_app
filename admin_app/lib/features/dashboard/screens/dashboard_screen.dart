@@ -486,18 +486,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           _buildTopProductsWidget(),
                         if (_canSeeTopProducts)
                           const SizedBox(height: 24),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (_canSeeAlerts) ...[
-                              Expanded(flex: 3, child: _buildAlerts()),
-                              const SizedBox(width: 16),
-                            ],
-                            Expanded(
-                              flex: _canSeeAlerts ? 2 : 1,
-                              child: _buildClockInStatus(),
-                            ),
-                          ],
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final isMobile = constraints.maxWidth < 600;
+                            if (isMobile) {
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  if (_canSeeAlerts) _buildAlerts(),
+                                  if (_canSeeAlerts) const SizedBox(height: 16),
+                                  _buildClockInStatus(),
+                                ],
+                              );
+                            }
+                            return Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_canSeeAlerts) ...[
+                                  Expanded(flex: 3, child: _buildAlerts()),
+                                  const SizedBox(width: 16),
+                                ],
+                                Expanded(
+                                  flex: _canSeeAlerts ? 2 : 1,
+                                  child: _buildClockInStatus(),
+                                ),
+                              ],
+                            );
+                          },
                         ),
                         const SizedBox(height: 24),
                       ],
@@ -518,6 +533,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildOfflineDashboard() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return RefreshIndicator(
       onRefresh: _loadDashboard,
       child: SingleChildScrollView(
@@ -551,10 +567,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
             const SizedBox(height: 24),
-            Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
+            if (isMobile)
+              Column(
+                children: [
+                  _StatCard(
                     title: 'CACHED INVENTORY',
                     value: '$_cachedInventoryCount',
                     sub: 'products in cache',
@@ -562,10 +578,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     icon: Icons.inventory_2,
                     color: AppColors.info,
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _StatCard(
+                  const SizedBox(height: 12),
+                  _StatCard(
                     title: "TODAY'S TRANSACTIONS",
                     value: '$_cachedTransactionCountToday',
                     sub: 'from cache',
@@ -573,9 +587,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     icon: Icons.receipt_long,
                     color: AppColors.primary,
                   ),
-                ),
-              ],
-            ),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      title: 'CACHED INVENTORY',
+                      value: '$_cachedInventoryCount',
+                      sub: 'products in cache',
+                      subColor: AppColors.textSecondary,
+                      icon: Icons.inventory_2,
+                      color: AppColors.info,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _StatCard(
+                      title: "TODAY'S TRANSACTIONS",
+                      value: '$_cachedTransactionCountToday',
+                      sub: 'from cache',
+                      subColor: AppColors.textSecondary,
+                      icon: Icons.receipt_long,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
             const SizedBox(height: 24),
             Container(
               width: double.infinity,
@@ -679,6 +718,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildStatsRow() {
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    if (isMobile) {
+      return Column(
+        children: [
+          if (_canSeeFinancials)
+            _StatCard(
+              title: "TODAY'S SALES",
+              value: 'R ${_todaySales.toStringAsFixed(2)}',
+              sub:
+                  '${_salesChange >= 0 ? '+' : ''}${_salesChange.toStringAsFixed(1)}% vs yesterday',
+              subColor: _salesChange >= 0 ? AppColors.success : AppColors.error,
+              icon: Icons.point_of_sale,
+              color: AppColors.dashSales,
+            ),
+          if (_canSeeFinancials) const SizedBox(height: 12),
+          _StatCard(
+            title: 'TRANSACTIONS',
+            value: '$_transactionCount',
+            sub: 'transactions today',
+            subColor: AppColors.textSecondary,
+            icon: Icons.receipt_long,
+            color: AppColors.info,
+          ),
+          const SizedBox(height: 12),
+          _StatCard(
+            title: 'ONLINE ORDERS',
+            value: '${_pendingOnlineOrders + _readyOnlineOrders}',
+            sub: (_pendingOnlineOrders + _readyOnlineOrders) == 0
+                ? 'No active orders'
+                : '$_pendingOnlineOrders Pending · $_readyOnlineOrders Ready',
+            subColor: _pendingOnlineOrders > 0
+                ? AppColors.warning
+                : _readyOnlineOrders > 0
+                    ? AppColors.success
+                    : AppColors.textSecondary,
+            icon: Icons.shopping_bag,
+            color: _pendingOnlineOrders > 0
+                ? AppColors.warning
+                : _readyOnlineOrders > 0
+                    ? AppColors.success
+                    : AppColors.info,
+          ),
+          if (_canSeeFinancials) const SizedBox(height: 12),
+          if (_canSeeFinancials)
+            _StatCard(
+              title: 'AVG BASKET',
+              value: 'R ${_avgBasket.toStringAsFixed(2)}',
+              sub: 'per transaction',
+              subColor: AppColors.textSecondary,
+              icon: Icons.shopping_basket,
+              color: AppColors.accent,
+            ),
+          if (_canSeeFinancials) const SizedBox(height: 12),
+          if (_canSeeFinancials)
+            _StatCard(
+              title: 'GROSS MARGIN',
+              value: '${_grossMargin.toStringAsFixed(1)}%',
+              sub: 'today',
+              subColor: _grossMargin >= 30 ? AppColors.success : AppColors.warning,
+              icon: Icons.trending_up,
+              color: AppColors.dashMargin,
+            ),
+        ],
+      );
+    }
     return Row(
       children: [
         if (_canSeeFinancials)
@@ -1112,35 +1216,59 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Icon(Icons.trending_up, color: Colors.orange, size: 18),
-                const SizedBox(width: 8),
-                const Text('TOP 5 PRODUCTS',
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12,
-                        letterSpacing: 0.5)),
-                const Spacer(),
-                if (_canSeeTopRevenue)
-                  SegmentedButton<String>(
-                    segments: const [
-                      ButtonSegment(value: 'revenue', label: Text('Revenue')),
-                      ButtonSegment(value: 'quantity', label: Text('Qty')),
+            LayoutBuilder(
+              builder: (context, c) {
+                final mobile = c.maxWidth < 600;
+                final modeWidget = _canSeeTopRevenue
+                    ? SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment(value: 'revenue', label: Text('Revenue')),
+                          ButtonSegment(value: 'quantity', label: Text('Qty')),
+                        ],
+                        selected: {_topProductsMode},
+                        onSelectionChanged: (val) {
+                          setState(() => _topProductsMode = val.first);
+                          _loadTopProducts();
+                        },
+                        style: const ButtonStyle(
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      )
+                    : Text('By Quantity',
+                        style: TextStyle(color: Colors.grey[500], fontSize: 12));
+                final titleLeading = Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.trending_up, color: Colors.orange, size: 18),
+                    const SizedBox(width: 8),
+                    const Text('TOP 5 PRODUCTS',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            letterSpacing: 0.5)),
+                  ],
+                );
+                if (mobile) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      titleLeading,
+                      const SizedBox(height: 10),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: modeWidget,
+                      ),
                     ],
-                    selected: {_topProductsMode},
-                    onSelectionChanged: (val) {
-                      setState(() => _topProductsMode = val.first);
-                      _loadTopProducts();
-                    },
-                    style: const ButtonStyle(
-                      visualDensity: VisualDensity.compact,
-                    ),
-                  )
-                else
-                  Text('By Quantity',
-                      style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-              ],
+                  );
+                }
+                return Row(
+                  children: [
+                    ...titleLeading.children,
+                    const Spacer(),
+                    modeWidget,
+                  ],
+                );
+              },
             ),
             const SizedBox(height: 16),
             if (_isLoadingTopProducts)

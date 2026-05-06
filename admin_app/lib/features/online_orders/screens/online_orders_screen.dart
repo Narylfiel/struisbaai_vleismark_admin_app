@@ -108,6 +108,7 @@ class _OnlineOrdersScreenState extends State<OnlineOrdersScreen>
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       backgroundColor: AppColors.scaffoldBg,
       body: Column(
@@ -242,6 +243,7 @@ class _OrderCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     final orderNumber = order['order_number'] as String? ?? '';
     final status = order['status'] as String? ?? 'pending';
     final total = (order['total'] as num?)?.toDouble() ?? 0.0;
@@ -270,15 +272,14 @@ class _OrderCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Left: order info
-              Expanded(
-                flex: 3,
-                child: Column(
+          child: isMobile
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           orderNumber,
@@ -288,7 +289,6 @@ class _OrderCard extends StatelessWidget {
                             color: AppColors.textPrimary,
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 8, vertical: 3),
@@ -305,14 +305,12 @@ class _OrderCard extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: paymentMethod == 'cod'
-                                ? AppColors.textSecondary
-                                    .withValues(alpha: 0.1)
+                                ? AppColors.textSecondary.withValues(alpha: 0.1)
                                 : AppColors.info.withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(4),
                           ),
@@ -347,44 +345,159 @@ class _OrderCard extends StatelessWidget {
                           ),
                         ),
                       ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'R${total.toStringAsFixed(2)}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '$itemCount items',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.chevron_right,
+                            color: AppColors.textSecondary, size: 20),
+                      ],
+                    ),
+                    if (createdAt != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '${createdAtSast!.day.toString().padLeft(2, '0')}/${createdAtSast.month.toString().padLeft(2, '0')} ${createdAtSast.hour.toString().padLeft(2, '0')}:${createdAtSast.minute.toString().padLeft(2, '0')}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
                   ],
-                ),
-              ),
-              // Right: total, items, date
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    'R${total.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$itemCount items',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
-                  if (createdAt != null)
-                    Text(
-                      '${createdAtSast!.day.toString().padLeft(2, '0')}/${createdAtSast.month.toString().padLeft(2, '0')} ${createdAtSast.hour.toString().padLeft(2, '0')}:${createdAtSast.minute.toString().padLeft(2, '0')}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textSecondary,
+                )
+              : Row(
+                  children: [
+                    // Left: order info
+                    Expanded(
+                      flex: 3,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                orderNumber,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: statusInfo.color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  statusInfo.label,
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: statusInfo.color,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: paymentMethod == 'cod'
+                                      ? AppColors.textSecondary
+                                          .withValues(alpha: 0.1)
+                                      : AppColors.info.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  paymentMethod == 'cod' ? 'COD' : 'PayFast',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: paymentMethod == 'cod'
+                                        ? AppColors.textSecondary
+                                        : AppColors.info,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '$customerName${customerPhone.isNotEmpty ? ' · $customerPhone' : ''}',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          if (collectionDate.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Text(
+                                'Collect: $collectionDate${collectionSlot.isNotEmpty ? ' ($collectionSlot)' : ''}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
-                ],
-              ),
-              const SizedBox(width: 8),
-              const Icon(Icons.chevron_right,
-                  color: AppColors.textSecondary, size: 20),
-            ],
-          ),
+                    // Right: total, items, date
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          'R${total.toStringAsFixed(2)}',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$itemCount items',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                        if (createdAt != null)
+                          Text(
+                            '${createdAtSast!.day.toString().padLeft(2, '0')}/${createdAtSast.month.toString().padLeft(2, '0')} ${createdAtSast.hour.toString().padLeft(2, '0')}:${createdAtSast.minute.toString().padLeft(2, '0')}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.chevron_right,
+                        color: AppColors.textSecondary, size: 20),
+                  ],
+                ),
         ),
       ),
     );

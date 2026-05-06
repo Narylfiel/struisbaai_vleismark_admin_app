@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/responsive/responsive_breakpoints.dart';
 
 /// Reusable search bar widget
 class SearchBarWidget extends StatefulWidget {
@@ -47,8 +48,10 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
   }
 
   void _clearSearch() {
-    _controller.clear();
-    _performSearch('');
+    setState(() {
+      _controller.clear();
+      _performSearch('');
+    });
   }
 
   @override
@@ -61,7 +64,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
         border: Border.all(color: AppColors.border),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -70,6 +73,7 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
       child: TextField(
         controller: _controller,
         onChanged: (value) {
+          setState(() {});
           // Debounce search
           Future.delayed(widget.debounceDuration, () {
             if (mounted && _controller.text == value) {
@@ -102,7 +106,8 @@ class _SearchBarWidgetState extends State<SearchBarWidget> {
                 )
               : null,
           border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         ),
         style: const TextStyle(
           color: AppColors.textPrimary,
@@ -180,28 +185,55 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
     return Column(
       children: [
         // Search bar
-        Row(
-          children: [
-            Expanded(
-              child: SearchBarWidget(
-                hintText: widget.hintText,
-                onSearch: (value) {
-                  _controller.text = value;
-                  _performSearch();
-                },
-                initialValue: widget.initialValue,
-              ),
-            ),
-            if (widget.showFilters && widget.filters.isNotEmpty)
-              IconButton(
-                icon: Icon(
-                  _showFilters ? Icons.filter_list_off : Icons.filter_list,
-                  color: _filterValues.isNotEmpty ? AppColors.primary : AppColors.textSecondary,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final narrow =
+                constraints.maxWidth < ResponsiveBreakpoints.phoneMaxWidth;
+            final filterBtn = widget.showFilters && widget.filters.isNotEmpty
+                ? IconButton(
+                    icon: Icon(
+                      _showFilters ? Icons.filter_list_off : Icons.filter_list,
+                      color: _filterValues.isNotEmpty
+                          ? AppColors.primary
+                          : AppColors.textSecondary,
+                    ),
+                    onPressed: _toggleFilters,
+                    tooltip: _showFilters ? 'Hide filters' : 'Show filters',
+                  )
+                : null;
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SearchBarWidget(
+                    hintText: widget.hintText,
+                    onSearch: (value) {
+                      _controller.text = value;
+                      _performSearch();
+                    },
+                    initialValue: widget.initialValue,
+                  ),
+                  if (filterBtn != null)
+                    Align(alignment: Alignment.centerRight, child: filterBtn),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(
+                  child: SearchBarWidget(
+                    hintText: widget.hintText,
+                    onSearch: (value) {
+                      _controller.text = value;
+                      _performSearch();
+                    },
+                    initialValue: widget.initialValue,
+                  ),
                 ),
-                onPressed: _toggleFilters,
-                tooltip: _showFilters ? 'Hide filters' : 'Show filters',
-              ),
-          ],
+                if (filterBtn != null) filterBtn,
+              ],
+            );
+          },
         ),
 
         // Filters
@@ -217,40 +249,72 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Filters',
-                      style: TextStyle(
-                        color: AppColors.textPrimary,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    if (_filterValues.isNotEmpty)
-                      TextButton(
-                        onPressed: _clearFilters,
-                        child: const Text(
-                          'Clear All',
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 420;
+                    final clear = _filterValues.isNotEmpty
+                        ? TextButton(
+                            onPressed: _clearFilters,
+                            child: const Text(
+                              'Clear All',
+                              style: TextStyle(
+                                color: AppColors.primary,
+                                fontSize: 14,
+                              ),
+                            ),
+                          )
+                        : null;
+                    if (narrow) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Filters',
+                            style: TextStyle(
+                              color: AppColors.textPrimary,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          if (clear != null) clear,
+                        ],
+                      );
+                    }
+                    return Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Filters',
                           style: TextStyle(
-                            color: AppColors.primary,
-                            fontSize: 14,
+                            color: AppColors.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
                           ),
                         ),
-                      ),
-                  ],
+                        if (clear != null) clear,
+                      ],
+                    );
+                  },
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: widget.filters.map((filter) {
-                    return SizedBox(
-                      width: 200,
-                      child: _buildFilterWidget(filter),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final width = constraints.maxWidth < 430
+                        ? constraints.maxWidth
+                        : constraints.maxWidth < 760
+                            ? (constraints.maxWidth - 12) / 2
+                            : 240.0;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: widget.filters.map((filter) {
+                        return SizedBox(
+                          width: width,
+                          child: _buildFilterWidget(filter),
+                        );
+                      }).toList(),
                     );
-                  }).toList(),
+                  },
                 ),
               ],
             ),
@@ -271,7 +335,8 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(8),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
           items: filter.options?.map((option) {
             return DropdownMenuItem<String>(
@@ -301,7 +366,8 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               suffixIcon: const Icon(
                 Icons.date_range,
                 color: AppColors.textSecondary,
@@ -312,7 +378,9 @@ class _AdvancedSearchBarState extends State<AdvancedSearchBar> {
                   ? '${currentValue.start.toString().split(' ')[0]} - ${currentValue.end.toString().split(' ')[0]}'
                   : 'Select date range',
               style: TextStyle(
-                color: currentValue != null ? AppColors.textPrimary : AppColors.textSecondary,
+                color: currentValue != null
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
                 fontSize: 14,
               ),
             ),

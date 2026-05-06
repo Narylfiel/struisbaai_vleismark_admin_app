@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/features/settings/services/scale_sync_service.dart';
@@ -110,6 +111,17 @@ class _ScaleSettingsScreenState extends State<ScaleSettingsScreen> {
   }
 
   Future<void> _pingScale() async {
+    if (!Platform.isWindows) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Scale integration is only available on Windows desktop'),
+          backgroundColor: AppColors.warning,
+        ));
+      }
+      return;
+    }
+
     final ip = _ipController.text.trim();
     if (ip.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -144,6 +156,17 @@ class _ScaleSettingsScreenState extends State<ScaleSettingsScreen> {
   }
 
   Future<void> _sendToScale() async {
+    if (!Platform.isWindows) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content:
+              Text('Scale integration is only available on Windows desktop'),
+          backgroundColor: AppColors.warning,
+        ));
+      }
+      return;
+    }
+
     final path = _pathController.text.trim();
     if (path.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
@@ -247,38 +270,79 @@ class _ScaleSettingsScreenState extends State<ScaleSettingsScreen> {
         ? 'Never'
         : DateFormat('dd MMM yyyy HH:mm').format(_lastSync!);
 
+    final dense = ResponsiveBreakpoints.isPhoneLayout(context);
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+      padding: EdgeInsets.fromLTRB(
+          dense ? 16 : 24,
+          dense ? 16 : 24,
+          dense ? 16 : 24,
+          24 + MediaQuery.viewInsetsOf(context).bottom),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ── Status tiles ──────────────────────────────────────
-          Row(
-            children: [
-              _StatTile(
-                label: 'Scale Items',
-                value: '$_scaleItemCount',
-                icon: Icons.scale,
-                color: AppColors.primary,
-              ),
-              const SizedBox(width: 12),
-              _StatTile(
-                label: 'Missing Shelf Life',
-                value: '$_missingShelfLife',
-                icon: Icons.warning_amber_rounded,
-                color: _missingShelfLife > 0
-                    ? AppColors.warning
-                    : AppColors.success,
-              ),
-              const SizedBox(width: 12),
-              _StatTile(
-                label: 'Last Sync',
-                value: lastSyncText,
-                icon: Icons.sync,
-                color: AppColors.info,
-              ),
-            ],
-          ),
+          dense
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _StatTile(
+                      label: 'Scale Items',
+                      value: '$_scaleItemCount',
+                      icon: Icons.scale,
+                      color: AppColors.primary,
+                    ),
+                    const SizedBox(height: 12),
+                    _StatTile(
+                      label: 'Missing Shelf Life',
+                      value: '$_missingShelfLife',
+                      icon: Icons.warning_amber_rounded,
+                      color: _missingShelfLife > 0
+                          ? AppColors.warning
+                          : AppColors.success,
+                    ),
+                    const SizedBox(height: 12),
+                    _StatTile(
+                      label: 'Last Sync',
+                      value: lastSyncText,
+                      icon: Icons.sync,
+                      color: AppColors.info,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: _StatTile(
+                        label: 'Scale Items',
+                        value: '$_scaleItemCount',
+                        icon: Icons.scale,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatTile(
+                        label: 'Missing Shelf Life',
+                        value: '$_missingShelfLife',
+                        icon: Icons.warning_amber_rounded,
+                        color: _missingShelfLife > 0
+                            ? AppColors.warning
+                            : AppColors.success,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _StatTile(
+                        label: 'Last Sync',
+                        value: lastSyncText,
+                        icon: Icons.sync,
+                        color: AppColors.info,
+                      ),
+                    ),
+                  ],
+                ),
           const SizedBox(height: 24),
 
           // ── ScaleLink path ────────────────────────────────────
@@ -315,26 +379,46 @@ class _ScaleSettingsScreenState extends State<ScaleSettingsScreen> {
                 fontSize: 12, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  controller: _ipController,
-                  decoration: const InputDecoration(
-                    hintText: '192.168.1.x',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.router_outlined),
-                  ),
+          dense
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _ipController,
+                      decoration: const InputDecoration(
+                        hintText: '192.168.1.x',
+                        border: OutlineInputBorder(),
+                        prefixIcon: Icon(Icons.router_outlined),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    OutlinedButton.icon(
+                      onPressed: _pingScale,
+                      icon: const Icon(Icons.network_ping, size: 18),
+                      label: const Text('Ping'),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: TextFormField(
+                        controller: _ipController,
+                        decoration: const InputDecoration(
+                          hintText: '192.168.1.x',
+                          border: OutlineInputBorder(),
+                          prefixIcon: Icon(Icons.router_outlined),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    OutlinedButton.icon(
+                      onPressed: _pingScale,
+                      icon: const Icon(Icons.network_ping, size: 18),
+                      label: const Text('Ping'),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              OutlinedButton.icon(
-                onPressed: _pingScale,
-                icon: const Icon(Icons.network_ping, size: 18),
-                label: const Text('Ping'),
-              ),
-            ],
-          ),
           const SizedBox(height: 24),
 
           // ── Save settings ─────────────────────────────────────

@@ -131,51 +131,89 @@ class _CustomersTabState extends State<_CustomersTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(16),
           color: AppColors.cardBg,
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _searchController,
-                  decoration: InputDecoration(
-                    hintText: 'Search by full name...',
-                    prefixIcon: const Icon(Icons.search),
-                    suffixIcon: IconButton(
-                      icon: const Icon(Icons.clear, size: 16),
-                      onPressed: () {
-                        _searchController.clear();
-                        _searchQuery = '';
+          child: isMobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search by full name...',
+                        prefixIcon: const Icon(Icons.search),
+                        suffixIcon: IconButton(
+                          icon: const Icon(Icons.clear, size: 16),
+                          onPressed: () {
+                            _searchController.clear();
+                            _searchQuery = '';
+                            _load();
+                          },
+                        ),
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onSubmitted: (val) {
+                        _searchQuery = val;
                         _load();
                       },
                     ),
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                  ),
-                  onSubmitted: (val) {
-                    _searchQuery = val;
-                    _load();
-                  },
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search by full name...',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: IconButton(
+                            icon: const Icon(Icons.clear, size: 16),
+                            onPressed: () {
+                              _searchController.clear();
+                              _searchQuery = '';
+                              _load();
+                            },
+                          ),
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onSubmitted: (val) {
+                          _searchQuery = val;
+                          _load();
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: _load,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Refresh'),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: _load,
-                icon: const Icon(Icons.refresh, size: 18),
-                label: const Text('Refresh'),
-              ),
-            ],
-          ),
         ),
         const Divider(height: 1, color: AppColors.border),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          color: AppColors.surfaceBg,
-          child: const Row(children: [
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Container(
+            width: isMobile ? 760 : null,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+            color: AppColors.surfaceBg,
+            child: const Row(children: [
             Expanded(flex: 2, child: Text('NAME / CONTACT', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
             SizedBox(width: 16),
             SizedBox(width: 100, child: Text('TIER', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
@@ -187,7 +225,8 @@ class _CustomersTabState extends State<_CustomersTab> {
             SizedBox(width: 100, child: Text('VISITS / MO', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
             SizedBox(width: 16),
             SizedBox(width: 100, child: Text('STATUS', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: AppColors.textSecondary))),
-          ]),
+            ]),
+          ),
         ),
         const Divider(height: 1, color: AppColors.border),
         Expanded(
@@ -228,7 +267,11 @@ class _CustomersTabState extends State<_CustomersTab> {
                           ),
                           child: Padding(
                             padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(children: [
+                            child: SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: SizedBox(
+                                width: isMobile ? 760 : null,
+                                child: Row(children: [
                             Expanded(
                               flex: 2,
                               child: Column(
@@ -272,6 +315,8 @@ class _CustomersTabState extends State<_CustomersTab> {
                               )
                             ),
                           ]),
+                              ),
+                            ),
                           ),
                         );
                       },

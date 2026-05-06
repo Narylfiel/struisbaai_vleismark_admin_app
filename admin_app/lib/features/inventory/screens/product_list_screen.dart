@@ -1387,37 +1387,47 @@ class ProductListScreenState extends State<ProductListScreen> {
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          Expanded(child: searchField),
-                          const SizedBox(width: 4),
-                          bulkButton,
-                          refreshButton,
-                          IconButton(
-                            onPressed: _isExportingCsv ? null : _exportProductsCsv,
-                            icon: _isExportingCsv
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.download, size: 20),
-                            tooltip: 'Export CSV',
+                          searchField,
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 4,
+                            runSpacing: 4,
+                            crossAxisAlignment: WrapCrossAlignment.center,
+                            children: [
+                              bulkButton,
+                              refreshButton,
+                              IconButton(
+                                onPressed: _isExportingCsv ? null : _exportProductsCsv,
+                                icon: _isExportingCsv
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.download, size: 20),
+                                tooltip: 'Export CSV',
+                              ),
+                              IconButton(
+                                onPressed: _isImportingCsv ? null : _importProductsCsv,
+                                icon: _isImportingCsv
+                                    ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                                    : const Icon(Icons.upload_file, size: 20),
+                                tooltip: 'Import CSV',
+                              ),
+                              sortButton,
+                              addButton,
+                            ],
                           ),
-                          const SizedBox(width: 2),
-                          IconButton(
-                            onPressed: _isImportingCsv ? null : _importProductsCsv,
-                            icon: _isImportingCsv
-                                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.upload_file, size: 20),
-                            tooltip: 'Import CSV',
-                          ),
-                          const SizedBox(width: 2),
-                          sortButton,
-                          addButton,
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Row(
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          filters,
-                          const Spacer(),
+                          SingleChildScrollView(
+                            scrollDirection: Axis.horizontal,
+                            child: filters,
+                          ),
+                          const SizedBox(height: 6),
                           countText,
                         ],
                       ),
@@ -1430,7 +1440,10 @@ class ProductListScreenState extends State<ProductListScreen> {
           const Divider(height: 1, color: AppColors.border),
 
           // Table header — fixed widths to prevent overflow at 996px
-          Container(
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Container(
+            width: MediaQuery.of(context).size.width < 600 ? 1200 : null,
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
             color: AppColors.surfaceBg,
             child: Row(
@@ -1460,6 +1473,7 @@ class ProductListScreenState extends State<ProductListScreen> {
                 const SizedBox(width: 8),
                 const SizedBox(width: 128, child: Text('ACTIONS', style: _headerStyle)),
               ],
+            ),
             ),
           ),
           const Divider(height: 1, color: AppColors.border),
@@ -1509,7 +1523,11 @@ class ProductListScreenState extends State<ProductListScreen> {
                               color: isActive
                                   ? null
                                   : AppColors.border.withOpacity(0.3),
-                              child: Row(
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: SizedBox(
+                                  width: MediaQuery.of(context).size.width < 600 ? 1200 : null,
+                                  child: Row(
                                 children: [
                                   // Row number
                                   SizedBox(
@@ -1848,6 +1866,8 @@ class ProductListScreenState extends State<ProductListScreen> {
                                     ),
                                   ),
                                 ],
+                                  ),
+                                ),
                               ),
                             ),
                           );

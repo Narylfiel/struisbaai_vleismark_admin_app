@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
 import '../services/delivery_zone_service.dart';
 
 class DeliveryZoneScreen extends StatefulWidget {
@@ -84,7 +85,7 @@ class _DeliveryZoneScreenState extends State<DeliveryZoneScreen> {
         return AlertDialog(
           title: const Text('Add Delivery Zone'),
           content: SizedBox(
-            width: 420,
+            width: MediaQuery.of(dialogContext).size.width < 600 ? double.infinity : 420,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -240,6 +241,7 @@ class _DeliveryZoneScreenState extends State<DeliveryZoneScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = MediaQuery.of(context).size.width < 600;
     return Scaffold(
       backgroundColor: AppColors.scaffoldBg,
       body: _isLoading
@@ -253,31 +255,57 @@ class _DeliveryZoneScreenState extends State<DeliveryZoneScreen> {
                     style: const TextStyle(color: AppColors.error),
                   ),
                 )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: _ZonesPane(
-                        zones: _zones,
-                        selectedZoneId: _selectedZoneId,
-                        isSubmitting: _isSubmitting,
-                        onRefresh: _loadZones,
-                        onAddZone: _showAddZoneDialog,
-                        onSelectZone: _selectZone,
-                        onToggleZoneActive: _toggleZoneActive,
-                      ),
+              : isMobile
+                  ? Column(
+                      children: [
+                        Expanded(
+                          child: _ZonesPane(
+                            zones: _zones,
+                            selectedZoneId: _selectedZoneId,
+                            isSubmitting: _isSubmitting,
+                            onRefresh: _loadZones,
+                            onAddZone: _showAddZoneDialog,
+                            onSelectZone: _selectZone,
+                            onToggleZoneActive: _toggleZoneActive,
+                          ),
+                        ),
+                        const Divider(height: 1, color: AppColors.border),
+                        Expanded(
+                          child: _StreetsPane(
+                            selectedZoneId: _selectedZoneId,
+                            streets: _streets,
+                            isSubmitting: _isSubmitting,
+                            onAddStreet: _showAddStreetDialog,
+                            onToggleStreetActive: _toggleStreetActive,
+                          ),
+                        ),
+                      ],
+                    )
+                  : Row(
+                      children: [
+                        Expanded(
+                          child: _ZonesPane(
+                            zones: _zones,
+                            selectedZoneId: _selectedZoneId,
+                            isSubmitting: _isSubmitting,
+                            onRefresh: _loadZones,
+                            onAddZone: _showAddZoneDialog,
+                            onSelectZone: _selectZone,
+                            onToggleZoneActive: _toggleZoneActive,
+                          ),
+                        ),
+                        const VerticalDivider(width: 1, color: AppColors.border),
+                        Expanded(
+                          child: _StreetsPane(
+                            selectedZoneId: _selectedZoneId,
+                            streets: _streets,
+                            isSubmitting: _isSubmitting,
+                            onAddStreet: _showAddStreetDialog,
+                            onToggleStreetActive: _toggleStreetActive,
+                          ),
+                        ),
+                      ],
                     ),
-                    const VerticalDivider(width: 1, color: AppColors.border),
-                    Expanded(
-                      child: _StreetsPane(
-                        selectedZoneId: _selectedZoneId,
-                        streets: _streets,
-                        isSubmitting: _isSubmitting,
-                        onAddStreet: _showAddStreetDialog,
-                        onToggleStreetActive: _toggleStreetActive,
-                      ),
-                    ),
-                  ],
-                ),
     );
   }
 }
@@ -438,25 +466,49 @@ class _PaneHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final narrow = ResponsiveBreakpoints.isPhoneLayout(context);
+    final titleWidget = Text(
+      title,
+      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+    );
     return Container(
       color: AppColors.cardBg,
       padding: const EdgeInsets.all(16),
-      child: Row(
-        children: [
-          Text(
-            title,
-            style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-          ),
-          const Spacer(),
-          if (onRefresh != null)
-            IconButton(
-              onPressed: onRefresh,
-              icon: const Icon(Icons.refresh),
-              tooltip: 'Refresh',
+      child: narrow
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(child: titleWidget),
+                    if (onRefresh != null)
+                      IconButton(
+                        onPressed: onRefresh,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: action,
+                ),
+              ],
+            )
+          : Row(
+              children: [
+                titleWidget,
+                const Spacer(),
+                if (onRefresh != null)
+                  IconButton(
+                    onPressed: onRefresh,
+                    icon: const Icon(Icons.refresh),
+                    tooltip: 'Refresh',
+                  ),
+                action,
+              ],
             ),
-          action,
-        ],
-      ),
     );
   }
 }

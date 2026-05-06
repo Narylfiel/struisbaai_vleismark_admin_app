@@ -1,9 +1,12 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
@@ -187,10 +190,18 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
               ));
             }
           }
+        } else if (Platform.isAndroid || Platform.isIOS) {
+          await Share.shareXFiles([XFile(pdfFile.path)]);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(isEmpty ? 'No data for this period' : 'PDF shared'),
+              backgroundColor: AppColors.success,
+            ));
+          }
         } else {
-          // Non-Windows: open directly from temp location
+          // Non-Windows desktop fallback
           final filePath = pdfFile.path;
-          await Process.run('open', [filePath]); // macOS
+          await Process.run('open', [filePath]);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(SnackBar(
               content: Text(isEmpty ? 'No data for this period' : 'PDF opened'),
@@ -230,6 +241,14 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
                 backgroundColor: AppColors.success,
               ));
             }
+          }
+        } else if (Platform.isAndroid || Platform.isIOS) {
+          await Share.shareXFiles([XFile(xlsxFile.path)]);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(isEmpty ? 'No data for this period' : 'Excel shared'),
+              backgroundColor: AppColors.success,
+            ));
           }
         } else {
           await Process.run('open', [xlsxFile.path]);
@@ -310,11 +329,36 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
                   children: [
                     const Text('Reports & Exports', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton.icon(
+                        onPressed: _pickDateRange,
+                        style: TextButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.calendar_today, size: 18),
+                        label: Text(
+                          '${_rangeStart.day}/${_rangeStart.month}/${_rangeStart.year} – ${_rangeEnd.day}/${_rangeEnd.month}/${_rangeEnd.year}',
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.left,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Row(
                       children: [
-                        Expanded(child: dateButton),
-                        if (_isExporting) const Padding(padding: EdgeInsets.only(right: 8), child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2))),
-                        scheduleButton,
+                        if (_isExporting)
+                          const Padding(
+                            padding: EdgeInsets.only(right: 8),
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        Expanded(child: scheduleButton),
                       ],
                     ),
                   ],
@@ -324,30 +368,66 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
           ),
           const Divider(height: 1, color: AppColors.border),
           Expanded(
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 250,
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    children: ReportDefinitions.categories.map((cat) => _sidebarItem(cat)).toList(),
-                  ),
-                ),
-                const VerticalDivider(width: 1, color: AppColors.border),
-                Expanded(
-                  child: _isLoadingView
-                      ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                      : GridView.extent(
-                          padding: const EdgeInsets.all(24),
-                          maxCrossAxisExtent: 340,
-                          mainAxisSpacing: 16,
-                          crossAxisSpacing: 16,
-                          childAspectRatio: 1.45,
-                          children: _filteredReports.map((def) => _reportCard(def)).toList(),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final mobile = constraints.maxWidth < 600;
+                final grid = _isLoadingView
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                    : GridView.extent(
+                        padding: const EdgeInsets.all(24),
+                        maxCrossAxisExtent: 340,
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: 1.45,
+                        children: _filteredReports.map((def) => _reportCard(def)).toList(),
+                      );
+                if (!mobile) {
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SizedBox(
+                        width: 250,
+                        child: ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          children:
+                              ReportDefinitions.categories.map((cat) => _sidebarItem(cat)).toList(),
                         ),
-                ),
-              ],
+                      ),
+                      const VerticalDivider(width: 1, color: AppColors.border),
+                      Expanded(child: grid),
+                    ],
+                  );
+                }
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _selectedCategory,
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                        ),
+                        items: ReportDefinitions.categories
+                            .map((c) => DropdownMenuItem<String>(
+                                  value: c,
+                                  child: Text(c, overflow: TextOverflow.ellipsis),
+                                ))
+                            .toList(),
+                        onChanged: (v) {
+                          if (v == null) return;
+                          setState(() => _selectedCategory = v);
+                        },
+                      ),
+                    ),
+                    const Divider(height: 1, color: AppColors.border),
+                    Expanded(child: grid),
+                  ],
+                );
+              },
             ),
           ),
         ],
@@ -387,22 +467,10 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
               ],
             ),
             Text(def.frequency, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoadingView ? null : () => _viewReport(def),
-                    icon: const Icon(Icons.visibility_outlined, size: 18),
-                    label: const Text('View'),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.primary,
-                      side: const BorderSide(color: AppColors.primary),
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                PopupMenuButton<String>(
+            LayoutBuilder(
+              builder: (context, cardConstraints) {
+                final stackActions = cardConstraints.maxWidth < 260;
+                final exportMenu = PopupMenuButton<String>(
                   tooltip: 'Export report',
                   onSelected: (val) => _exportReport(def, val),
                   itemBuilder: (context) => [
@@ -428,8 +496,35 @@ class _ReportHubScreenState extends State<ReportHubScreen> {
                       ],
                     ),
                   ),
-                ),
-              ],
+                );
+                final viewBtn = OutlinedButton.icon(
+                  onPressed: _isLoadingView ? null : () => _viewReport(def),
+                  icon: const Icon(Icons.visibility_outlined, size: 18),
+                  label: const Text('View'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: const BorderSide(color: AppColors.primary),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                  ),
+                );
+                if (stackActions) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      viewBtn,
+                      const SizedBox(height: 8),
+                      Align(alignment: Alignment.center, child: exportMenu),
+                    ],
+                  );
+                }
+                return Row(
+                  children: [
+                    Expanded(child: viewBtn),
+                    const SizedBox(width: 8),
+                    exportMenu,
+                  ],
+                );
+              },
             ),
           ],
         ),
@@ -572,6 +667,50 @@ class _ReportFilterDialogState extends State<_ReportFilterDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final maxContentW =
+        ResponsiveBreakpoints.dialogContentMaxWidth(context, desktopMax: 440);
+
+    Widget dateRangePickers(BoxConstraints constraints) {
+      final stackVertically = constraints.maxWidth < 400;
+      if (stackVertically) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OutlinedButton.icon(
+              onPressed: _pickStart,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text('From: ${_fmt(_start)}'),
+            ),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _pickEnd,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text('To: ${_fmt(_end)}'),
+            ),
+          ],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _pickStart,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text('From: ${_fmt(_start)}', overflow: TextOverflow.ellipsis),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _pickEnd,
+              icon: const Icon(Icons.calendar_today, size: 16),
+              label: Text('To: ${_fmt(_end)}', overflow: TextOverflow.ellipsis),
+            ),
+          ),
+        ],
+      );
+    }
+
     return AlertDialog(
       shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12)),
@@ -587,157 +726,166 @@ class _ReportFilterDialogState extends State<_ReportFilterDialog> {
           ),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(widget.def.icon,
                 color: Colors.white, size: 20),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(widget.def.title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(widget.def.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  const Text('Set filters',
+                      style: TextStyle(
+                          color: Colors.white70, fontSize: 12)),
+                ],
+              ),
             ),
-            const Text('Set filters',
-                style: TextStyle(
-                    color: Colors.white70, fontSize: 12)),
           ],
         ),
       ),
-      content: SizedBox(
-        width: 440,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 8),
+      content: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxContentW),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding: EdgeInsets.only(
+                  bottom: math.max(8, MediaQuery.viewInsetsOf(context).bottom)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 8),
 
-            // ── Date filter ──────────────────────────────
-            if (_isSingleDate) ...[
-              const Text('Date',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              const SizedBox(height: 6),
-              OutlinedButton.icon(
-                onPressed: _pickSingleDate,
-                icon: const Icon(Icons.calendar_today,
-                    size: 16),
-                label: Text(_fmt(_singleDate)),
-              ),
-            ] else ...[
-              const Text('Date Range',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              const SizedBox(height: 6),
-              Row(children: [
-                OutlinedButton.icon(
-                  onPressed: _pickStart,
-                  icon: const Icon(Icons.calendar_today,
-                      size: 16),
-                  label: Text('From: ${_fmt(_start)}'),
-                ),
-                const SizedBox(width: 12),
-                OutlinedButton.icon(
-                  onPressed: _pickEnd,
-                  icon: const Icon(Icons.calendar_today,
-                      size: 16),
-                  label: Text('To: ${_fmt(_end)}'),
-                ),
-              ]),
-            ],
+                  // ── Date filter ──────────────────────────────
+                  if (_isSingleDate) ...[
+                    const Text('Date',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(height: 6),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _pickSingleDate,
+                        icon: const Icon(Icons.calendar_today, size: 16),
+                        label: Text(_fmt(_singleDate)),
+                      ),
+                    ),
+                  ] else ...[
+                    const Text('Date Range',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(height: 6),
+                    dateRangePickers(constraints),
+                  ],
 
-            // ── Staff filter ─────────────────────────────
-            if (_needsStaff) ...[
-              const SizedBox(height: 16),
-              const Text('Staff Member',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              const SizedBox(height: 6),
-              _loadingStaff
-                  ? const SizedBox(
-                      height: 36,
-                      child: Center(
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2)))
-                  : DropdownButtonFormField<String>(
-                      initialValue: _staffId,
+                  // ── Staff filter ─────────────────────────────
+                  if (_needsStaff) ...[
+                    const SizedBox(height: 16),
+                    const Text('Staff Member',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(height: 6),
+                    _loadingStaff
+                        ? const SizedBox(
+                            height: 36,
+                            child: Center(
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2)))
+                        : DropdownButtonFormField<String>(
+                            initialValue: _staffId,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: OutlineInputBorder(),
+                              contentPadding:
+                                  EdgeInsets.symmetric(
+                                      horizontal: 12,
+                                      vertical: 10),
+                            ),
+                            hint: const Text('All staff'),
+                            items: [
+                              const DropdownMenuItem<String>(
+                                value: null,
+                                child: Text('All staff'),
+                              ),
+                              ..._staffList.map((s) =>
+                                  DropdownMenuItem<String>(
+                                    value: s['id']
+                                        ?.toString(),
+                                    child: Text(
+                                        s['full_name']
+                                                ?.toString() ??
+                                            '—'),
+                                  )),
+                            ],
+                            onChanged: (v) =>
+                                setState(() => _staffId = v),
+                          ),
+                  ],
+
+                  // ── Payment method filter ────────────────────
+                  if (_needsPaymentFilter) ...[
+                    const SizedBox(height: 16),
+                    const Text('Payment Method',
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13)),
+                    const SizedBox(height: 6),
+                    DropdownButtonFormField<String>(
+                      initialValue: _paymentMethod ?? '',
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         isDense: true,
                         border: OutlineInputBorder(),
-                        contentPadding:
-                            EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 10),
+                        contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
                       ),
-                      hint: const Text('All staff'),
-                      items: [
-                        const DropdownMenuItem<String>(
-                          value: null,
-                          child: Text('All staff'),
-                        ),
-                        ..._staffList.map((s) =>
-                            DropdownMenuItem<String>(
-                              value: s['id']
-                                  ?.toString(),
-                              child: Text(
-                                  s['full_name']
-                                          ?.toString() ??
-                                      '—'),
-                            )),
+                      items: const [
+                        DropdownMenuItem(
+                            value: '',
+                            child: Text('All methods')),
+                        DropdownMenuItem(
+                            value: 'cash',
+                            child: Text('Cash')),
+                        DropdownMenuItem(
+                            value: 'card',
+                            child: Text('Card')),
+                        DropdownMenuItem(
+                            value: 'account',
+                            child: Text('Account')),
+                        DropdownMenuItem(
+                            value: 'eft',
+                            child: Text('EFT')),
                       ],
-                      onChanged: (v) =>
-                          setState(() => _staffId = v),
+                      onChanged: (v) => setState(
+                          () => _paymentMethod =
+                              (v == null || v.isEmpty)
+                                  ? null
+                                  : v),
                     ),
-            ],
+                  ],
 
-            // ── Payment method filter ────────────────────
-            if (_needsPaymentFilter) ...[
-              const SizedBox(height: 16),
-              const Text('Payment Method',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 13)),
-              const SizedBox(height: 6),
-              DropdownButtonFormField<String>(
-                initialValue: _paymentMethod ?? '',
-                decoration: const InputDecoration(
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                  contentPadding: EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                ),
-                items: const [
-                  DropdownMenuItem(
-                      value: '',
-                      child: Text('All methods')),
-                  DropdownMenuItem(
-                      value: 'cash',
-                      child: Text('Cash')),
-                  DropdownMenuItem(
-                      value: 'card',
-                      child: Text('Card')),
-                  DropdownMenuItem(
-                      value: 'account',
-                      child: Text('Account')),
-                  DropdownMenuItem(
-                      value: 'eft',
-                      child: Text('EFT')),
+                  const SizedBox(height: 8),
                 ],
-                onChanged: (v) => setState(
-                    () => _paymentMethod =
-                        (v == null || v.isEmpty)
-                            ? null
-                            : v),
               ),
-            ],
-
-            const SizedBox(height: 8),
-          ],
+            );
+          },
         ),
       ),
+      actionsAlignment: MainAxisAlignment.end,
+      actionsOverflowAlignment: OverflowBarAlignment.end,
       actions: [
         TextButton(
           onPressed: () => Navigator.pop(context),
@@ -841,6 +989,12 @@ class _ReportPreviewDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final currencyFmt = NumberFormat.currency(
         locale: 'en_ZA', symbol: 'R ', decimalDigits: 2);
+    final size = MediaQuery.sizeOf(context);
+    final isPhone = ResponsiveBreakpoints.isPhoneLayout(context);
+    final contentW =
+        isPhone ? (size.width - 36).clamp(280.0, size.width) : math.min(720.0, size.width - 64);
+    final contentH =
+        isPhone ? (size.height * 0.72).clamp(320.0, size.height * 0.88) : 520.0;
 
     final headers =
         data.columns.map((c) => data.columnHeaders[c] ?? c).toList();
@@ -858,6 +1012,9 @@ class _ReportPreviewDialog extends StatelessWidget {
     return AlertDialog(
       contentPadding: EdgeInsets.zero,
       titlePadding: EdgeInsets.zero,
+      insetPadding: isPhone
+          ? const EdgeInsets.symmetric(horizontal: 12, vertical: 24)
+          : const EdgeInsets.symmetric(horizontal: 40, vertical: 24),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       title: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -869,26 +1026,38 @@ class _ReportPreviewDialog extends StatelessWidget {
           ),
         ),
         child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Icon(Icons.assessment_outlined, color: Colors.white, size: 20),
             const SizedBox(width: 10),
             Expanded(
-              child: Text(data.title,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(data.title,
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold)),
+                  if (data.subtitle != null) ...[
+                    const SizedBox(height: 4),
+                    Text(data.subtitle!,
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
+                  ],
+                ],
+              ),
             ),
-            if (data.subtitle != null)
-              Text(data.subtitle!,
-                  style: const TextStyle(
-                      color: Colors.white70, fontSize: 12)),
           ],
         ),
       ),
       content: SizedBox(
-        width: 720,
-        height: 520,
+        width: contentW,
+        height: contentH,
         child: Column(
           children: [
             _ReportPreviewContextBanner(data: data),
@@ -1066,9 +1235,10 @@ class _ReportPreviewDialog extends StatelessWidget {
                 border:
                     Border(top: BorderSide(color: AppColors.border)),
               ),
-              child: Row(
-                children: [
-                  Text(
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final stackFooter = c.maxWidth < 320;
+                  final countText = Text(
                     data.data.isEmpty
                         ? 'No records'
                         : data.data.length > 100
@@ -1076,13 +1246,28 @@ class _ReportPreviewDialog extends StatelessWidget {
                             : '${data.data.length} record${data.data.length == 1 ? "" : "s"}',
                     style: const TextStyle(
                         fontSize: 11, color: AppColors.textSecondary),
-                  ),
-                  const Spacer(),
-                  TextButton(
+                  );
+                  final closeBtn = TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: const Text('Close'),
-                  ),
-                ],
+                  );
+                  if (stackFooter) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        countText,
+                        const SizedBox(height: 6),
+                        Align(alignment: Alignment.centerRight, child: closeBtn),
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: countText),
+                      closeBtn,
+                    ],
+                  );
+                },
               ),
             ),
           ],

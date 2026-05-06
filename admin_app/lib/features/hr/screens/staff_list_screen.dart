@@ -25,6 +25,23 @@ import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
 import 'package:admin_app/features/hr/screens/payroll_screen.dart';
 import 'package:admin_app/shared/widgets/form_widgets.dart';
 
+/// Mobile layout breakpoint for HR embedded tabs (matches Admin shell).
+bool _hrIsMobileLayout(BuildContext context) =>
+    MediaQuery.sizeOf(context).width < 600;
+
+/// On narrow screens only: horizontal scroll wrapper for fixed-width table rows.
+Widget _hrWideTableRowScroll(BuildContext context,
+    {required Widget child, double minWidth = 960}) {
+  if (!_hrIsMobileLayout(context)) return child;
+  return SingleChildScrollView(
+    scrollDirection: Axis.horizontal,
+    child: ConstrainedBox(
+      constraints: BoxConstraints(minWidth: minWidth),
+      child: child,
+    ),
+  );
+}
+
 class StaffListScreen extends StatefulWidget {
   const StaffListScreen({super.key});
 
@@ -119,6 +136,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       // DATABASE-FIRST: Fetch from Supabase FIRST (always fresh data)
@@ -126,6 +144,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
         _isOffline = false;
         final data = await StaffProfileRepository(client: _supabase)
             .getAll(isActive: _showInactive ? null : true);
+        if (!mounted) return;
         setState(() => _staff = List<Map<String, dynamic>>.from(data));
         
         // Update cache in background (non-blocking)
@@ -151,12 +170,13 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
           return m;
         }).toList();
         if (!_showInactive) list = list.where((m) => m['is_active'] == true).toList();
+        if (!mounted) return;
         setState(() => _staff = list);
       }
     } catch (e) {
       debugPrint('Staff load: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   void _openStaff(Map<String, dynamic>? staff) {
@@ -179,41 +199,93 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
 
   @override
   Widget build(BuildContext context) {
+    final mobile = _hrIsMobileLayout(context);
     return Column(
       children: [
         // Toolbar
         Container(
           padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
           color: AppColors.cardBg,
-          child: Row(
-            children: [
-              Row(children: [
-                Switch(
-                  value: _showInactive,
-                  onChanged: (v) { setState(() => _showInactive = v); _load(); },
-                  activeThumbColor: AppColors.primary,
+          child: mobile
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      children: [
+                        Switch(
+                          value: _showInactive,
+                          onChanged: (v) {
+                            setState(() => _showInactive = v);
+                            _load();
+                          },
+                          activeThumbColor: AppColors.primary,
+                        ),
+                        const Expanded(
+                          child: Text(
+                            'Show inactive',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${_staff.length} staff members',
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _openStaff(null),
+                          icon: const Icon(Icons.person_add, size: 18),
+                          label: const Text('Add Staff'),
+                        ),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Row(children: [
+                      Switch(
+                        value: _showInactive,
+                        onChanged: (v) {
+                          setState(() => _showInactive = v);
+                          _load();
+                        },
+                        activeThumbColor: AppColors.primary,
+                      ),
+                      const Text('Show inactive',
+                          style:
+                              TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    ]),
+                    const Spacer(),
+                    Text('${_staff.length} staff members',
+                        style:
+                            const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => _openStaff(null),
+                      icon: const Icon(Icons.person_add, size: 18),
+                      label: const Text('Add Staff'),
+                    ),
+                  ],
                 ),
-                const Text('Show inactive',
-                    style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-              ]),
-              const Spacer(),
-              Text('${_staff.length} staff members',
-                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: () => _openStaff(null),
-                icon: const Icon(Icons.person_add, size: 18),
-                label: const Text('Add Staff'),
-              ),
-            ],
-          ),
         ),
         const Divider(height: 1, color: AppColors.border),
         // Table header
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
           color: AppColors.surfaceBg,
-          child: const Row(children: [
+          child: _hrWideTableRowScroll(context, minWidth: 920, child: const Row(children: [
             Expanded(flex: 2, child: Text('NAME', style: _h)),
             SizedBox(width: 12),
             SizedBox(width: 90, child: Text('ROLE', style: _h)),
@@ -229,7 +301,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
             SizedBox(width: 70, child: Text('STATUS', style: _h)),
             SizedBox(width: 12),
             SizedBox(width: 60, child: Text('ACTIONS', style: _h)),
-          ]),
+          ])),
         ),
         const Divider(height: 1, color: AppColors.border),
         Expanded(
@@ -251,9 +323,12 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
 
                         return Padding(
                           padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(children: [
+                          child: _hrWideTableRowScroll(
+                            context,
+                            minWidth: 920,
+                            child: Row(children: [
                             Expanded(
-                              flex: 2,
+                            flex: 2,
                               child: Row(children: [
                                 CircleAvatar(
                                   radius: 16,
@@ -358,6 +433,7 @@ class _StaffProfilesTabState extends State<_StaffProfilesTab> {
                               ),
                             ),
                           ]),
+                          ),
                         );
                       },
                     ),
@@ -428,11 +504,14 @@ class _TimecardsTabState extends State<_TimecardsTab> {
       try {
         final data = await StaffProfileRepository(client: _supabase)
             .getAll(isActive: true);
+        if (!mounted) return;
         setState(() => _staff = List<Map<String, dynamic>>.from(data));
       } catch (e) {
         // Fallback to cache if database fails
         final cached = await IsarService.getAllStaffProfiles();
-        setState(() => _staff = cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
+        if (!mounted) return;
+        setState(() => _staff =
+            cached.map((c) => {'id': c.staffId, 'full_name': c.fullName}).toList());
       }
     } catch (e) {
       debugPrint('Staff: $e');
@@ -440,6 +519,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
   }
 
   Future<void> _load() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     try {
       String rangeStart, rangeEnd;
@@ -505,6 +585,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
             return aDt.compareTo(bDt);
           });
 
+        if (!mounted) return;
         setState(() => _timecards = cards);
         
         // Update cache in background
@@ -537,12 +618,13 @@ class _TimecardsTabState extends State<_TimecardsTab> {
           return m;
         }).toList();
         cards.sort((a, b) => (a['clock_in'] as String? ?? '').compareTo(b['clock_in'] as String? ?? ''));
+        if (!mounted) return;
         setState(() => _timecards = cards);
       }
     } catch (e) {
       debugPrint('Timecards load: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   // Format time only: "10:15"
@@ -622,25 +704,98 @@ class _TimecardsTabState extends State<_TimecardsTab> {
 
   @override
   Widget build(BuildContext context) {
+    final tcMobile = _hrIsMobileLayout(context);
+    final viewChips = ['daily', 'weekly', 'monthly'].map((m) => Padding(
+          padding: const EdgeInsets.only(right: 4),
+          child: ChoiceChip(
+            label: Text(m[0].toUpperCase() + m.substring(1),
+                style: const TextStyle(fontSize: 12)),
+            selected: _viewMode == m,
+            onSelected: (_) {
+              setState(() => _viewMode = m);
+              _load();
+            },
+            selectedColor: AppColors.primary,
+            labelStyle: TextStyle(
+                color: _viewMode == m ? Colors.white : AppColors.textSecondary),
+          ),
+        ));
+
+    Widget staffDropdown() => DropdownButton<String>(
+          value: _selectedStaffId,
+          isExpanded: tcMobile,
+          hint: const Text('All Staff', style: TextStyle(fontSize: 13)),
+          underline: const SizedBox(),
+          style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
+          items: [
+            const DropdownMenuItem(value: null, child: Text('All Staff')),
+            ..._staff.map((s) => DropdownMenuItem(
+                value: s['id'] as String,
+                child: Text(s['full_name'] as String))),
+          ],
+          onChanged: (v) {
+            setState(() => _selectedStaffId = v);
+            _load();
+          },
+        );
+
     return Column(children: [
       // ── Toolbar ─────────────────────────────────────────────────
       Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
         color: AppColors.cardBg,
-        child: Row(children: [
+        child: tcMobile
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Wrap(children: [...viewChips]),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      IconButton(
+                          icon: const Icon(Icons.chevron_left, size: 20),
+                          onPressed: _prev),
+                      Expanded(
+                        child: Text(
+                          _rangeLabel,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 13),
+                        ),
+                      ),
+                      IconButton(
+                          icon: const Icon(Icons.chevron_right, size: 20),
+                          onPressed: _next),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  staffDropdown(),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      _sumChip('Shifts', '${_timecards.length}',
+                          AppColors.textSecondary),
+                      _sumChip(
+                          'Total Hrs',
+                          '${_totalHours.toStringAsFixed(2)}h',
+                          AppColors.textPrimary),
+                      _sumChip('Total Break', _fmtBreakDur(_totalBreakMins),
+                          AppColors.info),
+                      _sumChip(
+                          'Overtime',
+                          '${_totalOT.toStringAsFixed(2)}h',
+                          _totalOT > 0
+                              ? AppColors.warning
+                              : AppColors.textSecondary),
+                    ],
+                  ),
+                ],
+              )
+            : Row(children: [
           // View mode toggle
-          ...['daily', 'weekly', 'monthly'].map((m) => Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: ChoiceChip(
-              label: Text(m[0].toUpperCase() + m.substring(1),
-                  style: const TextStyle(fontSize: 12)),
-              selected: _viewMode == m,
-              onSelected: (_) { setState(() => _viewMode = m); _load(); },
-              selectedColor: AppColors.primary,
-              labelStyle: TextStyle(
-                  color: _viewMode == m ? Colors.white : AppColors.textSecondary),
-            ),
-          )),
+          ...viewChips,
           const SizedBox(width: 8),
           // Date navigation
           IconButton(icon: const Icon(Icons.chevron_left, size: 20), onPressed: _prev),
@@ -649,18 +804,7 @@ class _TimecardsTabState extends State<_TimecardsTab> {
           IconButton(icon: const Icon(Icons.chevron_right, size: 20), onPressed: _next),
           const SizedBox(width: 8),
           // Staff filter
-          DropdownButton<String>(
-            value: _selectedStaffId,
-            hint: const Text('All Staff', style: TextStyle(fontSize: 13)),
-            underline: const SizedBox(),
-            style: const TextStyle(fontSize: 13, color: AppColors.textPrimary),
-            items: [
-              const DropdownMenuItem(value: null, child: Text('All Staff')),
-              ..._staff.map((s) => DropdownMenuItem(
-                  value: s['id'] as String, child: Text(s['full_name'] as String))),
-            ],
-            onChanged: (v) { setState(() => _selectedStaffId = v); _load(); },
-          ),
+          staffDropdown(),
           const Spacer(),
           _sumChip('Shifts', '${_timecards.length}', AppColors.textSecondary),
           const SizedBox(width: 20),
@@ -1879,198 +2023,60 @@ class _LeaveTabState extends State<_LeaveTab> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  Widget _leaveFilterFields(bool mobile) {
+    final staffDd = DropdownButtonFormField<String>(
+      initialValue: _selectedStaffFilter,
+      decoration: const InputDecoration(
+        labelText: 'Staff',
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      items: [
+        const DropdownMenuItem(value: null, child: Text('All Staff')),
+        ..._allStaff.map((s) => DropdownMenuItem(
+              value: s['id'],
+              child: Text(s['full_name'], style: const TextStyle(fontSize: 13)),
+            )),
+      ],
+      onChanged: (v) => setState(() => _selectedStaffFilter = v),
+    );
+    final typeDd = DropdownButtonFormField<String>(
+      initialValue: _selectedTypeFilter,
+      decoration: const InputDecoration(
+        labelText: 'Type',
+        isDense: true,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
+      items: const [
+        DropdownMenuItem(value: null, child: Text('All Types')),
+        DropdownMenuItem(value: 'annual', child: Text('Annual')),
+        DropdownMenuItem(value: 'sick', child: Text('Sick')),
+        DropdownMenuItem(value: 'family_responsibility', child: Text('Family')),
+        DropdownMenuItem(value: 'unpaid', child: Text('Unpaid')),
+      ],
+      onChanged: (v) => setState(() => _selectedTypeFilter = v),
+    );
+    if (mobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          staffDd,
+          const SizedBox(height: 12),
+          typeDd,
+        ],
+      );
+    }
     return Row(
       children: [
-        // Main area: full-width table
-        Expanded(
-          child: Column(
-            children: [
-              // Header with filters
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
-                color: AppColors.cardBg,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Title
-                    const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text('Leave Management',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
-                              color: AppColors.textPrimary)),
-                    ),
-                    // Filter dropdowns row
-                    Row(
-                      children: [
-                        // Staff filter
-                        SizedBox(
-                          width: 200,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _selectedStaffFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Staff',
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                            items: [
-                              const DropdownMenuItem(value: null, child: Text('All Staff')),
-                              ..._allStaff.map((s) => DropdownMenuItem(
-                                value: s['id'],
-                                child: Text(s['full_name'], style: const TextStyle(fontSize: 13)),
-                              )),
-                            ],
-                            onChanged: (v) => setState(() => _selectedStaffFilter = v),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        // Type filter
-                        SizedBox(
-                          width: 180,
-                          child: DropdownButtonFormField<String>(
-                            initialValue: _selectedTypeFilter,
-                            decoration: const InputDecoration(
-                              labelText: 'Type',
-                              isDense: true,
-                              contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            ),
-                            items: const [
-                              DropdownMenuItem(value: null, child: Text('All Types')),
-                              DropdownMenuItem(value: 'annual', child: Text('Annual')),
-                              DropdownMenuItem(value: 'sick', child: Text('Sick')),
-                              DropdownMenuItem(value: 'family_responsibility', child: Text('Family')),
-                              DropdownMenuItem(value: 'unpaid', child: Text('Unpaid')),
-                            ],
-                            onChanged: (v) => setState(() => _selectedTypeFilter = v),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(height: 1, color: AppColors.border),
-              // Table
-              Expanded(
-                child: _isLoading
-                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-                    : _filteredRecords.isEmpty
-                        ? Center(
-                            child: Text(
-                              _isOffline ? 'No cached data available' : 'No leave records found',
-                              style: const TextStyle(color: AppColors.textSecondary),
-                            ),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _filteredRecords.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 8),
-                            itemBuilder: (_, i) {
-                              final r = _filteredRecords[i];
-                              final status = r['display_status'] as String? ?? '';
-                              final isPending = status == 'Pending';
-                              final isAdminEntry = r['record_type'] == 'leave_history' && r['source'] == 'admin_entry';
-                              
-                              return Container(
-                                padding: const EdgeInsets.all(16),
-                                decoration: BoxDecoration(
-                                  color: AppColors.cardBg,
-                                  borderRadius: BorderRadius.circular(8),
-                                  border: Border.all(
-                                    color: isPending
-                                        ? AppColors.warning.withValues(alpha: 0.4)
-                                        : AppColors.border,
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        r['staff_profiles']?['full_name'] ?? '—',
-                                        style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.textPrimary),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      child: Text(
-                                        _formatLeaveType(r['leave_type'] as String? ?? ''),
-                                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                                      ),
-                                    ),
-                                    Expanded(
-                                      flex: 2,
-                                      child: Text(
-                                        '${r['start_date']} → ${r['end_date']}',
-                                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 60,
-                                      child: Text(
-                                        '${r['days_taken']} day${(r['days_taken'] as num?) == 1 ? '' : 's'}',
-                                        style: const TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.textPrimary),
-                                      ),
-                                    ),
-                                    SizedBox(
-                                      width: 100,
-                                      child: Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: _getStatusColor(status).withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(4),
-                                        ),
-                                        child: Text(
-                                          status,
-                                          style: TextStyle(fontSize: 11, color: _getStatusColor(status)),
-                                          textAlign: TextAlign.center,
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    if (isPending) ...[
-                                      ElevatedButton(
-                                        onPressed: () => _handleApprove(r),
-                                        style: ElevatedButton.styleFrom(
-                                            backgroundColor: AppColors.success,
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
-                                        child: const Text('Approve', style: TextStyle(fontSize: 12)),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      OutlinedButton(
-                                        onPressed: () => _handleReject(r),
-                                        style: OutlinedButton.styleFrom(
-                                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
-                                        child: const Text('Reject', style: TextStyle(fontSize: 12)),
-                                      ),
-                                    ] else if (isAdminEntry) ...[
-                                      IconButton(
-                                        icon: const Icon(Icons.delete_outline, size: 20),
-                                        color: AppColors.error,
-                                        onPressed: () => _handleDelete(r),
-                                        tooltip: 'Delete',
-                                      ),
-                                    ],
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-              ),
-            ],
-          ),
-        ),
-        const VerticalDivider(width: 1, color: AppColors.border),
-        // Right sidebar
-        SizedBox(
-          width: 220,
-          child: Column(
+        SizedBox(width: 200, child: staffDd),
+        const SizedBox(width: 12),
+        SizedBox(width: 180, child: typeDd),
+      ],
+    );
+  }
+
+  Widget _buildLeaveSidebarPanel() {
+    return Column(
             children: [
               // Status filter card
               Container(
@@ -2185,8 +2191,250 @@ class _LeaveTabState extends State<_LeaveTab> {
                 ),
               ],
             ],
+          );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final leaveMobile = _hrIsMobileLayout(context);
+
+    final mainColumn = Column(
+            children: [
+              // Header with filters
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
+                color: AppColors.cardBg,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Title
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text('Leave Management',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600,
+                              color: AppColors.textPrimary)),
+                    ),
+                    // Filter dropdowns row
+                    _leaveFilterFields(leaveMobile),
+                  ],
+                ),
+              ),
+              const Divider(height: 1, color: AppColors.border),
+              // Table
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                    : _filteredRecords.isEmpty
+                        ? Center(
+                            child: Text(
+                              _isOffline ? 'No cached data available' : 'No leave records found',
+                              style: const TextStyle(color: AppColors.textSecondary),
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _filteredRecords.length,
+                            separatorBuilder: (_, __) => const SizedBox(height: 8),
+                            itemBuilder: (_, i) {
+                              final r = _filteredRecords[i];
+                              final status = r['display_status'] as String? ?? '';
+                              final isPending = status == 'Pending';
+                              final isAdminEntry = r['record_type'] == 'leave_history' && r['source'] == 'admin_entry';
+                              
+                              return Container(
+                                padding: const EdgeInsets.all(16),
+                                decoration: BoxDecoration(
+                                  color: AppColors.cardBg,
+                                  borderRadius: BorderRadius.circular(8),
+                                  border: Border.all(
+                                    color: isPending
+                                        ? AppColors.warning.withValues(alpha: 0.4)
+                                        : AppColors.border,
+                                  ),
+                                ),
+                                child: leaveMobile
+                                    ? Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            r['staff_profiles']?['full_name'] ?? '—',
+                                            style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.textPrimary),
+                                          ),
+                                          const SizedBox(height: 6),
+                                          Text(
+                                            _formatLeaveType(r['leave_type'] as String? ?? ''),
+                                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${r['start_date']} → ${r['end_date']}',
+                                            style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${r['days_taken']} day${(r['days_taken'] as num?) == 1 ? '' : 's'}',
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                fontWeight: FontWeight.bold,
+                                                color: AppColors.textPrimary),
+                                          ),
+                                          const SizedBox(height: 8),
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                            decoration: BoxDecoration(
+                                              color: _getStatusColor(status).withValues(alpha: 0.1),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              status,
+                                              style: TextStyle(fontSize: 11, color: _getStatusColor(status)),
+                                            ),
+                                          ),
+                                          if (isPending) ...[
+                                            const SizedBox(height: 8),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                ElevatedButton(
+                                                  onPressed: () => _handleApprove(r),
+                                                  style: ElevatedButton.styleFrom(
+                                                      backgroundColor: AppColors.success,
+                                                      padding:
+                                                          const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                                  child: const Text('Approve', style: TextStyle(fontSize: 12)),
+                                                ),
+                                                OutlinedButton(
+                                                  onPressed: () => _handleReject(r),
+                                                  style: OutlinedButton.styleFrom(
+                                                      padding:
+                                                          const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                                  child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                                                ),
+                                              ],
+                                            ),
+                                          ] else if (isAdminEntry) ...[
+                                            const SizedBox(height: 8),
+                                            IconButton(
+                                              icon: const Icon(Icons.delete_outline, size: 20),
+                                              color: AppColors.error,
+                                              onPressed: () => _handleDelete(r),
+                                              tooltip: 'Delete',
+                                            ),
+                                          ],
+                                        ],
+                                      )
+                                    : Row(
+                                        children: [
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              r['staff_profiles']?['full_name'] ?? '—',
+                                              style: const TextStyle(
+                                                  fontSize: 14,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.textPrimary),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Text(
+                                              _formatLeaveType(r['leave_type'] as String? ?? ''),
+                                              style:
+                                                  const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                            ),
+                                          ),
+                                          Expanded(
+                                            flex: 2,
+                                            child: Text(
+                                              '${r['start_date']} → ${r['end_date']}',
+                                              style:
+                                                  const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                                            ),
+                                          ),
+                                          SizedBox(
+                                            width: 60,
+                                            child: Text(
+                                              '${r['days_taken']} day${(r['days_taken'] as num?) == 1 ? '' : 's'}',
+                                              style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: AppColors.textPrimary),
+                                            ),
+                                          ),
+                                          SizedBox(
+                                            width: 100,
+                                            child: Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                              decoration: BoxDecoration(
+                                                color: _getStatusColor(status).withValues(alpha: 0.1),
+                                                borderRadius: BorderRadius.circular(4),
+                                              ),
+                                              child: Text(
+                                                status,
+                                                style: TextStyle(fontSize: 11, color: _getStatusColor(status)),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          if (isPending) ...[
+                                            ElevatedButton(
+                                              onPressed: () => _handleApprove(r),
+                                              style: ElevatedButton.styleFrom(
+                                                  backgroundColor: AppColors.success,
+                                                  padding:
+                                                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                              child: const Text('Approve', style: TextStyle(fontSize: 12)),
+                                            ),
+                                            const SizedBox(width: 8),
+                                            OutlinedButton(
+                                              onPressed: () => _handleReject(r),
+                                              style: OutlinedButton.styleFrom(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6)),
+                                              child: const Text('Reject', style: TextStyle(fontSize: 12)),
+                                            ),
+                                          ] else if (isAdminEntry) ...[
+                                            IconButton(
+                                              icon: const Icon(Icons.delete_outline, size: 20),
+                                              color: AppColors.error,
+                                              onPressed: () => _handleDelete(r),
+                                              tooltip: 'Delete',
+                                            ),
+                                          ],
+                                        ],
+                                      ),
+                              );
+                            },
+                          ),
+              ),
+            ],
+          );
+
+    if (leaveMobile) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: mainColumn),
+          const Divider(height: 1, color: AppColors.border),
+          Flexible(
+            flex: 2,
+            child: SingleChildScrollView(
+              child: _buildLeaveSidebarPanel(),
+            ),
           ),
-        ),
+        ],
+      );
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(child: mainColumn),
+        const VerticalDivider(width: 1, color: AppColors.border),
+        SizedBox(width: 220, child: _buildLeaveSidebarPanel()),
       ],
     );
   }

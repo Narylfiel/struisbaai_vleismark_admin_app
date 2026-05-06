@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/constants/permissions.dart';
@@ -55,7 +56,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   Future<void> _loadRoles() async {
     try {
-      final data = await _client.from('admin_roles').select().order('sort_order');
+      final data =
+          await _client.from('admin_roles').select().order('sort_order');
       if (mounted) {
         setState(() => _roles = List<Map<String, dynamic>>.from(data as List));
       }
@@ -66,12 +68,12 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   Future<void> _loadUsers() async {
     try {
-      final data = await _client
-          .from('profiles')
-          .select('id, full_name, role, phone, email, active, is_active, created_at');
+      final data = await _client.from('profiles').select(
+          'id, full_name, role, phone, email, active, is_active, created_at');
 
       final sortMap = {
-        for (var r in _roles) r['role_name'] as String: r['sort_order'] as int? ?? 99
+        for (var r in _roles)
+          r['role_name'] as String: r['sort_order'] as int? ?? 99
       };
 
       final list = List<Map<String, dynamic>>.from(data as List);
@@ -115,7 +117,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   String _initials(String fullName) {
     final parts = fullName.trim().split(' ');
-    if (parts.length >= 2) return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
+    if (parts.length >= 2)
+      return '${parts.first[0]}${parts.last[0]}'.toUpperCase();
     return fullName.isNotEmpty ? fullName[0].toUpperCase() : '?';
   }
 
@@ -182,7 +185,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     labelText: 'Full Name *',
                     border: OutlineInputBorder(),
                   ),
-                  validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                  validator: (v) =>
+                      v == null || v.trim().isEmpty ? 'Required' : null,
                 ),
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
@@ -214,7 +218,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   validator: (v) {
                     if (v == null || v.isEmpty) return 'Required';
                     if (v.length != 4) return 'Must be exactly 4 digits';
-                    if (!RegExp(r'^\d{4}$').hasMatch(v)) return 'Must be 4 digits only';
+                    if (!RegExp(r'^\d{4}$').hasMatch(v))
+                      return 'Must be 4 digits only';
                     return null;
                   },
                 ),
@@ -248,7 +253,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               if (!formKey.currentState!.validate() || selectedRole == null) {
                 if (selectedRole == null) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Please select a role'), backgroundColor: AppColors.warning),
+                    const SnackBar(
+                        content: Text('Please select a role'),
+                        backgroundColor: AppColors.warning),
                   );
                 }
                 return;
@@ -256,20 +263,29 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
               try {
                 // DIRECT-WRITE: no Edge function exists yet for this table. Review before 060.
-                final result = await _client.from('profiles').insert({
-                  'full_name': nameController.text.trim(),
-                  'role': selectedRole,
-                  'pin_hash': pinController.text,
-                  'phone': phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
-                  'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
-                  'active': true,
-                  'is_active': true,
-                }).select('id').single();
+                final result = await _client
+                    .from('profiles')
+                    .insert({
+                      'full_name': nameController.text.trim(),
+                      'role': selectedRole,
+                      'pin_hash': pinController.text,
+                      'phone': phoneController.text.trim().isEmpty
+                          ? null
+                          : phoneController.text.trim(),
+                      'email': emailController.text.trim().isEmpty
+                          ? null
+                          : emailController.text.trim(),
+                      'active': true,
+                      'is_active': true,
+                    })
+                    .select('id')
+                    .single();
 
                 await AuditService.log(
                   action: 'CREATE',
                   module: 'Settings',
-                  description: 'New admin user: ${nameController.text.trim()} (${_roleDisplayName(selectedRole!)})',
+                  description:
+                      'New admin user: ${nameController.text.trim()} (${_roleDisplayName(selectedRole!)})',
                   entityType: 'Profile',
                   entityId: result['id'],
                 );
@@ -278,13 +294,18 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   Navigator.pop(context);
                   _loadUsers();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('${nameController.text.trim()} added successfully'), backgroundColor: AppColors.success),
+                    SnackBar(
+                        content: Text(
+                            '${nameController.text.trim()} added successfully'),
+                        backgroundColor: AppColors.success),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                    SnackBar(
+                        content: Text(ErrorHandler.friendlyMessage(e)),
+                        backgroundColor: AppColors.error),
                   );
                 }
               }
@@ -302,7 +323,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     final phoneController = TextEditingController(text: user['phone'] ?? '');
     final emailController = TextEditingController(text: user['email'] ?? '');
     final isOwner = user['role'] == 'owner';
-    
+
     // Load current permission overrides for this user
     Map<String, bool> tempOverrides = {};
     Map<String, bool> oldOverrides = {};
@@ -313,9 +334,11 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             .select('permissions')
             .eq('id', user['id'])
             .maybeSingle();
-        final currentOverrides = (data?['permissions'] as Map<String, dynamic>?) ?? {};
+        final currentOverrides =
+            (data?['permissions'] as Map<String, dynamic>?) ?? {};
         if (currentOverrides.isNotEmpty) {
-          tempOverrides = currentOverrides.map((k, v) => MapEntry(k, v == true));
+          tempOverrides =
+              currentOverrides.map((k, v) => MapEntry(k, v == true));
           oldOverrides = Map<String, bool>.from(tempOverrides);
         }
       } catch (e) {
@@ -340,7 +363,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 children: [
                   const Text(
                     'To change role or PIN, use the card menu options',
-                    style: TextStyle(fontSize: 12, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -349,7 +375,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                       labelText: 'Full Name *',
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -373,12 +400,16 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     const SizedBox(height: 16),
                     const Text(
                       'Permission Overrides',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 8),
                     const Text(
                       'Overrides are additive — only enabled overrides apply. Leave all off to use role defaults.',
-                      style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                          fontStyle: FontStyle.italic),
                     ),
                     const SizedBox(height: 12),
                     ..._buildPermissionToggles(tempOverrides, setDialogState),
@@ -399,8 +430,12 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 try {
                   await _client.from('profiles').update({
                     'full_name': nameController.text.trim(),
-                    'phone': phoneController.text.trim().isEmpty ? null : phoneController.text.trim(),
-                    'email': emailController.text.trim().isEmpty ? null : emailController.text.trim(),
+                    'phone': phoneController.text.trim().isEmpty
+                        ? null
+                        : phoneController.text.trim(),
+                    'email': emailController.text.trim().isEmpty
+                        ? null
+                        : emailController.text.trim(),
                     'permissions': isOwner ? null : tempOverrides,
                     'updated_at': DateTime.now().toIso8601String(),
                   }).eq('id', user['id']);
@@ -408,16 +443,19 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   await AuditService.log(
                     action: 'UPDATE',
                     module: 'Settings',
-                    description: 'Admin user updated: ${nameController.text.trim()}',
+                    description:
+                        'Admin user updated: ${nameController.text.trim()}',
                     entityType: 'Profile',
                     entityId: user['id'],
                   );
 
-                  if (!isOwner && (tempOverrides.isNotEmpty || oldOverrides.isNotEmpty)) {
+                  if (!isOwner &&
+                      (tempOverrides.isNotEmpty || oldOverrides.isNotEmpty)) {
                     await AuditService.log(
                       action: 'UPDATE',
                       module: 'Settings',
-                      description: 'Permission overrides updated for: ${nameController.text.trim()}',
+                      description:
+                          'Permission overrides updated for: ${nameController.text.trim()}',
                       entityType: 'Profile',
                       entityId: user['id'],
                       oldValues: {'permissions': oldOverrides},
@@ -429,13 +467,17 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     Navigator.pop(context);
                     _loadUsers();
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('User updated'), backgroundColor: AppColors.success),
+                      const SnackBar(
+                          content: Text('User updated'),
+                          backgroundColor: AppColors.success),
                     );
                   }
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                      SnackBar(
+                          content: Text(ErrorHandler.friendlyMessage(e)),
+                          backgroundColor: AppColors.error),
                     );
                   }
                 }
@@ -484,7 +526,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(
-                      content: Text("${user['full_name']}'s PIN reset to 0000 — inform them manually"),
+                      content: Text(
+                          "${user['full_name']}'s PIN reset to 0000 — inform them manually"),
                       backgroundColor: AppColors.warning,
                     ),
                   );
@@ -492,7 +535,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                    SnackBar(
+                        content: Text(ErrorHandler.friendlyMessage(e)),
+                        backgroundColor: AppColors.error),
                   );
                 }
               }
@@ -509,7 +554,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     // Protection checks
     if (user['id'] == _auth.currentStaffId) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot change your own role'), backgroundColor: AppColors.warning),
+        const SnackBar(
+            content: Text('Cannot change your own role'),
+            backgroundColor: AppColors.warning),
       );
       return;
     }
@@ -535,11 +582,14 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   leading: CircleAvatar(
                     backgroundColor: _roleColor(r['role_name']),
                     child: Text(
-                      (r['display_name'] as String).substring(0, 1).toUpperCase(),
+                      (r['display_name'] as String)
+                          .substring(0, 1)
+                          .toUpperCase(),
                       style: const TextStyle(color: Colors.white),
                     ),
                   ),
-                  title: Text(r['display_name'] as String, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  title: Text(r['display_name'] as String,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   subtitle: Text(r['description'] ?? ''),
                   trailing: user['role'] == r['role_name']
                       ? const Icon(Icons.check_circle, color: Colors.green)
@@ -551,7 +601,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     );
   }
 
-  Future<void> _changeRole(Map<String, dynamic> user, String newRoleName) async {
+  Future<void> _changeRole(
+      Map<String, dynamic> user, String newRoleName) async {
     if (newRoleName == user['role']) {
       Navigator.pop(context);
       return;
@@ -567,7 +618,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       await AuditService.log(
         action: 'UPDATE',
         module: 'Settings',
-        description: 'Role changed: ${user['full_name']} → ${_roleDisplayName(newRoleName)} (was ${_roleDisplayName(oldRole)})',
+        description:
+            'Role changed: ${user['full_name']} → ${_roleDisplayName(newRoleName)} (was ${_roleDisplayName(oldRole)})',
         entityType: 'Profile',
         entityId: user['id'],
         oldValues: {'role': oldRole},
@@ -579,7 +631,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         _loadUsers();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("${user['full_name']} is now ${_roleDisplayName(newRoleName)}"),
+            content: Text(
+                "${user['full_name']} is now ${_roleDisplayName(newRoleName)}"),
             backgroundColor: AppColors.success,
           ),
         );
@@ -587,7 +640,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text(ErrorHandler.friendlyMessage(e)),
+              backgroundColor: AppColors.error),
         );
       }
     }
@@ -597,7 +652,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     // Protection checks
     if (user['id'] == _auth.currentStaffId) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Cannot deactivate yourself'), backgroundColor: AppColors.warning),
+        const SnackBar(
+            content: Text('Cannot deactivate yourself'),
+            backgroundColor: AppColors.warning),
       );
       return;
     }
@@ -646,13 +703,17 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   Navigator.pop(context);
                   _loadUsers();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("${user['full_name']} deactivated"), backgroundColor: AppColors.success),
+                    SnackBar(
+                        content: Text("${user['full_name']} deactivated"),
+                        backgroundColor: AppColors.success),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                    SnackBar(
+                        content: Text(ErrorHandler.friendlyMessage(e)),
+                        backgroundColor: AppColors.error),
                   );
                 }
               }
@@ -684,13 +745,17 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       _loadUsers();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("${user['full_name']} reactivated"), backgroundColor: AppColors.success),
+          SnackBar(
+              content: Text("${user['full_name']} reactivated"),
+              backgroundColor: AppColors.success),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text(ErrorHandler.friendlyMessage(e)),
+              backgroundColor: AppColors.error),
         );
       }
     }
@@ -702,7 +767,13 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     final roleNameController = TextEditingController();
     final descriptionController = TextEditingController();
     final sortOrderController = TextEditingController(
-      text: (_roles.isEmpty ? 0 : (_roles.map((r) => r['sort_order'] as int? ?? 0).reduce((a, b) => a > b ? a : b) + 1)).toString(),
+      text: (_roles.isEmpty
+              ? 0
+              : (_roles
+                      .map((r) => r['sort_order'] as int? ?? 0)
+                      .reduce((a, b) => a > b ? a : b) +
+                  1))
+          .toString(),
     );
     String selectedColorHex = '#607D8B';
 
@@ -737,10 +808,14 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                       border: OutlineInputBorder(),
                     ),
                     onChanged: (v) {
-                      final autoName = v.toLowerCase().replaceAll(' ', '_').replaceAll(RegExp(r'[^a-z0-9_]'), '');
+                      final autoName = v
+                          .toLowerCase()
+                          .replaceAll(' ', '_')
+                          .replaceAll(RegExp(r'[^a-z0-9_]'), '');
                       roleNameController.text = autoName;
                     },
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -748,13 +823,16 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     decoration: const InputDecoration(
                       labelText: 'Role Name *',
                       border: OutlineInputBorder(),
-                      helperText: 'Stored in database — no spaces or special characters',
+                      helperText:
+                          'Stored in database — no spaces or special characters',
                     ),
                     style: const TextStyle(fontFamily: 'monospace'),
                     validator: (v) {
                       if (v == null || v.trim().isEmpty) return 'Required';
-                      if (!RegExp(r'^[a-z0-9_]+$').hasMatch(v)) return 'Only lowercase, numbers, and underscores';
-                      if (_roles.any((r) => r['role_name'] == v)) return 'Role name already exists';
+                      if (!RegExp(r'^[a-z0-9_]+$').hasMatch(v))
+                        return 'Only lowercase, numbers, and underscores';
+                      if (_roles.any((r) => r['role_name'] == v))
+                        return 'Role name already exists';
                       return null;
                     },
                   ),
@@ -768,15 +846,18 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     maxLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  const Text('Color *', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Color *',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: colorOptions.map((hex) {
-                      final color = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
+                      final color = Color(
+                          int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
                       final isSelected = selectedColorHex == hex;
                       return InkWell(
-                        onTap: () => setDialogState(() => selectedColorHex = hex),
+                        onTap: () =>
+                            setDialogState(() => selectedColorHex = hex),
                         child: Container(
                           width: 32,
                           height: 32,
@@ -789,7 +870,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                             ),
                           ),
                           child: isSelected
-                              ? const Icon(Icons.check, size: 16, color: Colors.white)
+                              ? const Icon(Icons.check,
+                                  size: 16, color: Colors.white)
                               : null,
                         ),
                       );
@@ -818,19 +900,27 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 if (!formKey.currentState!.validate()) return;
 
                 try {
-                  final result = await _client.from('admin_roles').insert({
-                    'role_name': roleNameController.text.trim(),
-                    'display_name': displayNameController.text.trim(),
-                    'description': descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
-                    'color_hex': selectedColorHex,
-                    'sort_order': int.tryParse(sortOrderController.text) ?? 99,
-                    'is_active': true,
-                  }).select('id').single();
+                  final result = await _client
+                      .from('admin_roles')
+                      .insert({
+                        'role_name': roleNameController.text.trim(),
+                        'display_name': displayNameController.text.trim(),
+                        'description': descriptionController.text.trim().isEmpty
+                            ? null
+                            : descriptionController.text.trim(),
+                        'color_hex': selectedColorHex,
+                        'sort_order':
+                            int.tryParse(sortOrderController.text) ?? 99,
+                        'is_active': true,
+                      })
+                      .select('id')
+                      .single();
 
                   await AuditService.log(
                     action: 'CREATE',
                     module: 'Settings',
-                    description: 'New role created: ${displayNameController.text.trim()} (${roleNameController.text.trim()})',
+                    description:
+                        'New role created: ${displayNameController.text.trim()} (${roleNameController.text.trim()})',
                     entityType: 'AdminRole',
                     entityId: result['id'],
                   );
@@ -840,7 +930,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     _loadRoles();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
-                        content: Text("Role '${displayNameController.text.trim()}' created"),
+                        content: Text(
+                            "Role '${displayNameController.text.trim()}' created"),
                         backgroundColor: AppColors.success,
                       ),
                     );
@@ -848,7 +939,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                      SnackBar(
+                          content: Text(ErrorHandler.friendlyMessage(e)),
+                          backgroundColor: AppColors.error),
                     );
                   }
                 }
@@ -863,11 +956,14 @@ class _UserManagementScreenState extends State<UserManagementScreen>
 
   void _showEditRoleDialog(Map<String, dynamic> role) async {
     final formKey = GlobalKey<FormState>();
-    final displayNameController = TextEditingController(text: role['display_name']);
-    final descriptionController = TextEditingController(text: role['description'] ?? '');
-    final sortOrderController = TextEditingController(text: (role['sort_order'] ?? 0).toString());
+    final displayNameController =
+        TextEditingController(text: role['display_name']);
+    final descriptionController =
+        TextEditingController(text: role['description'] ?? '');
+    final sortOrderController =
+        TextEditingController(text: (role['sort_order'] ?? 0).toString());
     String selectedColorHex = role['color_hex'] as String? ?? '#607D8B';
-    
+
     // Load current permissions for this role
     Map<String, bool> tempPerms = {};
     Map<String, bool> oldPerms = {};
@@ -877,7 +973,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           .select('permissions')
           .eq('role_name', role['role_name'])
           .maybeSingle();
-      final currentPerms = (data?['permissions'] as Map<String, dynamic>?) ?? {};
+      final currentPerms =
+          (data?['permissions'] as Map<String, dynamic>?) ?? {};
       tempPerms = currentPerms.map((k, v) => MapEntry(k, v == true));
       oldPerms = Map<String, bool>.from(tempPerms);
     } catch (e) {
@@ -885,12 +982,18 @@ class _UserManagementScreenState extends State<UserManagementScreen>
     }
 
     final colorOptions = [
-      '#C62828', '#E65100', '#F9A825', '#2E7D32',
-      '#1565C0', '#4527A0', '#00695C', '#607D8B',
+      '#C62828',
+      '#E65100',
+      '#F9A825',
+      '#2E7D32',
+      '#1565C0',
+      '#4527A0',
+      '#00695C',
+      '#607D8B',
     ];
 
     if (!mounted) return;
-    
+
     showDialog(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -913,7 +1016,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.info_outline, size: 16, color: AppColors.info),
+                        const Icon(Icons.info_outline,
+                            size: 16, color: AppColors.info),
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
@@ -931,7 +1035,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                       labelText: 'Display Name *',
                       border: OutlineInputBorder(),
                     ),
-                    validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
+                    validator: (v) =>
+                        v == null || v.trim().isEmpty ? 'Required' : null,
                   ),
                   const SizedBox(height: 12),
                   TextFormField(
@@ -943,15 +1048,18 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     maxLines: 2,
                   ),
                   const SizedBox(height: 12),
-                  const Text('Color *', style: TextStyle(fontWeight: FontWeight.w600)),
+                  const Text('Color *',
+                      style: TextStyle(fontWeight: FontWeight.w600)),
                   const SizedBox(height: 8),
                   Wrap(
                     spacing: 8,
                     children: colorOptions.map((hex) {
-                      final color = Color(int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
+                      final color = Color(
+                          int.parse('FF${hex.replaceAll('#', '')}', radix: 16));
                       final isSelected = selectedColorHex == hex;
                       return InkWell(
-                        onTap: () => setDialogState(() => selectedColorHex = hex),
+                        onTap: () =>
+                            setDialogState(() => selectedColorHex = hex),
                         child: Container(
                           width: 32,
                           height: 32,
@@ -964,7 +1072,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                             ),
                           ),
                           child: isSelected
-                              ? const Icon(Icons.check, size: 16, color: Colors.white)
+                              ? const Icon(Icons.check,
+                                  size: 16, color: Colors.white)
                               : null,
                         ),
                       );
@@ -989,7 +1098,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   const SizedBox(height: 8),
                   const Text(
                     'These permissions apply to all users with this role (unless overridden per user)',
-                    style: TextStyle(fontSize: 11, color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic),
                   ),
                   const SizedBox(height: 12),
                   ..._buildPermissionToggles(tempPerms, setDialogState),
@@ -1010,7 +1122,9 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   // Update admin_roles
                   await _client.from('admin_roles').update({
                     'display_name': displayNameController.text.trim(),
-                    'description': descriptionController.text.trim().isEmpty ? null : descriptionController.text.trim(),
+                    'description': descriptionController.text.trim().isEmpty
+                        ? null
+                        : descriptionController.text.trim(),
                     'color_hex': selectedColorHex,
                     'sort_order': int.tryParse(sortOrderController.text) ?? 0,
                   }).eq('id', role['id']);
@@ -1024,7 +1138,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   await AuditService.log(
                     action: 'UPDATE',
                     module: 'Settings',
-                    description: 'Role updated: ${displayNameController.text.trim()} (${role['role_name']})',
+                    description:
+                        'Role updated: ${displayNameController.text.trim()} (${role['role_name']})',
                     entityType: 'AdminRole',
                     entityId: role['id'],
                   );
@@ -1032,7 +1147,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   await AuditService.log(
                     action: 'UPDATE',
                     module: 'Settings',
-                    description: 'Role permissions updated: ${role['display_name']}',
+                    description:
+                        'Role permissions updated: ${role['display_name']}',
                     entityType: 'RolePermissions',
                     entityId: role['role_name'],
                     oldValues: {'permissions': oldPerms},
@@ -1043,13 +1159,17 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                     Navigator.pop(context);
                     _loadRoles().then((_) => _loadUsers());
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Role updated'), backgroundColor: AppColors.success),
+                      const SnackBar(
+                          content: Text('Role updated'),
+                          backgroundColor: AppColors.success),
                     );
                   }
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                      SnackBar(
+                          content: Text(ErrorHandler.friendlyMessage(e)),
+                          backgroundColor: AppColors.error),
                     );
                   }
                 }
@@ -1087,7 +1207,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                 await AuditService.log(
                   action: 'UPDATE',
                   module: 'Settings',
-                  description: 'Role deactivated: ${role['display_name']} (${role['role_name']})',
+                  description:
+                      'Role deactivated: ${role['display_name']} (${role['role_name']})',
                   entityType: 'AdminRole',
                   entityId: role['id'],
                 );
@@ -1096,13 +1217,18 @@ class _UserManagementScreenState extends State<UserManagementScreen>
                   Navigator.pop(context);
                   _loadRoles();
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text("Role '${role['display_name']}' deactivated"), backgroundColor: AppColors.success),
+                    SnackBar(
+                        content:
+                            Text("Role '${role['display_name']}' deactivated"),
+                        backgroundColor: AppColors.success),
                   );
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+                    SnackBar(
+                        content: Text(ErrorHandler.friendlyMessage(e)),
+                        backgroundColor: AppColors.error),
                   );
                 }
               }
@@ -1124,7 +1250,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       await AuditService.log(
         action: 'UPDATE',
         module: 'Settings',
-        description: 'Role reactivated: ${role['display_name']} (${role['role_name']})',
+        description:
+            'Role reactivated: ${role['display_name']} (${role['role_name']})',
         entityType: 'AdminRole',
         entityId: role['id'],
       );
@@ -1132,20 +1259,25 @@ class _UserManagementScreenState extends State<UserManagementScreen>
       _loadRoles();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text("Role '${role['display_name']}' reactivated"), backgroundColor: AppColors.success),
+          SnackBar(
+              content: Text("Role '${role['display_name']}' reactivated"),
+              backgroundColor: AppColors.success),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ErrorHandler.friendlyMessage(e)), backgroundColor: AppColors.error),
+          SnackBar(
+              content: Text(ErrorHandler.friendlyMessage(e)),
+              backgroundColor: AppColors.error),
         );
       }
     }
   }
 
   /// Build permission toggle list for role or user permission editing
-  List<Widget> _buildPermissionToggles(Map<String, bool> perms, StateSetter setState) {
+  List<Widget> _buildPermissionToggles(
+      Map<String, bool> perms, StateSetter setState) {
     return Permissions.allKeys.map((key) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 8),
@@ -1199,7 +1331,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               const SizedBox(height: 16),
               const Text(
                 'Access Restricted',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -1218,7 +1353,7 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
@@ -1232,7 +1367,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           const Divider(height: 1, color: AppColors.border),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+                ? const Center(
+                    child: CircularProgressIndicator(color: AppColors.primary))
                 : TabBarView(
                     controller: _tabController,
                     children: [
@@ -1265,7 +1401,10 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             children: [
               const Text(
                 'Admin Users',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary),
               ),
               const Spacer(),
               ElevatedButton.icon(
@@ -1284,12 +1423,14 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         Expanded(
           child: _users.isEmpty
               ? const Center(
-                  child: Text('No users found', style: TextStyle(color: AppColors.textSecondary)),
+                  child: Text('No users found',
+                      style: TextStyle(color: AppColors.textSecondary)),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(12),
                   itemCount: _users.length,
-                  itemBuilder: (context, index) => _buildUserCard(_users[index]),
+                  itemBuilder: (context, index) =>
+                      _buildUserCard(_users[index]),
                 ),
         ),
       ],
@@ -1308,16 +1449,20 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           backgroundColor: _roleColor(user['role']),
           child: Text(
             _initials(user['full_name']),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+                color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
-        title: Row(
+        title: Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
               user['full_name'],
-              style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: AppColors.textPrimary),
             ),
-            const SizedBox(width: 8),
             if (isCurrentUser)
               Chip(
                 label: const Text('You', style: TextStyle(fontSize: 11)),
@@ -1327,7 +1472,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               ),
             if (isInactive)
               Chip(
-                label: Text('INACTIVE', style: TextStyle(fontSize: 11, color: Colors.red[800])),
+                label: Text('INACTIVE',
+                    style: TextStyle(fontSize: 11, color: Colors.red[800])),
                 backgroundColor: Colors.red[100],
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
@@ -1341,19 +1487,22 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             Chip(
               label: Text(_roleDisplayName(user['role'])),
               backgroundColor: _roleColor(user['role']).withOpacity(0.15),
-              labelStyle: TextStyle(color: _roleColor(user['role']), fontSize: 11),
+              labelStyle:
+                  TextStyle(color: _roleColor(user['role']), fontSize: 11),
               visualDensity: VisualDensity.compact,
               padding: EdgeInsets.zero,
             ),
             if (user['phone'] != null)
               Text(
                 user['phone'],
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
               ),
             if (user['email'] != null)
               Text(
                 user['email'],
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                style: const TextStyle(
+                    fontSize: 12, color: AppColors.textSecondary),
               ),
           ],
         ),
@@ -1362,7 +1511,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
           itemBuilder: (ctx) => [
             const PopupMenuItem(value: 'edit', child: Text('Edit Details')),
             const PopupMenuItem(value: 'reset_pin', child: Text('Reset PIN')),
-            const PopupMenuItem(value: 'change_role', child: Text('Change Role')),
+            const PopupMenuItem(
+                value: 'change_role', child: Text('Change Role')),
             if (user['active'] == true)
               const PopupMenuItem(
                 value: 'deactivate',
@@ -1371,7 +1521,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             if (user['active'] == false)
               const PopupMenuItem(
                 value: 'reactivate',
-                child: Text('Reactivate', style: TextStyle(color: Colors.green)),
+                child:
+                    Text('Reactivate', style: TextStyle(color: Colors.green)),
               ),
           ],
         ),
@@ -1402,13 +1553,16 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             style: const TextStyle(color: Colors.white),
           ),
         ),
-        title: Row(
+        title: Wrap(
+          spacing: 8,
+          runSpacing: 6,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             Text(
               role['display_name'],
-              style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.textPrimary),
+              style: const TextStyle(
+                  fontWeight: FontWeight.bold, color: AppColors.textPrimary),
             ),
-            const SizedBox(width: 8),
             Text(
               role['role_name'],
               style: const TextStyle(
@@ -1419,7 +1573,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
             ),
             if (isInactive)
               Chip(
-                label: Text('INACTIVE', style: TextStyle(fontSize: 11, color: Colors.red[800])),
+                label: Text('INACTIVE',
+                    style: TextStyle(fontSize: 11, color: Colors.red[800])),
                 backgroundColor: Colors.red[100],
                 visualDensity: VisualDensity.compact,
                 padding: EdgeInsets.zero,
@@ -1428,7 +1583,8 @@ class _UserManagementScreenState extends State<UserManagementScreen>
         ),
         subtitle: Text(
           role['description'] ?? '',
-          style: const TextStyle(fontStyle: FontStyle.italic, color: AppColors.textSecondary),
+          style: const TextStyle(
+              fontStyle: FontStyle.italic, color: AppColors.textSecondary),
         ),
         trailing: PopupMenuButton<String>(
           onSelected: (v) => _handleRoleAction(v, role),
@@ -1438,12 +1594,14 @@ class _UserManagementScreenState extends State<UserManagementScreen>
               if (role['is_active'] == true)
                 const PopupMenuItem(
                   value: 'deactivate',
-                  child: Text('Deactivate Role', style: TextStyle(color: Colors.red)),
+                  child: Text('Deactivate Role',
+                      style: TextStyle(color: Colors.red)),
                 ),
               if (role['is_active'] == false)
                 const PopupMenuItem(
                   value: 'reactivate',
-                  child: Text('Reactivate Role', style: TextStyle(color: Colors.green)),
+                  child: Text('Reactivate Role',
+                      style: TextStyle(color: Colors.green)),
                 ),
             ],
           ],

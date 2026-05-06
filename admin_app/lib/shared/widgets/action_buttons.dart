@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/responsive/responsive_breakpoints.dart';
 
 /// Standardized action buttons widget
 class ActionButtonsWidget extends StatelessWidget {
@@ -24,14 +25,29 @@ class ActionButtonsWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final children = actions.map((action) => _buildActionButton(action, context)).toList();
+    final children =
+        actions.map((action) => _buildActionButton(action, context)).toList();
 
     if (direction == Axis.horizontal) {
-      return Row(
-        mainAxisAlignment: mainAxisAlignment,
-        crossAxisAlignment: crossAxisAlignment,
-        mainAxisSize: mainAxisSize,
-        children: _addSpacing(children),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final useWrap = ResponsiveBreakpoints.isMobile(context) ||
+              constraints.maxWidth < 520;
+          if (useWrap) {
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: children,
+            );
+          }
+          return Row(
+            mainAxisAlignment: mainAxisAlignment,
+            crossAxisAlignment: crossAxisAlignment,
+            mainAxisSize: mainAxisSize,
+            children: _addSpacing(children),
+          );
+        },
       );
     } else {
       return Column(
@@ -86,8 +102,11 @@ class ActionButtonsWidget extends StatelessWidget {
               ),
             ),
       style: ElevatedButton.styleFrom(
-        backgroundColor: action.enabled ? buttonStyle.backgroundColor : AppColors.disabled,
-        foregroundColor: action.enabled ? buttonStyle.foregroundColor : AppColors.textDisabled,
+        backgroundColor:
+            action.enabled ? buttonStyle.backgroundColor : AppColors.disabled,
+        foregroundColor: action.enabled
+            ? buttonStyle.foregroundColor
+            : AppColors.textDisabled,
         elevation: action.type == ActionType.primary ? 2 : 0,
         padding: compact
             ? const EdgeInsets.symmetric(horizontal: 12, vertical: 8)

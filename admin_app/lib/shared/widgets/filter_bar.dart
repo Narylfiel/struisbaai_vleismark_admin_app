@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/responsive/responsive_breakpoints.dart';
 
 /// Reusable filter bar widget for data filtering
 class FilterBarWidget extends StatefulWidget {
@@ -33,7 +34,9 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
 
   void _updateFilter(String key, dynamic value) {
     setState(() {
-      if (value == null || (value is String && value.isEmpty) || (value is List && value.isEmpty)) {
+      if (value == null ||
+          (value is String && value.isEmpty) ||
+          (value is List && value.isEmpty)) {
         _activeFilters.remove(key);
       } else {
         _activeFilters[key] = value;
@@ -61,35 +64,67 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final narrow =
+                  constraints.maxWidth < ResponsiveBreakpoints.phoneMaxWidth;
+              const title = Text(
                 'Filters',
                 style: TextStyle(
                   color: AppColors.textPrimary,
                   fontSize: 16,
                   fontWeight: FontWeight.w600,
                 ),
-              ),
-              if (widget.showClearButton && _activeFilters.isNotEmpty)
-                TextButton(
-                  onPressed: _clearFilters,
-                  child: Text(
-                    widget.clearButtonText,
-                    style: const TextStyle(
-                      color: AppColors.primary,
-                      fontSize: 14,
-                    ),
-                  ),
-                ),
-            ],
+              );
+              final clearButton =
+                  widget.showClearButton && _activeFilters.isNotEmpty
+                      ? TextButton(
+                          onPressed: _clearFilters,
+                          child: Text(
+                            widget.clearButtonText,
+                            style: const TextStyle(
+                              color: AppColors.primary,
+                              fontSize: 14,
+                            ),
+                          ),
+                        )
+                      : null;
+              if (narrow) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    title,
+                    if (clearButton != null) ...[
+                      const SizedBox(height: 8),
+                      clearButton,
+                    ],
+                  ],
+                );
+              }
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  title,
+                  if (clearButton != null) clearButton,
+                ],
+              );
+            },
           ),
           const SizedBox(height: 16),
-          Wrap(
-            spacing: 16,
-            runSpacing: 16,
-            children: widget.filters.map((filter) => _buildFilterWidget(filter)).toList(),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final itemWidth = _filterWidthFor(constraints.maxWidth);
+              return Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                children: widget.filters
+                    .map((filter) => SizedBox(
+                          width: itemWidth,
+                          child: _buildFilterWidget(filter),
+                        ))
+                    .toList(),
+              );
+            },
           ),
           if (_activeFilters.isNotEmpty)
             Padding(
@@ -105,131 +140,148 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
     );
   }
 
+  double _filterWidthFor(double maxWidth) {
+    if (maxWidth < 430) return maxWidth;
+    if (maxWidth < 760) return (maxWidth - 16) / 2;
+    return 280;
+  }
+
   Widget _buildFilterWidget(FilterOption filter) {
     final currentValue = _activeFilters[filter.key];
 
     switch (filter.type) {
       case FilterType.dropdown:
-        return SizedBox(
-          width: 200,
-          child: DropdownButtonFormField<String>(
-            initialValue: currentValue,
+        return DropdownButtonFormField<String>(
+          isExpanded: true,
+          initialValue: currentValue,
+          decoration: InputDecoration(
+            labelText: filter.label,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          ),
+          items: filter.options?.map((option) {
+            return DropdownMenuItem<String>(
+              value: option,
+              child: Text(option, overflow: TextOverflow.ellipsis),
+            );
+          }).toList(),
+          onChanged: (value) => _updateFilter(filter.key, value),
+        );
+
+      case FilterType.dateRange:
+        return InkWell(
+          onTap: () async {
+            final picked = await showDateRangePicker(
+              context: context,
+              firstDate: DateTime(2000),
+              lastDate: DateTime(2100),
+              initialDateRange: currentValue,
+            );
+            if (picked != null) {
+              _updateFilter(filter.key, picked);
+            }
+          },
+          child: InputDecorator(
             decoration: InputDecoration(
               labelText: filter.label,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(8),
               ),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-            items: filter.options?.map((option) {
-              return DropdownMenuItem<String>(
-                value: option,
-                child: Text(option),
-              );
-            }).toList(),
-            onChanged: (value) => _updateFilter(filter.key, value),
-          ),
-        );
-
-      case FilterType.dateRange:
-        return SizedBox(
-          width: 300,
-          child: InkWell(
-            onTap: () async {
-              final picked = await showDateRangePicker(
-                context: context,
-                firstDate: DateTime(2000),
-                lastDate: DateTime(2100),
-                initialDateRange: currentValue,
-              );
-              if (picked != null) {
-                _updateFilter(filter.key, picked);
-              }
-            },
-            child: InputDecorator(
-              decoration: InputDecoration(
-                labelText: filter.label,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                suffixIcon: const Icon(
-                  Icons.date_range,
-                  color: AppColors.textSecondary,
-                ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              suffixIcon: const Icon(
+                Icons.date_range,
+                color: AppColors.textSecondary,
               ),
-              child: Text(
-                currentValue != null
-                    ? '${currentValue.start.toString().split(' ')[0]} - ${currentValue.end.toString().split(' ')[0]}'
-                    : 'Select date range',
-                style: TextStyle(
-                  color: currentValue != null ? AppColors.textPrimary : AppColors.textSecondary,
-                  fontSize: 14,
-                ),
+            ),
+            child: Text(
+              currentValue != null
+                  ? '${currentValue.start.toString().split(' ')[0]} - ${currentValue.end.toString().split(' ')[0]}'
+                  : 'Select date range',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: currentValue != null
+                    ? AppColors.textPrimary
+                    : AppColors.textSecondary,
+                fontSize: 14,
               ),
             ),
           ),
         );
 
       case FilterType.checkbox:
-        return SizedBox(
-          width: 200,
-          child: CheckboxListTile(
-            title: Text(filter.label),
-            value: currentValue ?? false,
-            onChanged: (value) => _updateFilter(filter.key, value),
-            controlAffinity: ListTileControlAffinity.leading,
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-          ),
+        return CheckboxListTile(
+          title: Text(filter.label),
+          value: currentValue ?? false,
+          onChanged: (value) => _updateFilter(filter.key, value),
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          contentPadding: EdgeInsets.zero,
         );
 
       case FilterType.numericRange:
-        return SizedBox(
-          width: 300,
-          child: Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  initialValue: currentValue?['min']?.toString(),
-                  decoration: InputDecoration(
-                    labelText: '${filter.label} (Min)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (value) {
-                    final numValue = num.tryParse(value);
-                    final range = Map<String, dynamic>.from(_activeFilters[filter.key] ?? {});
-                    range['min'] = numValue;
-                    _updateFilter(filter.key, range.isEmpty ? null : range);
-                  },
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            final stack = constraints.maxWidth < 260;
+            final minField = TextFormField(
+              initialValue: currentValue?['min']?.toString(),
+              decoration: InputDecoration(
+                labelText: '${filter.label} (Min)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: TextFormField(
-                  initialValue: currentValue?['max']?.toString(),
-                  decoration: InputDecoration(
-                    labelText: '${filter.label} (Max)',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  ),
-                  keyboardType: TextInputType.number,
-                  onChanged: (value) {
-                    final numValue = num.tryParse(value);
-                    final range = Map<String, dynamic>.from(_activeFilters[filter.key] ?? {});
-                    range['max'] = numValue;
-                    _updateFilter(filter.key, range.isEmpty ? null : range);
-                  },
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                final numValue = num.tryParse(value);
+                final range =
+                    Map<String, dynamic>.from(_activeFilters[filter.key] ?? {});
+                range['min'] = numValue;
+                _updateFilter(filter.key, range.isEmpty ? null : range);
+              },
+            );
+            final maxField = TextFormField(
+              initialValue: currentValue?['max']?.toString(),
+              decoration: InputDecoration(
+                labelText: '${filter.label} (Max)',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
                 ),
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               ),
-            ],
-          ),
+              keyboardType: TextInputType.number,
+              onChanged: (value) {
+                final numValue = num.tryParse(value);
+                final range =
+                    Map<String, dynamic>.from(_activeFilters[filter.key] ?? {});
+                range['max'] = numValue;
+                _updateFilter(filter.key, range.isEmpty ? null : range);
+              },
+            );
+            if (stack) {
+              return Column(
+                children: [
+                  minField,
+                  const SizedBox(height: 8),
+                  maxField,
+                ],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: minField),
+                const SizedBox(width: 8),
+                Expanded(child: maxField),
+              ],
+            );
+          },
         );
     }
   }
@@ -238,12 +290,14 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
     return _activeFilters.entries.map((entry) {
       final filter = widget.filters.firstWhere(
         (f) => f.key == entry.key,
-        orElse: () => FilterOption(key: entry.key, label: entry.key, type: FilterType.dropdown),
+        orElse: () => FilterOption(
+            key: entry.key, label: entry.key, type: FilterType.dropdown),
       );
 
       String displayValue;
       if (entry.value is DateTimeRange) {
-        displayValue = '${entry.value.start.toString().split(' ')[0]} - ${entry.value.end.toString().split(' ')[0]}';
+        displayValue =
+            '${entry.value.start.toString().split(' ')[0]} - ${entry.value.end.toString().split(' ')[0]}';
       } else if (entry.value is Map) {
         final range = entry.value as Map;
         if (range.containsKey('min') && range.containsKey('max')) {
@@ -263,7 +317,7 @@ class _FilterBarWidgetState extends State<FilterBarWidget> {
             fontSize: 12,
           ),
         ),
-        backgroundColor: AppColors.primary.withOpacity(0.1),
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
         deleteIcon: const Icon(
           Icons.close,
           size: 16,

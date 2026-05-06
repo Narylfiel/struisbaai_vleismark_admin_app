@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/responsive/responsive_breakpoints.dart';
 
 /// Reusable data table widget with sorting, pagination, and actions
 class DataTableWidget extends StatefulWidget {
@@ -61,45 +62,56 @@ class _DataTableWidgetState extends State<DataTableWidget> {
         ? (_filteredData.length / widget.rowsPerPage!).ceil()
         : 1;
 
-    final startIndex = _currentPage * (widget.rowsPerPage ?? _filteredData.length);
+    final startIndex =
+        _currentPage * (widget.rowsPerPage ?? _filteredData.length);
     final endIndex = startIndex + (widget.rowsPerPage ?? _filteredData.length);
     final pageData = _filteredData.sublist(
       startIndex,
       endIndex > _filteredData.length ? _filteredData.length : endIndex,
     );
 
-    return Column(
-      children: [
-        // Table
-        Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              child: DataTable(
-                columnSpacing: 16,
-                horizontalMargin: 16,
-                headingRowHeight: 48,
-                dataRowHeight: 52,
-                headingTextStyle: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 14,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isMobile = ResponsiveBreakpoints.isMobile(context);
+        final minTableWidth = isMobile ? 640.0 : constraints.maxWidth;
+        return Column(
+          children: [
+            // Table
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: minTableWidth),
+                child: SingleChildScrollView(
+                  child: DataTable(
+                    sortColumnIndex: _sortColumnIndex,
+                    sortAscending: _sortAscending,
+                    columnSpacing: isMobile ? 12 : 16,
+                    horizontalMargin: isMobile ? 12 : 16,
+                    headingRowHeight: 48,
+                    dataRowMinHeight: 48,
+                    dataRowMaxHeight: 56,
+                    headingTextStyle: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    dataTextStyle: const TextStyle(
+                      color: AppColors.textPrimary,
+                      fontSize: 14,
+                    ),
+                    columns: _buildColumns(),
+                    rows: _buildRows(pageData),
+                  ),
                 ),
-                dataTextStyle: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 14,
-                ),
-                columns: _buildColumns(),
-                rows: _buildRows(pageData),
               ),
             ),
-          ),
-        ),
 
-        // Pagination
-        if (widget.rowsPerPage != null && totalPages > 1)
-          _buildPagination(totalPages),
-      ],
+            // Pagination
+            if (widget.rowsPerPage != null && totalPages > 1)
+              _buildPagination(totalPages),
+          ],
+        );
+      },
     );
   }
 
@@ -114,7 +126,9 @@ class _DataTableWidgetState extends State<DataTableWidget> {
       columns.add(
         DataColumn(
           label: Text(header),
-          onSort: isSortable ? (columnIndex, ascending) => _sort(columnIndex, ascending) : null,
+          onSort: isSortable
+              ? (columnIndex, ascending) => _sort(columnIndex, ascending)
+              : null,
         ),
       );
     }
@@ -140,14 +154,17 @@ class _DataTableWidgetState extends State<DataTableWidget> {
       // Actions cell
       if (widget.showActions && widget.actions != null) {
         cells.add(DataCell(
-          Row(
-            mainAxisSize: MainAxisSize.min,
+          Wrap(
+            spacing: 4,
+            runSpacing: 2,
             children: widget.actions!.map((action) {
               return IconButton(
                 icon: Icon(action.icon, size: 18),
                 color: action.color ?? AppColors.primary,
                 onPressed: () => action.onPressed(row),
                 tooltip: action.tooltip,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                padding: EdgeInsets.zero,
               );
             }).toList(),
           ),
@@ -165,22 +182,22 @@ class _DataTableWidgetState extends State<DataTableWidget> {
         color: AppColors.cardBg,
         border: Border(top: BorderSide(color: AppColors.border)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            'Page ${_currentPage + 1} of $totalPages (${_filteredData.length} total)',
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-          ),
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final controls = Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
                 icon: const Icon(Icons.chevron_left, size: 20),
-                onPressed: _currentPage > 0 ? () => setState(() => _currentPage--) : null,
-                color: _currentPage > 0 ? AppColors.primary : AppColors.textSecondary,
+                onPressed: _currentPage > 0
+                    ? () => setState(() => _currentPage--)
+                    : null,
+                color: _currentPage > 0
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
               ),
-              Container(
-                constraints: const BoxConstraints(minWidth: 40),
+              SizedBox(
+                width: 40,
                 child: Text(
                   '${_currentPage + 1}',
                   textAlign: TextAlign.center,
@@ -192,12 +209,35 @@ class _DataTableWidgetState extends State<DataTableWidget> {
               ),
               IconButton(
                 icon: const Icon(Icons.chevron_right, size: 20),
-                onPressed: _currentPage < totalPages - 1 ? () => setState(() => _currentPage++) : null,
-                color: _currentPage < totalPages - 1 ? AppColors.primary : AppColors.textSecondary,
+                onPressed: _currentPage < totalPages - 1
+                    ? () => setState(() => _currentPage++)
+                    : null,
+                color: _currentPage < totalPages - 1
+                    ? AppColors.primary
+                    : AppColors.textSecondary,
               ),
             ],
-          ),
-        ],
+          );
+          final label = Text(
+            'Page ${_currentPage + 1} of $totalPages (${_filteredData.length} total)',
+            style:
+                const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+          );
+          if (constraints.maxWidth < 420) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                label,
+                const SizedBox(height: 4),
+                Align(alignment: Alignment.centerRight, child: controls),
+              ],
+            );
+          }
+          return Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [Expanded(child: label), controls],
+          );
+        },
       ),
     );
   }
@@ -210,7 +250,7 @@ class _DataTableWidgetState extends State<DataTableWidget> {
           Icon(
             Icons.table_chart_outlined,
             size: 64,
-            color: AppColors.textSecondary.withOpacity(0.5),
+            color: AppColors.textSecondary.withValues(alpha: 0.5),
           ),
           const SizedBox(height: 16),
           Text(
@@ -241,11 +281,15 @@ class _DataTableWidgetState extends State<DataTableWidget> {
 
         // Handle different data types
         if (aValue is num && bValue is num) {
-          return ascending ? aValue.compareTo(bValue) : bValue.compareTo(aValue);
+          return ascending
+              ? aValue.compareTo(bValue)
+              : bValue.compareTo(aValue);
         }
 
         if (aValue is DateTime && bValue is DateTime) {
-          return ascending ? aValue.compareTo(bValue) : bValue.compareTo(aValue);
+          return ascending
+              ? aValue.compareTo(bValue)
+              : bValue.compareTo(aValue);
         }
 
         final aStr = aValue.toString().toLowerCase();

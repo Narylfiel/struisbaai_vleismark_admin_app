@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
+import 'package:admin_app/core/responsive/responsive_widgets.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import '../../../core/services/email_service.dart';
@@ -447,28 +449,46 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
               'Password is stored securely on this device only.',
               style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextFormField(
-                  controller: _smtpHostController,
-                  decoration: const InputDecoration(
-                      labelText: 'SMTP Host', isDense: true),
+          ResponsiveBreakpoints.isPhoneLayout(context)
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextFormField(
+                      controller: _smtpHostController,
+                      decoration: const InputDecoration(
+                          labelText: 'SMTP Host', isDense: true),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: _smtpPortController,
+                      decoration:
+                          const InputDecoration(labelText: 'Port', isDense: true),
+                      keyboardType: TextInputType.number,
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      flex: 3,
+                      child: TextFormField(
+                        controller: _smtpHostController,
+                        decoration: const InputDecoration(
+                            labelText: 'SMTP Host', isDense: true),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    SizedBox(
+                      width: 80,
+                      child: TextFormField(
+                        controller: _smtpPortController,
+                        decoration: const InputDecoration(
+                            labelText: 'Port', isDense: true),
+                        keyboardType: TextInputType.number,
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 12),
-              SizedBox(
-                width: 80,
-                child: TextFormField(
-                  controller: _smtpPortController,
-                  decoration: const InputDecoration(
-                      labelText: 'Port', isDense: true),
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
-          ),
           const SizedBox(height: 10),
           TextFormField(
             controller: _smtpUsernameController,
@@ -499,7 +519,7 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                 labelText: 'From name (shown to recipient)', isDense: true),
           ),
           const SizedBox(height: 12),
-          Row(
+          AdaptiveActionRow(
             children: [
               OutlinedButton.icon(
                 onPressed: _smtpTesting ? null : _testSmtpConnection,
@@ -509,10 +529,8 @@ class _NotificationSettingsScreenState extends State<NotificationSettingsScreen>
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.wifi_tethering, size: 16),
-                label:
-                    Text(_smtpTesting ? 'Testing…' : 'Test connection'),
+                label: Text(_smtpTesting ? 'Testing…' : 'Test connection'),
               ),
-              const SizedBox(width: 12),
               FilledButton.icon(
                 onPressed: _smtpLoading ? null : _saveSmtpSettings,
                 icon: _smtpLoading

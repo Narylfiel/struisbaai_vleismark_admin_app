@@ -5,6 +5,7 @@ class AdminConfig {
   static const String appVersion = '1.0.0';
 
   /// Phase 5 L6: Layout breakpoints (width in logical pixels). Primary: Windows desktop; adapt for smaller screens.
+  static const double mobileBreakpoint = 600.0;
   static const double breakpointMobile = 600;
   static const double breakpointTablet = 900;
   static const double breakpointDesktop = 1200;

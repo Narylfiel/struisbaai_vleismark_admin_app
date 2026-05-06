@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../../core/constants/app_colors.dart';
+import '../../core/responsive/responsive_breakpoints.dart';
+import '../../core/responsive/responsive_primitives.dart';
 
 /// Reusable form widgets for consistent UI across the app
 class FormWidgets {
@@ -72,7 +74,8 @@ class FormWidgets {
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
           style: const TextStyle(
             color: AppColors.textPrimary,
@@ -136,7 +139,8 @@ class FormWidgets {
               borderRadius: BorderRadius.circular(8),
               borderSide: const BorderSide(color: Colors.red, width: 2),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
           ),
           style: const TextStyle(
             color: AppColors.textPrimary,
@@ -250,7 +254,9 @@ class FormWidgets {
       controller: controller,
       hint: hint,
       helperText: helperText,
-      keyboardType: allowDecimals ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.number,
+      keyboardType: allowDecimals
+          ? const TextInputType.numberWithOptions(decimal: true)
+          : TextInputType.number,
       inputFormatters: [
         FilteringTextInputFormatter.allow(
           allowDecimals ? RegExp(r'^\d*\.?\d*$') : RegExp(r'^\d*$'),
@@ -263,7 +269,8 @@ class FormWidgets {
         }
 
         if (value != null && value.isNotEmpty) {
-          final numValue = allowDecimals ? double.tryParse(value) : int.tryParse(value);
+          final numValue =
+              allowDecimals ? double.tryParse(value) : int.tryParse(value);
           if (numValue == null) {
             return 'Please enter a valid number';
           }
@@ -424,7 +431,7 @@ class FormWidgets {
           value: value,
           onChanged: enabled ? onChanged : null,
           activeThumbColor: AppColors.primary,
-          activeTrackColor: AppColors.primary.withOpacity(0.3),
+          activeTrackColor: AppColors.primary.withValues(alpha: 0.3),
         ),
       ],
     );
@@ -464,6 +471,48 @@ class FormWidgets {
           const Divider(color: AppColors.border, height: 1),
         ],
       ),
+    );
+  }
+
+  /// Shared responsive section shell for settings/forms.
+  static Widget responsiveSectionContainer({
+    required Widget child,
+    EdgeInsetsGeometry? padding,
+  }) {
+    return ResponsiveSectionContainer(
+      padding: padding,
+      child: child,
+    );
+  }
+
+  /// Shared row/column helper for form fields.
+  static Widget responsiveFormRow({
+    required List<Widget> children,
+    double spacing = 12,
+    double mobileBreakpoint = ResponsiveBreakpoints.phoneMaxWidth,
+  }) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth < mobileBreakpoint) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < children.length; i++) ...[
+                children[i],
+                if (i < children.length - 1) SizedBox(height: spacing),
+              ],
+            ],
+          );
+        }
+        return Row(
+          children: [
+            for (var i = 0; i < children.length; i++) ...[
+              Expanded(child: children[i]),
+              if (i < children.length - 1) SizedBox(width: spacing),
+            ],
+          ],
+        );
+      },
     );
   }
 }

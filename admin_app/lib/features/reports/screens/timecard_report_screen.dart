@@ -47,7 +47,7 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       final timeRepo = TimecardRepository(client: _client);
       final timecards = await timeRepo.getAll(
@@ -153,7 +153,7 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
   }
 
   Future<void> _exportCsv() async {
-    setState(() => _isExporting = true);
+    if (mounted) setState(() => _isExporting = true);
     try {
       final fromStr = _fromDate.toIso8601String().substring(0, 10);
       final toStr = _toDate.toIso8601String().substring(0, 10);
@@ -269,42 +269,67 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
       ),
       body: Column(
         children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            color: AppColors.cardBg,
-            child: Row(
-              children: [
-                OutlinedButton.icon(
-                  onPressed: _pickDateRange,
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text('${_fromDate.day}/${_fromDate.month}/${_fromDate.year} – ${_toDate.day}/${_toDate.month}/${_toDate.year}'),
+          LayoutBuilder(
+            builder: (context, c) {
+              final narrow = c.maxWidth < 600;
+              final dateBtn = OutlinedButton.icon(
+                onPressed: _pickDateRange,
+                icon: const Icon(Icons.calendar_today, size: 16),
+                label: Text(
+                    '${_fromDate.day}/${_fromDate.month}/${_fromDate.year} – ${_toDate.day}/${_toDate.month}/${_toDate.year}'),
+              );
+              final staffDd = DropdownButtonFormField<String>(
+                initialValue: _selectedStaffId,
+                isExpanded: narrow,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
-                const SizedBox(width: 16),
-                SizedBox(
-                  width: 200,
-                  child: DropdownButtonFormField<String>(
-                    initialValue: _selectedStaffId,
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                    ),
-                    hint: const Text('All Staff'),
-                    items: [
-                      const DropdownMenuItem(value: null, child: Text('All Staff')),
-                      ..._staffList.map((s) => DropdownMenuItem(value: s['id'] as String?, child: Text(s['full_name']?.toString() ?? ''))),
+                hint: const Text('All Staff'),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('All Staff')),
+                  ..._staffList.map((s) => DropdownMenuItem<String>(
+                      value: s['id'] as String?, child: Text(s['full_name']?.toString() ?? ''))),
+                ],
+                onChanged: (v) => setState(() => _selectedStaffId = v),
+              );
+              final applyBtn = ElevatedButton(
+                onPressed: _loadData,
+                style:
+                    ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
+                child: const Text('Apply'),
+              );
+              if (narrow) {
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  color: AppColors.cardBg,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      dateBtn,
+                      const SizedBox(height: 12),
+                      staffDd,
+                      const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: applyBtn),
                     ],
-                    onChanged: (v) => setState(() => _selectedStaffId = v),
                   ),
+                );
+              }
+              return Container(
+                padding: const EdgeInsets.all(16),
+                color: AppColors.cardBg,
+                child: Row(
+                  children: [
+                    dateBtn,
+                    const SizedBox(width: 16),
+                    SizedBox(width: 200, child: staffDd),
+                    const SizedBox(width: 16),
+                    applyBtn,
+                  ],
                 ),
-                const SizedBox(width: 16),
-                ElevatedButton(
-                  onPressed: _loadData,
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white),
-                  child: const Text('Apply'),
-                ),
-              ],
-            ),
+              );
+            },
           ),
           const Divider(height: 1, color: AppColors.border),
           Container(
@@ -517,17 +542,37 @@ class _TimecardReportScreenState extends State<TimecardReportScreen> {
                   ),
           ),
           if (!_isLoading && _records.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.all(16),
-              color: AppColors.cardBg,
-              child: Row(
-                children: [
-                  const Text('TOTALS', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const Spacer(),
-                  Text('Shifts: ${_records.length}  |  Hours: ${totalHrsSum.toStringAsFixed(1)}h  |  Breaks: ${totalBreakMinsSum}m',
-                    style: const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 14)),
-                ],
-              ),
+            LayoutBuilder(
+              builder: (context, lc) {
+                final narrow = lc.maxWidth < 600;
+                final totalsText = Text(
+                  'Shifts: ${_records.length}  |  Hours: ${totalHrsSum.toStringAsFixed(1)}h  |  Breaks: ${totalBreakMinsSum}m',
+                  style:
+                      const TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary, fontSize: 14),
+                );
+                return Container(
+                  padding: const EdgeInsets.all(16),
+                  color: AppColors.cardBg,
+                  child: narrow
+                      ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('TOTALS',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            const SizedBox(height: 8),
+                            totalsText,
+                          ],
+                        )
+                      : Row(
+                          children: [
+                            const Text('TOTALS',
+                                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                            const Spacer(),
+                            totalsText,
+                          ],
+                        ),
+                );
+              },
             ),
         ],
       ),

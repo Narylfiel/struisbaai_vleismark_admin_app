@@ -89,16 +89,18 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       var q = _supabase.from('business_accounts').select('*');
       if (!_showInactive) q = q.eq('is_active', true);
       final data = await q.order('name');
-      setState(() => _accounts = List<Map<String, dynamic>>.from(data));
+      if (mounted) {
+        setState(() => _accounts = List<Map<String, dynamic>>.from(data));
+      }
     } catch (e) {
       debugPrint('Accounts: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   // Overdue days: days since oldest unpaid balance exceeded credit terms
@@ -221,288 +223,324 @@ class _BusinessAccountsTabState extends State<_BusinessAccountsTab> {
         0, (s, a) => s + ((a['balance'] as num?)?.toDouble() ?? 0));
     final overdueCount =
         _accounts.where((a) => _overdueDays(a) >= 1).length;
+    final isMobile = MediaQuery.sizeOf(context).width < 600;
 
     return Column(children: [
-      // ── Summary bar ─────────────────────────────────────────────
       Container(
         padding: const EdgeInsets.fromLTRB(24, 12, 24, 12),
         color: AppColors.cardBg,
-        child: Row(children: [
-          _summaryCard('Total Accounts', '${_accounts.length}',
-              AppColors.info, Icons.business),
-          const SizedBox(width: 16),
-          _summaryCard('Total Outstanding',
-              'R ${totalExposure.toStringAsFixed(2)}',
-              AppColors.warning, Icons.account_balance_wallet),
-          const SizedBox(width: 16),
-          _summaryCard('Overdue Accounts', '$overdueCount',
-              overdueCount > 0 ? AppColors.error : AppColors.success,
-              Icons.warning_amber),
-          const Spacer(),
-          Row(children: [
-            Switch(
-              value: _showInactive,
-              onChanged: (v) { setState(() => _showInactive = v); _load(); },
-              activeThumbColor: AppColors.primary,
-            ),
-            const Text('Show inactive',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary)),
-          ]),
-          const SizedBox(width: 16),
-          ElevatedButton.icon(
-            onPressed: () => _openAccount(null),
-            icon: const Icon(Icons.add_business, size: 18),
-            label: const Text('Add Account'),
-          ),
-        ]),
+        child: isMobile
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _summaryCard('Total Accounts', '${_accounts.length}',
+                      AppColors.info, Icons.business),
+                  const SizedBox(height: 12),
+                  _summaryCard('Total Outstanding',
+                      'R ${totalExposure.toStringAsFixed(2)}',
+                      AppColors.warning, Icons.account_balance_wallet),
+                  const SizedBox(height: 12),
+                  _summaryCard('Overdue Accounts', '$overdueCount',
+                      overdueCount > 0 ? AppColors.error : AppColors.success,
+                      Icons.warning_amber),
+                  const SizedBox(height: 12),
+                  Row(children: [
+                    Switch(
+                      value: _showInactive,
+                      onChanged: (v) {
+                        setState(() => _showInactive = v);
+                        _load();
+                      },
+                      activeThumbColor: AppColors.primary,
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Show inactive',
+                        style: TextStyle(
+                            fontSize: 13, color: AppColors.textSecondary),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: () => _openAccount(null),
+                    icon: const Icon(Icons.add_business, size: 18),
+                    label: const Text('Add Account'),
+                  ),
+                ],
+              )
+            : Row(children: [
+                _summaryCard('Total Accounts', '${_accounts.length}',
+                    AppColors.info, Icons.business),
+                const SizedBox(width: 16),
+                _summaryCard('Total Outstanding',
+                    'R ${totalExposure.toStringAsFixed(2)}',
+                    AppColors.warning, Icons.account_balance_wallet),
+                const SizedBox(width: 16),
+                _summaryCard('Overdue Accounts', '$overdueCount',
+                    overdueCount > 0 ? AppColors.error : AppColors.success,
+                    Icons.warning_amber),
+                const Spacer(),
+                Row(children: [
+                  Switch(
+                    value: _showInactive,
+                    onChanged: (v) {
+                      setState(() => _showInactive = v);
+                      _load();
+                    },
+                    activeThumbColor: AppColors.primary,
+                  ),
+                  const Text('Show inactive',
+                      style:
+                          TextStyle(fontSize: 13, color: AppColors.textSecondary)),
+                ]),
+                const SizedBox(width: 16),
+                ElevatedButton.icon(
+                  onPressed: () => _openAccount(null),
+                  icon: const Icon(Icons.add_business, size: 18),
+                  label: const Text('Add Account'),
+                ),
+              ]),
       ),
       const Divider(height: 1, color: AppColors.border),
-      // ── NOTE banner ─────────────────────────────────────────────
       Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
         color: AppColors.info.withOpacity(0.06),
-        child: const Row(children: [
-          Icon(Icons.info_outline, size: 14, color: AppColors.info),
-          SizedBox(width: 8),
-          Text(
-            'Business accounts only — select restaurants and caterers at owner\'s discretion. '
-            'No general public credit.',
-            style: TextStyle(fontSize: 12, color: AppColors.info),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.info_outline, size: 14, color: AppColors.info),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Business accounts only — select restaurants and caterers at owner\'s discretion. '
+                'No general public credit.',
+                style: TextStyle(fontSize: 12, color: AppColors.info),
+              ),
+            ),
+          ],
+        ),
+      ),
+      const Divider(height: 1, color: AppColors.border),
+      if (!isMobile) ...[
+        _businessTableHeaderRow(),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(child: _buildBusinessAccountsListBody()),
+      ] else
+        Expanded(
+          child: LayoutBuilder(
+            builder: (context, vb) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.hardEdge,
+              child: SizedBox(
+                width: 960,
+                height: vb.maxHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _businessTableHeaderRow(),
+                    const Divider(height: 1, color: AppColors.border),
+                    Expanded(child: _buildBusinessAccountsListBody()),
+                  ],
+                ),
+              ),
+            ),
           ),
-        ]),
-      ),
-      const Divider(height: 1, color: AppColors.border),
-      // ── Table header ─────────────────────────────────────────────
-      Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-        color: AppColors.surfaceBg,
-        child: const Row(children: [
-          Expanded(flex: 3, child: Text('BUSINESS', style: _hS)),
-          SizedBox(width: 12),
-          Expanded(flex: 2, child: Text('CONTACT', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 90,  child: Text('BALANCE', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 90,  child: Text('LIMIT', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 90,  child: Text('AVAILABLE', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 100, child: Text('STATUS', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 60,  child: Text('TERMS', style: _hS)),
-          SizedBox(width: 12),
-          SizedBox(width: 160, child: Text('ACTIONS', style: _hS)),
-        ]),
-      ),
-      const Divider(height: 1, color: AppColors.border),
-      // ── List ─────────────────────────────────────────────────────
-      Expanded(
-        child: _isLoading
-            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
-            : _accounts.isEmpty
-                ? _empty()
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
-                    itemCount: _accounts.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: AppColors.border),
-                    itemBuilder: (_, i) {
-                      final a = _accounts[i];
-                      final balance =
-                          (a['balance'] as num?)?.toDouble() ?? 0;
-                      final limit =
-                          (a['credit_limit'] as num?)?.toDouble() ?? 0;
-                      final available = (limit - balance).clamp(0, limit);
-                      final usedPct =
-                          limit > 0 ? (balance / limit).clamp(0.0, 1.0) : 0.0;
-                      final statusColor = _statusColor(a);
-                      final suspended = a['suspended'] as bool? ?? false;
-
-                      return InkWell(
-                        onTap: () => _openDetail(a),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 10),
-                          child: Row(children: [
-                            // Business name + type
-                            Expanded(
-                            flex: 3,
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              Text(a['name'] ?? '—',
-                                  style: const TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w600,
-                                      color: AppColors.textPrimary)),
-                              if (a['account_type'] != null)
-                                Text(a['account_type'],
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary)),
-                              // Credit used bar
-                              const SizedBox(height: 4),
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(2),
-                                child: LinearProgressIndicator(
-                                  value: usedPct,
-                                  minHeight: 4,
-                                  backgroundColor: AppColors.border,
-                                  valueColor: AlwaysStoppedAnimation(
-                                    usedPct > 0.9
-                                        ? AppColors.error
-                                        : usedPct > 0.7
-                                            ? AppColors.warning
-                                            : AppColors.success,
-                                  ),
-                                ),
-                              ),
-                            ]),
-                          ),
-                          const SizedBox(width: 12),
-                          // Contact
-                          Expanded(
-                            flex: 2,
-                            child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                              if (a['contact_person'] != null)
-                                Text(a['contact_person'],
-                                    style: const TextStyle(
-                                        fontSize: 12,
-                                        color: AppColors.textPrimary)),
-                              if (a['whatsapp'] != null || a['phone'] != null)
-                                Text(a['whatsapp'] ?? a['phone'] ?? '',
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary)),
-                              if (a['email'] != null)
-                                Text(a['email'],
-                                    style: const TextStyle(
-                                        fontSize: 11,
-                                        color: AppColors.textSecondary),
-                                    overflow: TextOverflow.ellipsis),
-                            ]),
-                          ),
-                          const SizedBox(width: 12),
-                          // Balance
-                          SizedBox(
-                            width: 90,
-                            child: Text(
-                              'R ${balance.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: balance > 0
-                                      ? AppColors.warning
-                                      : AppColors.textPrimary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Limit
-                          SizedBox(
-                            width: 90,
-                            child: Text(
-                              'R ${limit.toStringAsFixed(2)}',
-                              style: const TextStyle(
-                                  fontSize: 13,
-                                  color: AppColors.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Available
-                          SizedBox(
-                            width: 90,
-                            child: Text(
-                              'R ${available.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                  color: available < limit * 0.2
-                                      ? AppColors.error
-                                      : AppColors.success),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Status badge
-                          SizedBox(
-                            width: 100,
-                            child: Row(children: [
-                              Icon(_statusIcon(a),
-                                  size: 15, color: statusColor),
-                              const SizedBox(width: 4),
-                              Flexible(
-                                child: Text(_statusLabel(a),
-                                    style: TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                        color: statusColor)),
-                              ),
-                            ]),
-                          ),
-                          const SizedBox(width: 12),
-                          // Terms
-                          SizedBox(
-                            width: 60,
-                            child: Text(
-                              '${a['credit_terms_days'] ?? 7} days',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          // Actions
-                          SizedBox(
-                            width: 160,
-                            child: Row(children: [
-                              // View detail
-                              _actionBtn(
-                                icon: Icons.visibility,
-                                color: AppColors.primary,
-                                tooltip: 'View Account',
-                                onTap: () => _openDetail(a),
-                              ),
-                              const SizedBox(width: 4),
-                              // Record payment
-                              if (balance > 0)
-                                _actionBtn(
-                                  icon: Icons.payment,
-                                  color: AppColors.success,
-                                  tooltip: 'Record Payment',
-                                  onTap: () => _recordPayment(a),
-                                ),
-                              const SizedBox(width: 4),
-                              // Edit
-                              _actionBtn(
-                                icon: Icons.edit,
-                                color: AppColors.primary,
-                                tooltip: 'Edit Account',
-                                onTap: () => _openAccount(a),
-                              ),
-                              const SizedBox(width: 4),
-                              // Suspend / Re-enable
-                              _actionBtn(
-                                icon: suspended
-                                    ? Icons.check_circle_outline
-                                    : Icons.block,
-                                color: suspended
-                                    ? AppColors.success
-                                    : AppColors.error,
-                                tooltip: suspended
-                                    ? 'Re-enable Account'
-                                    : 'Suspend Account',
-                                onTap: () => _toggleSuspend(a),
-                              ),
-                            ]),
-                          ),
-                        ]),
-                        ),
-                      );
-                    },
-                  ),
-      ),
+        ),
     ]);
+  }
+
+  Widget _businessTableHeaderRow() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      color: AppColors.surfaceBg,
+      child: const Row(children: [
+        Expanded(flex: 3, child: Text('BUSINESS', style: _hS)),
+        SizedBox(width: 12),
+        Expanded(flex: 2, child: Text('CONTACT', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 90, child: Text('BALANCE', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 90, child: Text('LIMIT', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 90, child: Text('AVAILABLE', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 100, child: Text('STATUS', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 60, child: Text('TERMS', style: _hS)),
+        SizedBox(width: 12),
+        SizedBox(width: 160, child: Text('ACTIONS', style: _hS)),
+      ]),
+    );
+  }
+
+  Widget _buildBusinessAccountsListBody() {
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator(color: AppColors.primary));
+    }
+    if (_accounts.isEmpty) return _empty();
+    return ListView.separated(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      itemCount: _accounts.length,
+      separatorBuilder: (_, __) => const Divider(height: 1, color: AppColors.border),
+      itemBuilder: (_, i) {
+        final a = _accounts[i];
+        final balance = (a['balance'] as num?)?.toDouble() ?? 0;
+        final limit = (a['credit_limit'] as num?)?.toDouble() ?? 0;
+        final available = (limit - balance).clamp(0, limit);
+        final usedPct = limit > 0 ? (balance / limit).clamp(0.0, 1.0) : 0.0;
+        final statusColor = _statusColor(a);
+        final suspended = a['suspended'] as bool? ?? false;
+
+        return InkWell(
+          onTap: () => _openDetail(a),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 10),
+            child: Row(children: [
+              Expanded(
+                  flex: 3,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(a['name'] ?? '—',
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textPrimary)),
+                        if (a['account_type'] != null)
+                          Text(a['account_type'],
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary)),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(2),
+                          child: LinearProgressIndicator(
+                            value: usedPct,
+                            minHeight: 4,
+                            backgroundColor: AppColors.border,
+                            valueColor: AlwaysStoppedAnimation(
+                              usedPct > 0.9
+                                  ? AppColors.error
+                                  : usedPct > 0.7
+                                      ? AppColors.warning
+                                      : AppColors.success,
+                            ),
+                          ),
+                        ),
+                      ])),
+              const SizedBox(width: 12),
+              Expanded(
+                  flex: 2,
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (a['contact_person'] != null)
+                          Text(a['contact_person'],
+                              style: const TextStyle(
+                                  fontSize: 12, color: AppColors.textPrimary)),
+                        if (a['whatsapp'] != null || a['phone'] != null)
+                          Text(a['whatsapp'] ?? a['phone'] ?? '',
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary)),
+                        if (a['email'] != null)
+                          Text(a['email'],
+                              style: const TextStyle(
+                                  fontSize: 11, color: AppColors.textSecondary),
+                              overflow: TextOverflow.ellipsis),
+                      ])),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 90,
+                child: Text(
+                  'R ${balance.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: balance > 0 ? AppColors.warning : AppColors.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 90,
+                child: Text(
+                  'R ${limit.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 13, color: AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 90,
+                child: Text(
+                  'R ${available.toStringAsFixed(2)}',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: available < limit * 0.2 ? AppColors.error : AppColors.success),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 100,
+                child: Row(children: [
+                  Icon(_statusIcon(a), size: 15, color: statusColor),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(_statusLabel(a),
+                        style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                            color: statusColor)),
+                  ),
+                ]),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 60,
+                child: Text(
+                  '${a['credit_terms_days'] ?? 7} days',
+                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 160,
+                child: Row(children: [
+                  _actionBtn(
+                    icon: Icons.visibility,
+                    color: AppColors.primary,
+                    tooltip: 'View Account',
+                    onTap: () => _openDetail(a),
+                  ),
+                  const SizedBox(width: 4),
+                  if (balance > 0)
+                    _actionBtn(
+                      icon: Icons.payment,
+                      color: AppColors.success,
+                      tooltip: 'Record Payment',
+                      onTap: () => _recordPayment(a),
+                    ),
+                  const SizedBox(width: 4),
+                  _actionBtn(
+                    icon: Icons.edit,
+                    color: AppColors.primary,
+                    tooltip: 'Edit Account',
+                    onTap: () => _openAccount(a),
+                  ),
+                  const SizedBox(width: 4),
+                  _actionBtn(
+                    icon: suspended ? Icons.check_circle_outline : Icons.block,
+                    color: suspended ? AppColors.success : AppColors.error,
+                    tooltip: suspended ? 'Re-enable Account' : 'Suspend Account',
+                    onTap: () => _toggleSuspend(a),
+                  ),
+                ]),
+              ),
+            ]),
+          ),
+        );
+      },
+    );
   }
 
   Widget _summaryCard(
@@ -612,7 +650,8 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
   }
 
   Future<void> _loadAccounts() async {
-    setState(() => _loadingAccounts = true);
+    if (mounted) setState(() => _loadingAccounts = true);
+    final hadNoSelection = _selectedAccount == null;
     try {
       final data = await _supabase
           .from('business_accounts')
@@ -620,20 +659,26 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
               'contact_person, email, whatsapp, phone, vat_number, suspended')
           .eq('is_active', true)
           .order('name');
-      setState(() => _accounts = List<Map<String, dynamic>>.from(data));
-      if (_accounts.isNotEmpty && _selectedAccount == null) {
-        _selectedAccount = _accounts.first;
+      if (mounted) {
+        setState(() {
+          _accounts = List<Map<String, dynamic>>.from(data);
+          if (_accounts.isNotEmpty && hadNoSelection) {
+            _selectedAccount = _accounts.first;
+          }
+        });
+      }
+      if (mounted && hadNoSelection && _accounts.isNotEmpty) {
         _loadTransactions();
       }
     } catch (e) {
       debugPrint('Accounts: $e');
     }
-    setState(() => _loadingAccounts = false);
+    if (mounted) setState(() => _loadingAccounts = false);
   }
 
   Future<void> _loadTransactions() async {
     if (_selectedAccount == null) return;
-    setState(() => _loadingTxns = true);
+    if (mounted) setState(() => _loadingTxns = true);
     try {
       final data = await _supabase
           .from('account_transactions')
@@ -643,11 +688,13 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
           .lte('transaction_date', _periodEnd.toIso8601String().substring(0, 10))
           .order('transaction_date')
           .order('created_at');
-      setState(() => _transactions = List<Map<String, dynamic>>.from(data));
+      if (mounted) {
+        setState(() => _transactions = List<Map<String, dynamic>>.from(data));
+      }
     } catch (e) {
       debugPrint('Transactions: $e');
     }
-    setState(() => _loadingTxns = false);
+    if (mounted) setState(() => _loadingTxns = false);
   }
 
   double get _openingBalance {
@@ -682,341 +729,485 @@ class _AccountStatementsTabState extends State<_AccountStatementsTab> {
     } catch (_) { return d; }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final acc = _selectedAccount;
+  bool _acctStmtMobile(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 600;
 
-    return Row(children: [
-      // ── Left: account selector ──────────────────────────────────
-      SizedBox(
-        width: 220,
-        child: Column(children: [
-          Container(
-            padding: const EdgeInsets.all(12),
-            color: AppColors.cardBg,
-            child: const Text('SELECT ACCOUNT',
-                style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textSecondary,
-                    letterSpacing: 0.5)),
-          ),
-          const Divider(height: 1, color: AppColors.border),
-          Expanded(
-            child: _loadingAccounts
-                ? const Center(
-                    child: CircularProgressIndicator(
-                        color: AppColors.primary))
-                : ListView.separated(
-                    itemCount: _accounts.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: AppColors.border),
-                    itemBuilder: (_, i) {
-                      final a = _accounts[i];
-                      final isSelected =
-                          _selectedAccount?['id'] == a['id'];
-                      final balance =
-                          (a['balance'] as num?)?.toDouble() ?? 0;
-                      return InkWell(
-                        onTap: () {
-                          setState(() => _selectedAccount = a);
+  Widget _statementRightPane(Map<String, dynamic> acc, bool narrow) {
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
+        color: AppColors.cardBg,
+        child: narrow
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(acc['name'] ?? '—',
+                      style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary)),
+                  if (acc['vat_number'] != null) ...[
+                    const SizedBox(height: 4),
+                    Text('VAT: ${acc['vat_number']}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  ],
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _datePicker(
+                        label: 'From',
+                        date: _periodStart,
+                        onPicked: (d) {
+                          setState(() => _periodStart = d);
                           _loadTransactions();
                         },
-                        child: Container(
-                          color: isSelected
-                              ? AppColors.primary.withOpacity(0.08)
-                              : Colors.transparent,
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14, vertical: 10),
-                          child: Row(children: [
-                            Expanded(
-                              child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  children: [
-                                Text(a['name'] ?? '—',
-                                    style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: isSelected
-                                            ? FontWeight.bold
-                                            : FontWeight.normal,
-                                        color: isSelected
-                                            ? AppColors.primary
-                                            : AppColors.textPrimary)),
-                                Text(
-                                  'R ${balance.toStringAsFixed(2)}',
-                                  style: TextStyle(
-                                      fontSize: 11,
-                                      color: balance > 0
-                                          ? AppColors.warning
-                                          : AppColors.textSecondary),
-                                ),
-                              ]),
-                            ),
-                            if (isSelected)
-                              const Icon(Icons.chevron_right,
-                                  size: 16, color: AppColors.primary),
-                          ]),
-                        ),
-                      );
-                    },
+                      ),
+                      _datePicker(
+                        label: 'To',
+                        date: _periodEnd,
+                        onPicked: (d) {
+                          setState(() => _periodEnd = d);
+                          _loadTransactions();
+                        },
+                      ),
+                    ],
                   ),
+                ],
+              )
+            : Row(children: [
+                Text(acc['name'] ?? '—',
+                    style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary)),
+                if (acc['vat_number'] != null) ...[
+                  const SizedBox(width: 12),
+                  Text('VAT: ${acc['vat_number']}',
+                      style: const TextStyle(
+                          fontSize: 12, color: AppColors.textSecondary)),
+                ],
+                const Spacer(),
+                _datePicker(
+                  label: 'From',
+                  date: _periodStart,
+                  onPicked: (d) {
+                    setState(() => _periodStart = d);
+                    _loadTransactions();
+                  },
+                ),
+                const SizedBox(width: 8),
+                _datePicker(
+                  label: 'To',
+                  date: _periodEnd,
+                  onPicked: (d) {
+                    setState(() => _periodEnd = d);
+                    _loadTransactions();
+                  },
+                ),
+              ]),
+      ),
+      const Divider(height: 1, color: AppColors.border),
+      Container(
+        margin: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.cardBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: AppColors.border)),
+            ),
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('STATEMENT: ${acc['name']}',
+                      style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary)),
+                  if (acc['vat_number'] != null)
+                    Text('VAT Number: ${acc['vat_number']}',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary)),
+                  Text(
+                    'Period: ${_fmtDate(_periodStart.toIso8601String())} '
+                    '– ${_fmtDate(_periodEnd.toIso8601String())} ${_periodEnd.year}',
+                    style: const TextStyle(
+                        fontSize: 12, color: AppColors.textSecondary),
+                  ),
+                ]),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(children: [
+              _stmtRow('Opening Balance',
+                  'R ${_openingBalance.toStringAsFixed(2)}',
+                  bold: false),
+              _stmtRow('+ Purchases',
+                  'R ${_periodPurchases.toStringAsFixed(2)}',
+                  bold: false, color: AppColors.warning),
+              _stmtRow('− Payments',
+                  '−R ${_periodPayments.toStringAsFixed(2)}',
+                  bold: false, color: AppColors.success),
+              const Divider(color: AppColors.border),
+              _stmtRow('= Closing Balance',
+                  'R ${_closingBalance.toStringAsFixed(2)}',
+                  bold: true),
+              const SizedBox(height: 4),
+              narrow
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Terms: ${acc['credit_terms_days'] ?? 7} days  |  ',
+                          style: const TextStyle(
+                              fontSize: 12, color: AppColors.textSecondary),
+                        ),
+                        Text(
+                          acc['suspended'] == true
+                              ? 'Status: SUSPENDED'
+                              : _closingBalance > 0
+                                  ? 'Status: OUTSTANDING'
+                                  : 'Status: CLEAR',
+                          style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: acc['suspended'] == true
+                                  ? AppColors.error
+                                  : _closingBalance > 0
+                                      ? AppColors.warning
+                                      : AppColors.success),
+                        ),
+                      ],
+                    )
+                  : Row(children: [
+                      Text(
+                        'Terms: ${acc['credit_terms_days'] ?? 7} days  |  ',
+                        style: const TextStyle(
+                            fontSize: 12, color: AppColors.textSecondary),
+                      ),
+                      Text(
+                        acc['suspended'] == true
+                            ? 'Status: SUSPENDED'
+                            : _closingBalance > 0
+                                ? 'Status: OUTSTANDING'
+                                : 'Status: CLEAR',
+                        style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: acc['suspended'] == true
+                                ? AppColors.error
+                                : _closingBalance > 0
+                                    ? AppColors.warning
+                                    : AppColors.success),
+                      ),
+                    ]),
+            ]),
           ),
         ]),
       ),
-      const VerticalDivider(width: 1, color: AppColors.border),
-
-      // ── Right: statement ────────────────────────────────────────
+      const Padding(
+        padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
+        child: Row(children: [
+          Text('TRANSACTIONS',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5)),
+        ]),
+      ),
       Expanded(
-        child: acc == null
-            ? const Center(
-                child: Text('Select an account to view statement',
-                    style: TextStyle(color: AppColors.textSecondary)))
-            : Column(children: [
-                // Period picker toolbar
-                Container(
-                  padding: const EdgeInsets.fromLTRB(20, 10, 20, 10),
-                  color: AppColors.cardBg,
-                  child: Row(children: [
-                    Text(acc['name'] ?? '—',
-                        style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textPrimary)),
-                    if (acc['vat_number'] != null) ...[
-                      const SizedBox(width: 12),
-                      Text('VAT: ${acc['vat_number']}',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary)),
-                    ],
-                    const Spacer(),
-                    // Period: start
-                    _datePicker(
-                      label: 'From',
-                      date: _periodStart,
-                      onPicked: (d) {
-                        setState(() => _periodStart = d);
-                        _loadTransactions();
-                      },
-                    ),
-                    const SizedBox(width: 8),
-                    _datePicker(
-                      label: 'To',
-                      date: _periodEnd,
-                      onPicked: (d) {
-                        setState(() => _periodEnd = d);
-                        _loadTransactions();
-                      },
-                    ),
-                  ]),
-                ),
-                const Divider(height: 1, color: AppColors.border),
+        child: _loadingTxns
+            ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+            : _transactions.isEmpty
+                ? const Center(
+                    child: Text('No transactions for this period',
+                        style: TextStyle(color: AppColors.textSecondary)))
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                    itemCount: _transactions.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(height: 1, color: AppColors.border),
+                    itemBuilder: (_, i) {
+                      final t = _transactions[i];
+                      final isPayment = t['transaction_type'] == 'payment';
+                      final amt = (t['amount'] as num?)?.toDouble() ?? 0;
+                      final runBal = (t['running_balance'] as num?)?.toDouble();
 
-                // Statement summary
-                Container(
-                  margin: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
-                    color: AppColors.cardBg,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(children: [
-                    // Header
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: const BoxDecoration(
-                        border: Border(
-                            bottom:
-                                BorderSide(color: AppColors.border)),
-                      ),
-                      child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                        Text('STATEMENT: ${acc['name']}',
-                            style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.textPrimary)),
-                        if (acc['vat_number'] != null)
-                          Text('VAT Number: ${acc['vat_number']}',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  color: AppColors.textSecondary)),
-                        Text(
-                          'Period: ${_fmtDate(_periodStart.toIso8601String())} '
-                          '– ${_fmtDate(_periodEnd.toIso8601String())} ${_periodEnd.year}',
-                          style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary),
-                        ),
-                      ]),
-                    ),
-                    // Balances
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(children: [
-                        _stmtRow('Opening Balance',
-                            'R ${_openingBalance.toStringAsFixed(2)}',
-                            bold: false),
-                        _stmtRow('+ Purchases',
-                            'R ${_periodPurchases.toStringAsFixed(2)}',
-                            bold: false, color: AppColors.warning),
-                        _stmtRow('− Payments',
-                            '−R ${_periodPayments.toStringAsFixed(2)}',
-                            bold: false, color: AppColors.success),
-                        const Divider(color: AppColors.border),
-                        _stmtRow('= Closing Balance',
-                            'R ${_closingBalance.toStringAsFixed(2)}',
-                            bold: true),
-                        const SizedBox(height: 4),
-                        Row(children: [
-                          Text(
-                            'Terms: ${acc['credit_terms_days'] ?? 7} days  |  ',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: AppColors.textSecondary),
-                          ),
-                          Text(
-                            acc['suspended'] == true
-                                ? 'Status: SUSPENDED'
-                                : _closingBalance > 0
-                                    ? 'Status: OUTSTANDING'
-                                    : 'Status: CLEAR',
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: acc['suspended'] == true
-                                    ? AppColors.error
-                                    : _closingBalance > 0
-                                        ? AppColors.warning
-                                        : AppColors.success),
-                          ),
-                        ]),
-                      ]),
-                    ),
-                  ]),
-                ),
-
-                // Transactions list
-                const Padding(
-                  padding: EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Row(children: [
-                    Text('TRANSACTIONS',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.textSecondary,
-                            letterSpacing: 0.5)),
-                  ]),
-                ),
-                Expanded(
-                  child: _loadingTxns
-                      ? const Center(
-                          child: CircularProgressIndicator(
-                              color: AppColors.primary))
-                      : _transactions.isEmpty
-                          ? const Center(
-                              child: Text('No transactions for this period',
-                                  style: TextStyle(
-                                      color: AppColors.textSecondary)))
-                          : ListView.separated(
-                              padding: const EdgeInsets.fromLTRB(
-                                  20, 0, 20, 20),
-                              itemCount: _transactions.length,
-                              separatorBuilder: (_, __) => const Divider(
-                                  height: 1, color: AppColors.border),
-                              itemBuilder: (_, i) {
-                                final t = _transactions[i];
-                                final isPayment =
-                                    t['transaction_type'] == 'payment';
-                                final amt =
-                                    (t['amount'] as num?)?.toDouble() ?? 0;
-                                final runBal =
-                                    (t['running_balance'] as num?)?.toDouble();
-
-                                return Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                      vertical: 8),
-                                  child: Row(children: [
-                                    // Date
-                                    SizedBox(
-                                      width: 60,
-                                      child: Text(
-                                          _fmtDate(t['transaction_date']),
-                                          style: const TextStyle(
-                                              fontSize: 12,
-                                              color:
-                                                  AppColors.textSecondary)),
-                                    ),
-                                    const SizedBox(width: 12),
-                                    // Reference + description
-                                    Expanded(
-                                      child: Column(
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: narrow
+                            ? Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(_fmtDate(t['transaction_date']),
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary)),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                t['reference'] ??
+                                                    (isPayment
+                                                        ? 'Payment'
+                                                        : 'Sale'),
+                                                style: const TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w600,
+                                                    color: AppColors.textPrimary),
+                                              ),
+                                              if (t['description'] != null)
+                                                Text(t['description'],
+                                                    style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: AppColors
+                                                            .textSecondary)),
+                                              if (isPayment &&
+                                                  t['payment_method'] != null)
+                                                Text(t['payment_method'],
+                                                    style: const TextStyle(
+                                                        fontSize: 11,
+                                                        color: AppColors.success)),
+                                            ]),
+                                      ),
+                                      Column(
                                           crossAxisAlignment:
-                                              CrossAxisAlignment.start,
+                                              CrossAxisAlignment.end,
                                           children: [
+                                            Text(
+                                              isPayment
+                                                  ? '−R ${amt.toStringAsFixed(2)}'
+                                                  : 'R ${amt.toStringAsFixed(2)}',
+                                              style: TextStyle(
+                                                  fontSize: 13,
+                                                  fontWeight: FontWeight.bold,
+                                                  color: isPayment
+                                                      ? AppColors.success
+                                                      : AppColors.warning),
+                                            ),
+                                            if (runBal != null)
+                                              Text(
+                                                'Bal: R ${runBal.toStringAsFixed(2)}',
+                                                style: const TextStyle(
+                                                    fontSize: 11,
+                                                    color: AppColors.textSecondary),
+                                              ),
+                                          ]),
+                                    ],
+                                  ),
+                                ],
+                              )
+                            : Row(children: [
+                                SizedBox(
+                                  width: 60,
+                                  child: Text(_fmtDate(t['transaction_date']),
+                                      style: const TextStyle(
+                                          fontSize: 12,
+                                          color: AppColors.textSecondary)),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
                                         Text(
                                           t['reference'] ??
-                                              (isPayment
-                                                  ? 'Payment'
-                                                  : 'Sale'),
+                                              (isPayment ? 'Payment' : 'Sale'),
                                           style: const TextStyle(
                                               fontSize: 12,
                                               fontWeight: FontWeight.w600,
-                                              color:
-                                                  AppColors.textPrimary),
+                                              color: AppColors.textPrimary),
                                         ),
                                         if (t['description'] != null)
                                           Text(t['description'],
                                               style: const TextStyle(
                                                   fontSize: 11,
-                                                  color: AppColors
-                                                      .textSecondary)),
+                                                  color:
+                                                      AppColors.textSecondary)),
                                         if (isPayment &&
                                             t['payment_method'] != null)
                                           Text(t['payment_method'],
                                               style: const TextStyle(
                                                   fontSize: 11,
-                                                  color:
-                                                      AppColors.success)),
+                                                  color: AppColors.success)),
                                       ]),
+                                ),
+                                const SizedBox(width: 12),
+                                Text(
+                                  isPayment
+                                      ? '−R ${amt.toStringAsFixed(2)}'
+                                      : 'R ${amt.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.bold,
+                                      color: isPayment
+                                          ? AppColors.success
+                                          : AppColors.warning),
+                                ),
+                                const SizedBox(width: 16),
+                                if (runBal != null)
+                                  SizedBox(
+                                    width: 80,
+                                    child: Text(
+                                      'Bal: R ${runBal.toStringAsFixed(2)}',
+                                      style: const TextStyle(
+                                          fontSize: 11,
+                                          color: AppColors.textSecondary),
+                                      textAlign: TextAlign.right,
                                     ),
-                                    const SizedBox(width: 12),
-                                    // Amount
-                                    Text(
-                                      isPayment
-                                          ? '−R ${amt.toStringAsFixed(2)}'
-                                          : 'R ${amt.toStringAsFixed(2)}',
-                                      style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.bold,
-                                          color: isPayment
-                                              ? AppColors.success
-                                              : AppColors.warning),
-                                    ),
-                                    const SizedBox(width: 16),
-                                    // Running balance
-                                    if (runBal != null)
-                                      SizedBox(
-                                        width: 80,
-                                        child: Text(
-                                          'Bal: R ${runBal.toStringAsFixed(2)}',
-                                          style: const TextStyle(
-                                              fontSize: 11,
-                                              color:
-                                                  AppColors.textSecondary),
-                                          textAlign: TextAlign.right,
-                                        ),
-                                      ),
-                                  ]),
-                                );
-                              },
-                            ),
-                ),
-              ]),
+                                  ),
+                              ]),
+                      );
+                    },
+                  ),
       ),
     ]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final acc = _selectedAccount;
+    final narrow = _acctStmtMobile(context);
+
+    final sidebar = SizedBox(
+      width: 220,
+      child: Column(children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          color: AppColors.cardBg,
+          child: const Text('SELECT ACCOUNT',
+              style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textSecondary,
+                  letterSpacing: 0.5)),
+        ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(
+          child: _loadingAccounts
+              ? const Center(child: CircularProgressIndicator(color: AppColors.primary))
+              : ListView.separated(
+                  itemCount: _accounts.length,
+                  separatorBuilder: (_, __) =>
+                      const Divider(height: 1, color: AppColors.border),
+                  itemBuilder: (_, i) {
+                    final a = _accounts[i];
+                    final isSelected = _selectedAccount?['id'] == a['id'];
+                    final balance = (a['balance'] as num?)?.toDouble() ?? 0;
+                    return InkWell(
+                      onTap: () {
+                        setState(() => _selectedAccount = a);
+                        _loadTransactions();
+                      },
+                      child: Container(
+                        color: isSelected
+                            ? AppColors.primary.withOpacity(0.08)
+                            : Colors.transparent,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        child: Row(children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(a['name'] ?? '—',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight:
+                                          isSelected ? FontWeight.bold : FontWeight.normal,
+                                      color: isSelected ? AppColors.primary : AppColors.textPrimary)),
+                                Text(
+                                  'R ${balance.toStringAsFixed(2)}',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: balance > 0 ? AppColors.warning : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ]),
+                          ),
+                          if (isSelected)
+                            const Icon(Icons.chevron_right, size: 16, color: AppColors.primary),
+                        ]),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ]),
+    );
+
+    final right = acc == null
+        ? const Center(
+            child: Text('Select an account to view statement',
+                style: TextStyle(color: AppColors.textSecondary)))
+        : _statementRightPane(acc, narrow);
+
+    if (!narrow) {
+      return Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        sidebar,
+        const VerticalDivider(width: 1, color: AppColors.border),
+        Expanded(child: right),
+      ]);
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_loadingAccounts)
+          const SizedBox(height: 120, child: Center(child: CircularProgressIndicator(color: AppColors.primary)))
+        else if (_accounts.isEmpty)
+          const Padding(
+            padding: EdgeInsets.all(24),
+            child: Text('No active accounts.',
+                style: TextStyle(color: AppColors.textSecondary)),
+          )
+        else
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+            child: DropdownButtonFormField<String>(
+              value: _selectedAccount != null &&
+                      _accounts.any((a) => a['id'] == _selectedAccount!['id'])
+                  ? _selectedAccount!['id'] as String
+                  : (_accounts.isNotEmpty ? _accounts.first['id'] as String : null),
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Account',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: _accounts
+                  .map((a) => DropdownMenuItem<String>(
+                        value: a['id'] as String,
+                        child: Text(a['name'] ?? '—', overflow: TextOverflow.ellipsis),
+                      ))
+                  .toList(),
+              onChanged: (id) {
+                if (id == null) return;
+                final sel = _accounts.firstWhere((a) => a['id'] == id);
+                setState(() => _selectedAccount = sel);
+                _loadTransactions();
+              },
+            ),
+          ),
+        const Divider(height: 1, color: AppColors.border),
+        Expanded(child: right),
+      ],
+    );
   }
 
   Widget _stmtRow(String label, String value,
@@ -1102,7 +1293,7 @@ class _OverdueTabState extends State<_OverdueTab> {
   }
 
   Future<void> _load() async {
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
     try {
       final data = await _supabase
           .from('business_accounts')
@@ -1110,11 +1301,13 @@ class _OverdueTabState extends State<_OverdueTab> {
           .eq('is_active', true)
           .gt('balance', 0)
           .order('balance', ascending: false);
-      setState(() => _accounts = List<Map<String, dynamic>>.from(data));
+      if (mounted) {
+        setState(() => _accounts = List<Map<String, dynamic>>.from(data));
+      }
     } catch (e) {
       debugPrint('Overdue: $e');
     }
-    setState(() => _isLoading = false);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   int _overdueDays(Map<String, dynamic> acc) {
@@ -1511,7 +1704,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
 
   Future<void> _save() async {
     if (_nameCtrl.text.trim().isEmpty) return;
-    setState(() => _isSaving = true);
+    if (mounted) setState(() => _isSaving = true);
 
     final data = {
       'name':               _nameCtrl.text.trim(),
@@ -1572,7 +1765,7 @@ class _AccountFormDialogState extends State<_AccountFormDialog> {
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(ErrorHandler.friendlyMessage(e)),
@@ -1907,7 +2100,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
     final recordedBy = staffId;
     final amt = double.tryParse(_amtCtrl.text);
     if (amt == null || amt <= 0) return;
-    setState(() => _isSaving = true);
+    if (mounted) setState(() => _isSaving = true);
 
     final accId  = widget.account['id'] as String;
     final balance = (widget.account['balance'] as num?)?.toDouble() ?? 0;
@@ -1966,7 +2159,7 @@ class _PaymentDialogState extends State<_PaymentDialog> {
       widget.onSaved();
       if (mounted) Navigator.pop(context);
     } catch (e) {
-      setState(() => _isSaving = false);
+      if (mounted) setState(() => _isSaving = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(ErrorHandler.friendlyMessage(e)),

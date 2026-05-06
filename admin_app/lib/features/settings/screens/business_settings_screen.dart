@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
+import 'package:admin_app/core/responsive/responsive_widgets.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/settings/services/settings_repository.dart';
 import 'package:admin_app/features/settings/screens/tax_settings_screen.dart';
@@ -44,22 +46,34 @@ class _BusinessSettingsScreenState extends State<BusinessSettingsScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
               tabs: const [
-                Tab(icon: Icon(Icons.business, size: 18), text: 'Business Info'),
-                Tab(icon: Icon(Icons.monitor_weight, size: 18), text: 'Scale / HW'),
-                Tab(icon: Icon(Icons.request_quote, size: 18), text: 'Tax Rates'),
-                Tab(icon: Icon(Icons.notifications_active, size: 18), text: 'Notifications'),
+                Tab(
+                    icon: Icon(Icons.business, size: 18),
+                    text: 'Business Info'),
+                Tab(
+                    icon: Icon(Icons.monitor_weight, size: 18),
+                    text: 'Scale / HW'),
+                Tab(
+                    icon: Icon(Icons.request_quote, size: 18),
+                    text: 'Tax Rates'),
+                Tab(
+                    icon: Icon(Icons.notifications_active, size: 18),
+                    text: 'Notifications'),
                 Tab(icon: Icon(Icons.bolt, size: 18), text: 'Utilities'),
                 Tab(icon: Icon(Icons.manage_accounts, size: 18), text: 'Users'),
                 Tab(icon: Icon(Icons.email_outlined, size: 18), text: 'Email'),
                 Tab(icon: Icon(Icons.auto_awesome, size: 18), text: 'AI'),
-                Tab(icon: Icon(Icons.folder_shared_outlined, size: 18), text: 'Drive'),
-                Tab(icon: Icon(Icons.shopping_bag, size: 18), text: 'Online Shop'),
+                Tab(
+                    icon: Icon(Icons.folder_shared_outlined, size: 18),
+                    text: 'Drive'),
+                Tab(
+                    icon: Icon(Icons.shopping_bag, size: 18),
+                    text: 'Online Shop'),
               ],
             ),
           ),
@@ -121,7 +135,8 @@ class _BusinessTabState extends State<_BusinessTab> {
         _addressController.text = data['address']?.toString() ?? '';
         _vatController.text = data['vat_number']?.toString() ?? '';
         _phoneController.text = data['phone']?.toString() ?? '';
-        _startTimeController.text = data['bcea_start_time']?.toString() ?? '07:00';
+        _startTimeController.text =
+            data['bcea_start_time']?.toString() ?? '07:00';
         _endTimeController.text = data['bcea_end_time']?.toString() ?? '17:00';
         _isLoading = false;
       });
@@ -140,11 +155,13 @@ class _BusinessTabState extends State<_BusinessTab> {
         'bcea_end_time': _endTimeController.text,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Business Settings Saved')));
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Business Settings Saved')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(ErrorHandler.friendlyMessage(e))));
       }
     } finally {
       if (mounted) {
@@ -160,29 +177,48 @@ class _BusinessTabState extends State<_BusinessTab> {
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        const Text('Business Profile', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Business Profile',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 16),
-        TextFormField(controller: _nameController, decoration: const InputDecoration(labelText: 'Business Name')),
+        TextFormField(
+            controller: _nameController,
+            decoration: const InputDecoration(labelText: 'Business Name')),
         const SizedBox(height: 8),
-        TextFormField(controller: _addressController, decoration: const InputDecoration(labelText: 'Address')),
+        TextFormField(
+            controller: _addressController,
+            decoration: const InputDecoration(labelText: 'Address')),
         const SizedBox(height: 8),
-        TextFormField(controller: _vatController, decoration: const InputDecoration(labelText: 'VAT Number')),
+        TextFormField(
+            controller: _vatController,
+            decoration: const InputDecoration(labelText: 'VAT Number')),
         const SizedBox(height: 8),
-        TextFormField(controller: _phoneController, decoration: const InputDecoration(labelText: 'Phone')),
+        TextFormField(
+            controller: _phoneController,
+            decoration: const InputDecoration(labelText: 'Phone')),
         const SizedBox(height: 24),
-        const Text('Operational Hours (BCEA Base)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        const Text('Operational Hours (BCEA Base)',
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
         const SizedBox(height: 16),
         Row(
           children: [
-            Expanded(child: TextFormField(controller: _startTimeController, decoration: const InputDecoration(labelText: 'Start Time (HH:MM)'))),
+            Expanded(
+                child: TextFormField(
+                    controller: _startTimeController,
+                    decoration: const InputDecoration(
+                        labelText: 'Start Time (HH:MM)'))),
             const SizedBox(width: 16),
-            Expanded(child: TextFormField(controller: _endTimeController, decoration: const InputDecoration(labelText: 'End Time (HH:MM)'))),
+            Expanded(
+                child: TextFormField(
+                    controller: _endTimeController,
+                    decoration:
+                        const InputDecoration(labelText: 'End Time (HH:MM)'))),
           ],
         ),
         const SizedBox(height: 24),
         Align(
           alignment: Alignment.centerLeft,
-          child: ElevatedButton(onPressed: _save, child: const Text('SAVE SETTINGS')),
+          child: ElevatedButton(
+              onPressed: _save, child: const Text('SAVE SETTINGS')),
         ),
       ],
     );
@@ -231,20 +267,17 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
     final creds = await _emailService.loadCredentials();
     if (mounted) {
       setState(() {
-        _smtpHostController.text =
-            creds['host']?.isNotEmpty == true
-                ? creds['host']!
-                : 'mail.struisbaai-slaghuis.co.za';
+        _smtpHostController.text = creds['host']?.isNotEmpty == true
+            ? creds['host']!
+            : 'mail.struisbaai-slaghuis.co.za';
         _smtpPortController.text = creds['port'] ?? '465';
-        _smtpUsernameController.text =
-            creds['username']?.isNotEmpty == true
-                ? creds['username']!
-                : 'leon@struisbaai-slaghuis.co.za';
+        _smtpUsernameController.text = creds['username']?.isNotEmpty == true
+            ? creds['username']!
+            : 'leon@struisbaai-slaghuis.co.za';
         _smtpPasswordController.text = creds['password'] ?? '';
-        _smtpFromNameController.text =
-            creds['from_name']?.isNotEmpty == true
-                ? creds['from_name']!
-                : 'Struisbaai Vleismark';
+        _smtpFromNameController.text = creds['from_name']?.isNotEmpty == true
+            ? creds['from_name']!
+            : 'Struisbaai Vleismark';
         _loading = false;
       });
     }
@@ -292,9 +325,8 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
           content: Text(result['success'] == true
               ? '✓ Connection successful'
               : 'Connection failed: ${result['error']}'),
-          backgroundColor: result['success'] == true
-              ? const Color(0xFF2E7D32)
-              : Colors.red,
+          backgroundColor:
+              result['success'] == true ? const Color(0xFF2E7D32) : Colors.red,
         ),
       );
     }
@@ -309,9 +341,7 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
       padding: const EdgeInsets.all(24),
       children: [
         const Text('Email / Invoice Delivery',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold)),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text(
           'Configure SMTP to automatically email tax invoices to account '
@@ -322,9 +352,7 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
         ),
         const SizedBox(height: 24),
         const Text('SMTP Server',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -373,8 +401,7 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
             border: const OutlineInputBorder(),
             isDense: true,
             suffixIcon: IconButton(
-              icon: Icon(
-                  _obscure ? Icons.visibility_off : Icons.visibility,
+              icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
                   size: 18),
               onPressed: () => setState(() => _obscure = !_obscure),
             ),
@@ -420,9 +447,7 @@ class _EmailSettingsTabState extends State<_EmailSettingsTab> {
         const Divider(),
         const SizedBox(height: 16),
         const Text('How it works',
-            style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         const Text(
           '1. When the POS completes a sale for an account customer, '
@@ -534,9 +559,7 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
             : msg.contains('403') || msg.contains('API_KEY_INVALID')
                 ? 'Invalid API key — check your key in AI Studio'
                 : 'Connection failed: $msg';
-        final color = msg.contains('429')
-            ? Colors.orange
-            : Colors.red;
+        final color = msg.contains('429') ? Colors.orange : Colors.red;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(friendlyMsg),
@@ -557,8 +580,7 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
       padding: const EdgeInsets.all(24),
       children: [
         const Text('AI Assistant (Gemini)',
-            style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold)),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
         const Text(
           'Gemini powers supplier invoice scanning, smart reorder '
@@ -578,16 +600,14 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
             isDense: true,
             hintText: 'AIza...',
             suffixIcon: IconButton(
-              icon: Icon(
-                  _obscure ? Icons.visibility_off : Icons.visibility,
+              icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
                   size: 18),
-              onPressed: () =>
-                  setState(() => _obscure = !_obscure),
+              onPressed: () => setState(() => _obscure = !_obscure),
             ),
           ),
         ),
         const SizedBox(height: 16),
-        Row(
+        AdaptiveActionRow(
           children: [
             OutlinedButton.icon(
               onPressed: _testing ? null : _test,
@@ -595,12 +615,10 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
                   ? const SizedBox(
                       width: 16,
                       height: 16,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2))
+                      child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.bolt, size: 16),
               label: Text(_testing ? 'Testing…' : 'Test connection'),
             ),
-            const SizedBox(width: 12),
             FilledButton.icon(
               onPressed: _saving ? null : _save,
               icon: _saving
@@ -608,8 +626,7 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white))
+                          strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.save, size: 16),
               label: Text(_saving ? 'Saving…' : 'Save key'),
             ),
@@ -619,8 +636,7 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
         const Divider(),
         const SizedBox(height: 16),
         const Text('AI features available',
-            style: TextStyle(
-                fontSize: 13, fontWeight: FontWeight.w600)),
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         const Text(
           '• Supplier invoice scanning — photo or PDF → auto-fills form\n'
@@ -628,10 +644,7 @@ class _AiSettingsTabState extends State<_AiSettingsTab> {
           '• Pricing analysis — suggests sell prices for target margin\n'
           '• Demand forecasting — predicts stock needs for events\n'
           '• More features coming as the app grows',
-          style: TextStyle(
-              fontSize: 12,
-              color: Color(0xFF444444),
-              height: 1.7),
+          style: TextStyle(fontSize: 12, color: Color(0xFF444444), height: 1.7),
         ),
       ],
     );
@@ -690,8 +703,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
   Future<void> _save() async {
     setState(() => _saving = true);
     try {
-      await _driveService.saveFolderId(
-          _folderIdController.text.trim());
+      await _driveService.saveFolderId(_folderIdController.text.trim());
       await _driveService.setEnabled(_enabled);
       await _driveService.setImportSource(_importSource);
       if (mounted) {
@@ -738,8 +750,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
 
   Future<void> _test() async {
     setState(() => _testing = true);
-    await _driveService.saveFolderId(
-        _folderIdController.text.trim());
+    await _driveService.saveFolderId(_folderIdController.text.trim());
     final result = await _driveService.testConnection();
     if (mounted) {
       setState(() => _testing = false);
@@ -748,9 +759,8 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
           content: Text(result['success'] == true
               ? '✓ ${result['message']}'
               : 'Failed: ${result['error']}'),
-          backgroundColor: result['success'] == true
-              ? const Color(0xFF2E7D32)
-              : Colors.red,
+          backgroundColor:
+              result['success'] == true ? const Color(0xFF2E7D32) : Colors.red,
           duration: const Duration(seconds: 5),
         ),
       );
@@ -767,8 +777,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
       children: [
         // ── Invoice Import Source Toggle ─────────────────────────────
         const Text('Invoice Import Source',
-            style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.bold)),
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         const Text(
           'Choose where to scan for supplier invoices.',
@@ -808,8 +817,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
         // ── Drive Settings (shown only when drive selected) ─────────────
         if (_importSource == 'drive') ...[
           const Text('Google Drive Sync',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           const Text(
             'Drop supplier invoice PDFs or photos into a shared '
@@ -848,8 +856,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
                     ? const SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2))
+                        child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.wifi_tethering, size: 16),
                 label: Text(_testing ? 'Testing…' : 'Test connection'),
               ),
@@ -861,8 +868,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
                         width: 16,
                         height: 16,
                         child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white))
+                            strokeWidth: 2, color: Colors.white))
                     : const Icon(Icons.save, size: 16),
                 label: Text(_saving ? 'Saving…' : 'Save settings'),
               ),
@@ -872,8 +878,7 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
           const Divider(),
           const SizedBox(height: 16),
           const Text('Setup instructions',
-              style: TextStyle(
-                  fontSize: 13, fontWeight: FontWeight.w600)),
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
           const SizedBox(height: 8),
           const Text(
             '1. Create a folder in Google Drive named "Supplier Invoices"\n'
@@ -884,18 +889,15 @@ class _DriveSettingsTabState extends State<_DriveSettingsTab> {
             '5. Enable sync and save\n'
             '6. Drop PDF or image invoices into the folder — '
             'they will be scanned next time Bookkeeping opens',
-            style: TextStyle(
-                fontSize: 12,
-                color: Color(0xFF444444),
-                height: 1.7),
+            style:
+                TextStyle(fontSize: 12, color: Color(0xFF444444), height: 1.7),
           ),
         ],
 
         // ── Local Folder Settings (shown only when local selected) ───────
         if (_importSource == 'local') ...[
           const Text('Local Folder Settings',
-              style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.bold)),
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 4),
           const Text(
             'Scan a local folder on this computer for supplier invoice PDFs.',
@@ -1000,13 +1002,18 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
       if (mounted) {
         setState(() {
           final onlineShopValue = settings['online_shop_enabled'];
-          _onlineShopEnabled = onlineShopValue == true || onlineShopValue == 'true';
+          _onlineShopEnabled =
+              onlineShopValue == true || onlineShopValue == 'true';
           final deliveryValue = settings['delivery_enabled'];
           _deliveryEnabled = deliveryValue == true || deliveryValue == 'true';
-          _collectionTimeController.text = settings['collection_time'] ?? 'Same day (before 2pm)';
-          _deliveryTimeController.text = settings['delivery_time'] ?? 'Next day delivery';
-          _minOrderController.text = (settings['min_order_amount'] ?? 0).toString();
-          _deliveryFeeController.text = (settings['delivery_fee'] ?? 0).toString();
+          _collectionTimeController.text =
+              settings['collection_time'] ?? 'Same day (before 2pm)';
+          _deliveryTimeController.text =
+              settings['delivery_time'] ?? 'Next day delivery';
+          _minOrderController.text =
+              (settings['min_order_amount'] ?? 0).toString();
+          _deliveryFeeController.text =
+              (settings['delivery_fee'] ?? 0).toString();
           _isLoading = false;
         });
       }
@@ -1071,18 +1078,20 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
                   const SizedBox(height: 8),
                   SwitchListTile(
                     title: const Text('Enable Online Shop'),
-                    subtitle: const Text('Allow customers to order through the loyalty app'),
+                    subtitle: const Text(
+                        'Allow customers to order through the loyalty app'),
                     value: _onlineShopEnabled,
-                    onChanged: (value) => setState(() => _onlineShopEnabled = value),
+                    onChanged: (value) =>
+                        setState(() => _onlineShopEnabled = value),
                     activeThumbColor: AppColors.success,
                   ),
                 ],
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Collection Settings
           Card(
             child: Padding(
@@ -1117,9 +1126,9 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 16),
-          
+
           // Delivery Settings (Hidden until enabled by developer)
           Card(
             child: Padding(
@@ -1164,9 +1173,9 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
               ),
             ),
           ),
-          
+
           const SizedBox(height: 24),
-          
+
           // Save Button
           SizedBox(
             width: double.infinity,
@@ -1193,4 +1202,3 @@ class _OnlineShopTabState extends State<_OnlineShopTab> {
     super.dispose();
   }
 }
-

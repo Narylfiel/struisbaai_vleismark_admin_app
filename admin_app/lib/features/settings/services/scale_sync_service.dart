@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ScaleSyncResult {
@@ -23,6 +24,15 @@ class ScaleSyncService {
     required String outputPath,
     void Function(String)? onStatus,
   }) async {
+    if (!Platform.isWindows) {
+      debugPrint('Scale sync not available on this platform');
+      return const ScaleSyncResult(
+        success: false,
+        message: 'Scale integration is only available on Windows desktop.',
+        itemCount: 0,
+      );
+    }
+
     onStatus?.call('Fetching scale items from database...');
 
     // Fetch all active scale items
