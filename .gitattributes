@@ -1,0 +1,25 @@
+# Force LF line endings for all source files
+* text=auto eol=lf
+
+# Binary files — no line ending conversion
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.exe binary
+*.dll binary
+*.so binary
+*.dylib binary
+*.apk binary
+*.ipa binary
+*.zip binary
+*.jar binary
+*.keystore binary
+*.jks binary
+*.pdf binary
