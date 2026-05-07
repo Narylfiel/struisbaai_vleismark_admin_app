@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Stock Movements — READ-ONLY view of all stock_movements records.
 ///
@@ -833,11 +834,9 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
                     : Column(
                         children: [
                           Expanded(
-                            child: SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: SingleChildScrollView(
-                                child: _buildDataTable(),
-                              ),
+                            child: AdaptiveDataTableScroller(
+                              narrowMinWidth: 980,
+                              child: _buildDataTable(),
                             ),
                           ),
                           if (_allMovements.length >= _pageSize) ...[
@@ -908,17 +907,17 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
       border: TableBorder.all(color: AppColors.border, width: 0.5),
       columnSpacing: 12,
       horizontalMargin: 12,
-      columns: const [
-        DataColumn(label: Text('Date/Time', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('PLU', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Product', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Type', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), numeric: true),
-        DataColumn(label: Text('Unit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Bal After', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), numeric: true),
-        DataColumn(label: Text('Reference', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Staff', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-        DataColumn(label: Text('Notes', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+      columns: [
+        DataColumn(label: Text('Date/Time', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('PLU', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Product', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Type', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Qty', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), numeric: true),
+        DataColumn(label: Text('Unit', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Bal After', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)), numeric: true),
+        DataColumn(label: Text('Reference', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Staff', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+        DataColumn(label: Text('Notes', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
       ],
       rows: _movements.map((m) => _buildDataRow(m)).toList(),
     );
@@ -936,13 +935,13 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
         DataCell(
           SizedBox(
             width: 110,
-            child: Text(DateFormat('dd MMM HH:mm').format(DateTime.parse(movement['created_at'])), style: const TextStyle(fontSize: 11)),
+            child: Text(DateFormat('dd MMM HH:mm').format(DateTime.parse(movement['created_at'])), maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
           ),
         ),
         DataCell(
           SizedBox(
             width: 55,
-            child: Center(child: Text(item?['plu_code']?.toString() ?? '-', style: const TextStyle(fontSize: 11))),
+            child: Center(child: Text(item?['plu_code']?.toString() ?? '-', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
           ),
         ),
         DataCell(
@@ -950,6 +949,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 180,
             child: Text(
               item?['name']?.toString() ?? 'Unknown Product',
+              maxLines: 2,
               style: const TextStyle(fontSize: 11),
               overflow: TextOverflow.ellipsis,
             ),
@@ -971,6 +971,8 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 85,
             child: Text(
               '${qty >= 0 ? '+' : ''}${qty.toStringAsFixed(2)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(fontSize: 11, color: qty >= 0 ? Colors.green : Colors.red, fontWeight: FontWeight.w600),
               textAlign: TextAlign.right,
             ),
@@ -979,7 +981,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
         DataCell(
           SizedBox(
             width: 55,
-            child: Center(child: Text(movement['unit_type']?.toString() ?? 'kg', style: const TextStyle(fontSize: 11))),
+            child: Center(child: Text(movement['unit_type']?.toString() ?? 'kg', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))),
           ),
         ),
         DataCell(
@@ -987,6 +989,8 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 85,
             child: Text(
               (movement['balance_after'] as num?)?.toStringAsFixed(2) ?? '0.00',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontSize: 11),
               textAlign: TextAlign.right,
             ),
@@ -997,6 +1001,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 110,
             child: Text(
               _truncate(movement['reference_id']?.toString() ?? '', 15),
+              maxLines: 1,
               style: const TextStyle(fontSize: 11),
               overflow: TextOverflow.ellipsis,
             ),
@@ -1007,6 +1012,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 120,
             child: Text(
               staff?['full_name']?.toString() ?? 'System',
+              maxLines: 2,
               style: const TextStyle(fontSize: 11),
               overflow: TextOverflow.ellipsis,
             ),
@@ -1017,6 +1023,7 @@ class _StockMovementsScreenState extends State<StockMovementsScreen> {
             width: 140,
             child: Text(
               _truncate(movement['notes']?.toString() ?? '', 20),
+              maxLines: 2,
               style: const TextStyle(fontSize: 11, fontStyle: FontStyle.italic, color: AppColors.textSecondary),
               overflow: TextOverflow.ellipsis,
             ),

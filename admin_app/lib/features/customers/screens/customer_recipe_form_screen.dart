@@ -6,6 +6,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/features/customers/models/customer_recipe.dart';
 import 'package:admin_app/features/customers/services/customer_recipe_repository.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Shown under optional Afrikaans CMS fields.
 const String kAfCmsFieldHelper =
@@ -436,10 +437,11 @@ class _CustomerRecipeFormScreenState extends State<CustomerRecipeFormScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    TabBar(
+                    AdaptiveTabBar(
                       controller: _langTabController,
                       labelColor: AppColors.primary,
                       unselectedLabelColor: AppColors.textSecondary,
+                      indicatorColor: AppColors.primary,
                       tabs: const [
                         Tab(text: 'English'),
                         Tab(text: 'Afrikaans'),

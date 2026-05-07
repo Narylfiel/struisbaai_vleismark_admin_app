@@ -10,6 +10,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// H5: Account Detail — summary card, Transactions / Invoices / Agreements / Statement tabs.
 class AccountDetailScreen extends StatefulWidget {
@@ -95,7 +96,7 @@ class _AccountDetailScreenState extends State<AccountDetailScreen>
         title: Text(acc['name'] ?? 'Account'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
-        bottom: TabBar(
+        bottom: AdaptiveTabBar(
           controller: _tabController,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -529,15 +530,17 @@ class _InvoicesTabState extends State<_InvoicesTab> {
               const SizedBox(height: 16),
               const Text('Payment method:'),
               const SizedBox(height: 8),
-              SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'Cash', label: Text('Cash')),
-                  ButtonSegment(value: 'Card', label: Text('Card')),
-                  ButtonSegment(value: 'EFT', label: Text('EFT')),
-                ],
-                selected: {_paymentMethod},
-                onSelectionChanged: (v) =>
-                    setDlg(() => _paymentMethod = v.first),
+              NarrowHorizontalScroll(
+                child: SegmentedButton<String>(
+                  segments: const [
+                    ButtonSegment(value: 'Cash', label: Text('Cash')),
+                    ButtonSegment(value: 'Card', label: Text('Card')),
+                    ButtonSegment(value: 'EFT', label: Text('EFT')),
+                  ],
+                  selected: {_paymentMethod},
+                  onSelectionChanged: (v) =>
+                      setDlg(() => _paymentMethod = v.first),
+                ),
               ),
             ],
           ),

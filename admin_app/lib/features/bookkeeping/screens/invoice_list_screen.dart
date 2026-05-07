@@ -270,141 +270,333 @@ class _CustomerInvoicesSubTabState extends State<_CustomerInvoicesSubTab> {
 
   @override
   Widget build(BuildContext context) {
+    final compact = ResponsiveBreakpoints.isPhoneLayout(context);
+    final hPad =
+        ResponsiveBreakpoints.screenHorizontalPadding(context, desktop: 24);
+
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(16),
           color: AppColors.cardBg,
-          child: Row(
-            children: [
-              const Text('Customer Invoices',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(width: 16),
-              DropdownButton<String>(
-                value: _statusFilter ?? '',
-                hint: const Text('Status'),
-                items: _statusOptions
-                    .map((e) =>
-                        DropdownMenuItem(value: e.key, child: Text(e.value)))
-                    .toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _statusFilter = v?.isEmpty == true ? null : v;
-                    _load();
-                  });
-                },
-              ),
-              const Spacer(),
-              ElevatedButton.icon(
-                onPressed: () => _openForm(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('New customer invoice'),
-              ),
-            ],
-          ),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Customer Invoices',
+                      style:
+                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _statusFilter ?? '',
+                          hint: const Text('Status'),
+                          isExpanded: true,
+                          items: _statusOptions
+                              .map((e) => DropdownMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value)))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() {
+                              _statusFilter =
+                                  v?.isEmpty == true ? null : v;
+                              _load();
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New customer invoice'),
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    const Text(
+                      'Customer Invoices',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(width: 16),
+                    DropdownButton<String>(
+                      value: _statusFilter ?? '',
+                      hint: const Text('Status'),
+                      items: _statusOptions
+                          .map((e) => DropdownMenuItem(
+                              value: e.key, child: Text(e.value)))
+                          .toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          _statusFilter =
+                              v?.isEmpty == true ? null : v;
+                          _load();
+                        });
+                      },
+                    ),
+                    const Spacer(),
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('New customer invoice'),
+                    ),
+                  ],
+                ),
         ),
         const Divider(height: 1, color: AppColors.border),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          color: AppColors.surfaceBg,
-          child: const Row(
-            children: [
-              Expanded(
-                  flex: 2,
-                  child: Text('ACCOUNT',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 120,
-                  child: Text('INVOICE #',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 100,
-                  child: Text('DATE',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 100,
-                  child: Text('TOTAL',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 120,
-                  child: Text('STATUS',
-                      style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-            ],
+        if (!compact)
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 24, vertical: 10),
+            color: AppColors.surfaceBg,
+            child: const Row(
+              children: [
+                Expanded(
+                    flex: 2,
+                    child: Text('ACCOUNT',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5))),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 120,
+                    child: Text('INVOICE #',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5))),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 100,
+                    child: Text('DATE',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5))),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 100,
+                    child: Text('TOTAL',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5))),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 120,
+                    child: Text('STATUS',
+                        style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textSecondary,
+                            letterSpacing: 0.5))),
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1, color: AppColors.border),
+        if (!compact)
+          const Divider(height: 1, color: AppColors.border),
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _invoices.isEmpty
                   ? const Center(child: Text('No customer invoices'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 8),
-                      itemCount: _invoices.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: AppColors.border),
-                      itemBuilder: (_, i) {
-                        final inv = _invoices[i];
-                        final dateStr =
-                            '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
-                        return InkWell(
-                          onTap: () => _openForm(invoice: inv),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                    flex: 2,
-                                    child: Text(inv.accountName ?? '—',
+                  : compact
+                      ? ListView.builder(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: hPad, vertical: 8),
+                          itemCount: _invoices.length,
+                          itemBuilder: (_, i) {
+                            final inv = _invoices[i];
+                            final dateStr =
+                                '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              color: AppColors.cardBg,
+                              child: InkWell(
+                                onTap: () =>
+                                    _openForm(invoice: inv),
+                                child: Padding(
+                                  padding:
+                                      const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment
+                                                .start,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              inv.accountName ??
+                                                  '—',
+                                              maxLines: 2,
+                                              overflow:
+                                                  TextOverflow
+                                                      .ellipsis,
+                                              style: const TextStyle(
+                                                  fontWeight:
+                                                      FontWeight
+                                                          .bold),
+                                            ),
+                                          ),
+                                          const SizedBox(
+                                              width: 8),
+                                          Text(
+                                            inv.invoiceNumber,
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow
+                                                    .ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                color: AppColors
+                                                    .textSecondary),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        dateStr,
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            fontWeight: FontWeight.bold))),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 120, child: Text(inv.invoiceNumber)),
-                                const SizedBox(width: 16),
-                                SizedBox(width: 100, child: Text(dateStr)),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 100,
-                                    child: Text(
-                                        'R ${inv.total.toStringAsFixed(2)}')),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 120,
-                                    child: Text(inv.status.displayLabel,
-                                        style: const TextStyle(
-                                            color: AppColors.textSecondary))),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                                            fontSize: 13,
+                                            color:
+                                                AppColors.textSecondary),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment
+                                                .spaceBetween,
+                                        children: [
+                                          Text(
+                                            inv.status.displayLabel,
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow
+                                                    .ellipsis,
+                                            style:
+                                                const TextStyle(
+                                                    color:
+                                                        AppColors
+                                                            .textSecondary),
+                                          ),
+                                          Text(
+                                            'R ${inv.total.toStringAsFixed(2)}',
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow
+                                                    .ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 14,
+                                                fontWeight:
+                                                    FontWeight
+                                                        .w600),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : ListView.separated(
+                          padding:
+                              const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 8),
+                          itemCount: _invoices.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(
+                                  height: 1,
+                                  color: AppColors.border),
+                          itemBuilder: (_, i) {
+                            final inv = _invoices[i];
+                            final dateStr =
+                                '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
+                            return InkWell(
+                              onTap: () =>
+                                  _openForm(invoice: inv),
+                              child: Padding(
+                                padding:
+                                    const EdgeInsets.symmetric(
+                                        vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                            inv.accountName ??
+                                                '—',
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis,
+                                            style:
+                                                const TextStyle(
+                                                    fontWeight:
+                                                        FontWeight
+                                                            .bold))),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                            inv.invoiceNumber,
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 100,
+                                        child: Text(dateStr)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 100,
+                                        child: Text(
+                                            'R ${inv.total.toStringAsFixed(2)}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                            inv.status
+                                                .displayLabel,
+                                            maxLines: 2,
+                                            overflow: TextOverflow
+                                                .ellipsis,
+                                            style:
+                                                const TextStyle(
+                                                    color: AppColors
+                                                        .textSecondary))),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
         ),
       ],
     );
@@ -1681,304 +1873,605 @@ class _SupplierInvoicesSubTabState extends State<_SupplierInvoicesSubTab> {
     }
   }
 
+  List<Widget> _supplierTrailingActions(SupplierInvoice inv) => [
+        if (inv.canApprove)
+          TextButton(
+            onPressed: () async {
+              final m = inv.toJson();
+              m['supplier_name'] = inv.supplierName;
+              m['suppliers'] =
+                  inv.supplierName != null ? {'name': inv.supplierName} : null;
+
+              final mapped = await _mappingService.applyMappings(
+                lineItems: inv.lineItems,
+                supplierId: inv.supplierId,
+              );
+              final pending =
+                  mapped.where((i) => i.isPending).toList();
+
+              if (pending.isEmpty) {
+                _approveInvoice(m);
+              } else {
+                _openMappingScreen(m);
+              }
+            },
+            child: const Text('Approve'),
+          ),
+        if (inv.canReceive)
+          TextButton(
+            onPressed: () => _receiveGoods(inv),
+            child: const Text('Receive goods'),
+          ),
+        if ((inv.status == SupplierInvoiceStatus.approved ||
+                inv.status == SupplierInvoiceStatus.received) &&
+            inv.balanceDue > 0)
+          TextButton(
+            style: TextButton.styleFrom(foregroundColor: Colors.green),
+            onPressed: () {
+              final m = inv.toJson();
+              m['supplier_name'] = inv.supplierName;
+              m['suppliers'] =
+                  inv.supplierName != null ? {'name': inv.supplierName} : null;
+              _showPaymentDialog(m);
+            },
+            child: const Text('Pay'),
+          ),
+      ];
+
+  Widget _supplierToolbarScanRow() => Row(
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: [
+          IconButton(
+            onPressed: _driveScanRunning
+                ? null
+                : () async {
+                    await _driveService.clearProcessedIds();
+                    await Future.delayed(const Duration(milliseconds: 200));
+                    await _scanDriveFolder();
+                  },
+            icon: const Icon(Icons.refresh, size: 18),
+            tooltip: 'Force re-scan Drive folder',
+          ),
+          if (AuthService().hasRole('owner'))
+            IconButton(
+              onPressed: _driveScanRunning
+                  ? null
+                  : () async {
+                      final messenger = ScaffoldMessenger.of(context);
+                      await _driveService.clearProcessedFileIds();
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          const SnackBar(
+                            content: Text('Ready to re-import invoices'),
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    },
+              icon: const Icon(Icons.restore_from_trash, size: 18),
+              tooltip: 'Reset processed invoices',
+            ),
+          IconButton(
+            onPressed: _driveScanRunning ? null : _scanDriveFolder,
+            icon: const Icon(Icons.cloud_sync_outlined, size: 20),
+            tooltip: 'Scan Drive folder now',
+          ),
+          if (_driveScanRunning)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 14,
+                    height: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                  SizedBox(width: 6),
+                  Text('Scanning Drive…', style: TextStyle(fontSize: 12)),
+                ],
+              ),
+            ),
+        ],
+      );
+
   @override
   Widget build(BuildContext context) {
+    final compact = ResponsiveBreakpoints.isPhoneLayout(context);
+    final hPad =
+        ResponsiveBreakpoints.screenHorizontalPadding(context, desktop: 24);
+
     return Column(
       children: [
         Container(
           padding: const EdgeInsets.all(16),
           color: AppColors.cardBg,
-          child: Row(
-            children: [
-              const Flexible(
-                child: Text('Supplier Invoices',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    overflow: TextOverflow.ellipsis),
-              ),
-              const SizedBox(width: 16),
-              DropdownButton<String>(
-                value: _statusFilter ?? '',
-                hint: const Text('Status'),
-                items: _statusOptions
-                    .map((e) =>
-                        DropdownMenuItem(value: e.key, child: Text(e.value)))
-                    .toList(),
-                onChanged: (v) {
-                  setState(() {
-                    _statusFilter = v?.isEmpty == true ? null : v;
-                    _load();
-                  });
-                },
-              ),
-              const Spacer(),
-              OutlinedButton.icon(
-                onPressed: _bulkImporting ? null : _bulkImportCsv,
-                icon: _bulkImporting
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.upload_file, size: 18),
-                label: Text(_bulkImporting ? 'Importing…' : 'Bulk Import CSV'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: _ocrLoading ? null : _showOcrSourceDialog,
-                icon: _ocrLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.camera_alt, size: 18),
-                label: Text(_ocrLoading ? 'Processing…' : 'From photo'),
-              ),
-              const SizedBox(width: 16),
-              ElevatedButton.icon(
-                onPressed: () => _openForm(),
-                icon: const Icon(Icons.add, size: 18),
-                label: const Text('Add Manually'),
-              ),
-              IconButton(
-                onPressed: _driveScanRunning
-                    ? null
-                    : () async {
-                        await _driveService.clearProcessedIds();
-                        // Small delay to ensure storage is cleared before scan starts
-                        await Future.delayed(const Duration(milliseconds: 200));
-                        await _scanDriveFolder();
-                      },
-                icon: const Icon(Icons.refresh, size: 18),
-                tooltip: 'Force re-scan Drive folder',
-              ),
-              if (AuthService().hasRole('owner'))
-                IconButton(
-                  onPressed: _driveScanRunning
-                      ? null
-                      : () async {
-                          final messenger = ScaffoldMessenger.of(context);
-                          await _driveService.clearProcessedFileIds();
-                          if (mounted) {
-                            messenger.showSnackBar(
-                              const SnackBar(
-                                content: Text('Ready to re-import invoices'),
-                                duration: Duration(seconds: 2),
-                              ),
-                            );
-                          }
-                        },
-                  icon: const Icon(Icons.restore_from_trash, size: 18),
-                  tooltip: 'Reset processed invoices',
-                ),
-              IconButton(
-                onPressed: _driveScanRunning ? null : _scanDriveFolder,
-                icon: const Icon(Icons.cloud_sync_outlined, size: 20),
-                tooltip: 'Scan Drive folder now',
-              ),
-              if (_driveScanRunning)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: 14,
-                        height: 14,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+          child: compact
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Supplier Invoices',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 12),
+                    InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Status',
+                        border: OutlineInputBorder(),
+                        isDense: true,
                       ),
-                      SizedBox(width: 6),
-                      Text('Scanning Drive…', style: TextStyle(fontSize: 12)),
-                    ],
-                  ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: _statusFilter ?? '',
+                          hint: const Text('Status'),
+                          isExpanded: true,
+                          items: _statusOptions
+                              .map((e) => DropdownMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value)))
+                              .toList(),
+                          onChanged: (v) {
+                            setState(() {
+                              _statusFilter =
+                                  v?.isEmpty == true ? null : v;
+                              _load();
+                            });
+                          },
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed:
+                              _bulkImporting ? null : _bulkImportCsv,
+                          icon: _bulkImporting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.upload_file, size: 18),
+                          label: Text(_bulkImporting
+                              ? 'Importing…'
+                              : 'Bulk Import CSV'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed:
+                              _ocrLoading ? null : _showOcrSourceDialog,
+                          icon: _ocrLoading
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                      strokeWidth: 2))
+                              : const Icon(Icons.camera_alt, size: 18),
+                          label: Text(_ocrLoading
+                              ? 'Processing…'
+                              : 'From photo'),
+                        ),
+                        ElevatedButton.icon(
+                          onPressed: () => _openForm(),
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('Add Manually'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    _supplierToolbarScanRow(),
+                  ],
+                )
+              : Row(
+                  children: [
+                    const Flexible(
+                      child: Text(
+                        'Supplier Invoices',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.bold),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    DropdownButton<String>(
+                      value: _statusFilter ?? '',
+                      hint: const Text('Status'),
+                      items: _statusOptions
+                          .map((e) => DropdownMenuItem(
+                              value: e.key, child: Text(e.value)))
+                          .toList(),
+                      onChanged: (v) {
+                        setState(() {
+                          _statusFilter =
+                              v?.isEmpty == true ? null : v;
+                          _load();
+                        });
+                      },
+                    ),
+                    const Spacer(),
+                    OutlinedButton.icon(
+                      onPressed: _bulkImporting ? null : _bulkImportCsv,
+                      icon: _bulkImporting
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2))
+                          : const Icon(Icons.upload_file, size: 18),
+                      label: Text(_bulkImporting
+                          ? 'Importing…'
+                          : 'Bulk Import CSV'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _ocrLoading ? null : _showOcrSourceDialog,
+                      icon: _ocrLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2))
+                          : const Icon(Icons.camera_alt, size: 18),
+                      label: Text(
+                          _ocrLoading ? 'Processing…' : 'From photo'),
+                    ),
+                    const SizedBox(width: 16),
+                    ElevatedButton.icon(
+                      onPressed: () => _openForm(),
+                      icon: const Icon(Icons.add, size: 18),
+                      label: const Text('Add Manually'),
+                    ),
+                    IconButton(
+                      onPressed: _driveScanRunning
+                          ? null
+                          : () async {
+                              await _driveService.clearProcessedIds();
+                              await Future.delayed(
+                                  const Duration(milliseconds: 200));
+                              await _scanDriveFolder();
+                            },
+                      icon: const Icon(Icons.refresh, size: 18),
+                      tooltip: 'Force re-scan Drive folder',
+                    ),
+                    if (AuthService().hasRole('owner'))
+                      IconButton(
+                        onPressed: _driveScanRunning
+                            ? null
+                            : () async {
+                                final messenger =
+                                    ScaffoldMessenger.of(context);
+                                await _driveService
+                                    .clearProcessedFileIds();
+                                if (mounted) {
+                                  messenger.showSnackBar(
+                                    const SnackBar(
+                                      content: Text(
+                                          'Ready to re-import invoices'),
+                                      duration: Duration(seconds: 2),
+                                    ),
+                                  );
+                                }
+                              },
+                        icon: const Icon(Icons.restore_from_trash,
+                            size: 18),
+                        tooltip: 'Reset processed invoices',
+                      ),
+                    IconButton(
+                      onPressed:
+                          _driveScanRunning ? null : _scanDriveFolder,
+                      icon: const Icon(Icons.cloud_sync_outlined,
+                          size: 20),
+                      tooltip: 'Scan Drive folder now',
+                    ),
+                    if (_driveScanRunning)
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 8),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2),
+                            ),
+                            SizedBox(width: 6),
+                            Text('Scanning Drive…',
+                                style: TextStyle(fontSize: 12)),
+                          ],
+                        ),
+                      ),
+                  ],
                 ),
-            ],
-          ),
         ),
         const Divider(height: 1, color: AppColors.border),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-          color: AppColors.surfaceBg,
-          child: const Row(
-            children: [
-              Expanded(
-                  flex: 2,
-                  child: Text('SUPPLIER',
+        if (!compact)
+          Container(
+            padding: const EdgeInsets.symmetric(
+                horizontal: 24, vertical: 10),
+            color: AppColors.surfaceBg,
+            child: const Row(
+              children: [
+                Expanded(
+                    flex: 2,
+                    child: Text(
+                      'SUPPLIER',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 120,
-                  child: Text('INVOICE #',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 120,
+                    child: Text(
+                      'INVOICE #',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 100,
-                  child: Text('DATE',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 100,
+                    child: Text(
+                      'DATE',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 88,
-                  child: Text('TOTAL',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 88,
+                    child: Text(
+                      'TOTAL',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 88,
-                  child: Text('PAID',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 88,
+                    child: Text(
+                      'PAID',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 88,
-                  child: Text('DUE',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 88,
+                    child: Text(
+                      'DUE',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-              SizedBox(width: 16),
-              SizedBox(
-                  width: 120,
-                  child: Text('STATUS',
+                          letterSpacing: 0.5),
+                    )),
+                SizedBox(width: 16),
+                SizedBox(
+                    width: 120,
+                    child: Text(
+                      'STATUS',
                       style: TextStyle(
                           fontSize: 10,
                           fontWeight: FontWeight.bold,
                           color: AppColors.textSecondary,
-                          letterSpacing: 0.5))),
-            ],
+                          letterSpacing: 0.5),
+                    )),
+              ],
+            ),
           ),
-        ),
-        const Divider(height: 1, color: AppColors.border),
+        if (!compact)
+          const Divider(height: 1, color: AppColors.border),
         Expanded(
           child: _isLoading
               ? const Center(child: CircularProgressIndicator())
               : _invoices.isEmpty
-                  ? const Center(child: Text('No supplier invoices recorded'))
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 8),
-                      itemCount: _invoices.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(height: 1, color: AppColors.border),
-                      itemBuilder: (_, i) {
-                        final inv = _invoices[i];
-                        final dateStr =
-                            '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
-                        return InkWell(
-                          onTap: () => _openForm(invoice: inv),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                    flex: 2,
-                                    child: Text(inv.supplierName ?? '—',
+                  ? const Center(
+                      child: Text('No supplier invoices recorded'))
+                  : compact
+                      ? ListView.builder(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: hPad, vertical: 8),
+                          itemCount: _invoices.length,
+                          itemBuilder: (_, i) {
+                            final inv = _invoices[i];
+                            final dateStr =
+                                '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
+                            final statusStyle = TextStyle(
+                              color: inv.canApprove
+                                  ? AppColors.warning
+                                  : (inv.canReceive
+                                      ? AppColors.info
+                                      : AppColors.textSecondary),
+                            );
+                            final mobileActions =
+                                _supplierTrailingActions(inv);
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              color: AppColors.cardBg,
+                              child: InkWell(
+                                onTap: () => _openForm(invoice: inv),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.stretch,
+                                    children: [
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              inv.supplierName ?? '—',
+                                              maxLines: 2,
+                                              overflow: TextOverflow
+                                                  .ellipsis,
+                                              style: const TextStyle(
+                                                  fontWeight:
+                                                      FontWeight.bold),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          Text(
+                                            inv.invoiceNumber,
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontSize: 13,
+                                                color: AppColors
+                                                    .textSecondary),
+                                          ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        dateStr,
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow.ellipsis,
                                         style: const TextStyle(
-                                            fontWeight: FontWeight.bold))),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 120, child: Text(inv.invoiceNumber)),
-                                const SizedBox(width: 16),
-                                SizedBox(width: 100, child: Text(dateStr)),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 88,
-                                    child: Text(
-                                        'R ${inv.total.toStringAsFixed(2)}')),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 88,
-                                    child: Text(
-                                        'R ${inv.amountPaid.toStringAsFixed(2)}')),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 88,
-                                    child: Text(
-                                        'R ${inv.balanceDue.toStringAsFixed(2)}')),
-                                const SizedBox(width: 16),
-                                SizedBox(
-                                    width: 120,
-                                    child: Text(inv.status.displayLabel,
-                                        style: TextStyle(
-                                            color: inv.canApprove
-                                                ? AppColors.warning
-                                                : (inv.canReceive
-                                                    ? AppColors.info
-                                                    : AppColors
-                                                        .textSecondary)))),
-                                if (inv.canApprove)
-                                  TextButton(
-                                    onPressed: () async {
-                                      final m = inv.toJson();
-                                      m['supplier_name'] = inv.supplierName;
-                                      m['suppliers'] = inv.supplierName != null
-                                          ? {'name': inv.supplierName}
-                                          : null;
-
-                                      // Check if items are mapped
-                                      final mapped =
-                                          await _mappingService.applyMappings(
-                                        lineItems: inv.lineItems,
-                                        supplierId: inv.supplierId,
-                                      );
-                                      final pending = mapped
-                                          .where((i) => i.isPending)
-                                          .toList();
-
-                                      if (pending.isEmpty) {
-                                        _approveInvoice(m);
-                                      } else {
-                                        _openMappingScreen(m);
-                                      }
-                                    },
-                                    child: const Text('Approve'),
+                                            fontSize: 13,
+                                            color:
+                                                AppColors.textSecondary),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        'Total R ${inv.total.toStringAsFixed(2)} · Paid R ${inv.amountPaid.toStringAsFixed(2)} · Due R ${inv.balanceDue.toStringAsFixed(2)}',
+                                        maxLines: 2,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                            fontSize: 13),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        inv.status.displayLabel,
+                                        maxLines: 2,
+                                        overflow:
+                                            TextOverflow.ellipsis,
+                                        style: statusStyle,
+                                      ),
+                                      if (mobileActions.isNotEmpty) ...[
+                                        const SizedBox(height: 8),
+                                        Wrap(
+                                          spacing: 4,
+                                          runSpacing: 0,
+                                          alignment:
+                                              WrapAlignment.start,
+                                          children: mobileActions,
+                                        ),
+                                      ],
+                                    ],
                                   ),
-                                if (inv.canReceive)
-                                  TextButton(
-                                    onPressed: () => _receiveGoods(inv),
-                                    child: const Text('Receive goods'),
-                                  ),
-                                if ((inv.status ==
-                                            SupplierInvoiceStatus.approved ||
-                                        inv.status ==
-                                            SupplierInvoiceStatus.received) &&
-                                    inv.balanceDue > 0)
-                                  TextButton(
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: Colors.green,
-                                    ),
-                                    onPressed: () {
-                                      final m = inv.toJson();
-                                      m['supplier_name'] = inv.supplierName;
-                                      m['suppliers'] = inv.supplierName != null
-                                          ? {'name': inv.supplierName}
-                                          : null;
-                                      _showPaymentDialog(m);
-                                    },
-                                    child: const Text('Pay'),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : ListView.separated(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 8),
+                          itemCount: _invoices.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(
+                                  height: 1, color: AppColors.border),
+                          itemBuilder: (_, i) {
+                            final inv = _invoices[i];
+                            final dateStr =
+                                '${inv.invoiceDate.day.toString().padLeft(2, '0')}/${inv.invoiceDate.month.toString().padLeft(2, '0')}/${inv.invoiceDate.year}';
+                            final actions = _supplierTrailingActions(inv);
+                            return InkWell(
+                              onTap: () => _openForm(invoice: inv),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                    vertical: 8),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                        flex: 2,
+                                        child: Text(
+                                            inv.supplierName ?? '—',
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow.ellipsis,
+                                            style: const TextStyle(
+                                                fontWeight:
+                                                    FontWeight.bold))),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                            inv.invoiceNumber,
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 100,
+                                        child: Text(dateStr)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 88,
+                                        child: Text(
+                                            'R ${inv.total.toStringAsFixed(2)}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 88,
+                                        child: Text(
+                                            'R ${inv.amountPaid.toStringAsFixed(2)}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 88,
+                                        child: Text(
+                                            'R ${inv.balanceDue.toStringAsFixed(2)}',
+                                            maxLines: 1,
+                                            overflow: TextOverflow
+                                                .ellipsis)),
+                                    const SizedBox(width: 16),
+                                    SizedBox(
+                                        width: 120,
+                                        child: Text(
+                                            inv.status.displayLabel,
+                                            maxLines: 2,
+                                            overflow: TextOverflow
+                                                .ellipsis,
+                                            style: TextStyle(
+                                                color: inv.canApprove
+                                                    ? AppColors.warning
+                                                    : (inv.canReceive
+                                                        ? AppColors.info
+                                                        : AppColors
+                                                            .textSecondary)))),
+                                    ...actions,
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        ),
         ),
       ],
     );

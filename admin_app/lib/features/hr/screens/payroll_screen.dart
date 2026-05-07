@@ -11,6 +11,7 @@ import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
 import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
 import 'package:admin_app/features/hr/services/timecard_repository.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:share_plus/share_plus.dart';
 
 class PayrollScreen extends StatefulWidget {
@@ -826,22 +827,25 @@ class _PayrollScreenState extends State<PayrollScreen> {
                               ),
                               Expanded(
                                 flex: 3,
-                                child: SegmentedButton<String>(
-                                  segments: const [
-                                    ButtonSegment<String>(
-                                        value: 'cash', label: Text('Cash')),
-                                    ButtonSegment<String>(
-                                        value: 'bank_eft',
-                                        label: Text('EFT')),
-                                  ],
-                                  selected: {currentMethod},
-                                  onSelectionChanged: (selection) {
-                                    final selected = selection.first;
-                                    setDialogState(() {
-                                      selectedMethods[entryId] = selected;
-                                    });
-                                  },
-                                  showSelectedIcon: false,
+                                child: NarrowHorizontalScroll(
+                                  child: SegmentedButton<String>(
+                                    segments: const [
+                                      ButtonSegment<String>(
+                                          value: 'cash',
+                                          label: Text('Cash')),
+                                      ButtonSegment<String>(
+                                          value: 'bank_eft',
+                                          label: Text('EFT')),
+                                    ],
+                                    selected: {currentMethod},
+                                    onSelectionChanged: (selection) {
+                                      final selected = selection.first;
+                                      setDialogState(() {
+                                        selectedMethods[entryId] = selected;
+                                      });
+                                    },
+                                    showSelectedIcon: false,
+                                  ),
                                 ),
                               ),
                             ],

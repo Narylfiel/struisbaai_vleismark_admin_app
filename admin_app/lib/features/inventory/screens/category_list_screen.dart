@@ -8,6 +8,7 @@ import '../models/category.dart';
 import '../blocs/category/category_bloc.dart';
 import '../blocs/category/category_event.dart';
 import '../blocs/category/category_state.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import 'category_form_screen.dart';
 
 class CategoryListScreen extends StatefulWidget {
@@ -195,10 +196,9 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                         );
                       }
                     },
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        child: DataTable(
+                    child: AdaptiveDataTableScroller(
+                      narrowMinWidth: 720,
+                      child: DataTable(
                           columns: const [
                             DataColumn(label: Text('Color')),
                             DataColumn(label: Text('Name')),
@@ -209,7 +209,6 @@ class _CategoryListScreenState extends State<CategoryListScreen> {
                           ],
                           rows: rows,
                         ),
-                      ),
                     ),
                   );
                 }

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import '../models/promotion.dart';
 import '../models/promotion_product.dart';
 import '../services/promotion_repository.dart';
@@ -661,10 +662,11 @@ class _PromotionFormScreenState extends State<PromotionFormScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TabBar(
+              AdaptiveTabBar(
                 controller: _promoTextLangTab,
                 labelColor: AppColors.primary,
                 unselectedLabelColor: Colors.black54,
+                indicatorColor: AppColors.primary,
                 tabs: const [
                   Tab(text: 'English'),
                   Tab(text: 'Afrikaans'),

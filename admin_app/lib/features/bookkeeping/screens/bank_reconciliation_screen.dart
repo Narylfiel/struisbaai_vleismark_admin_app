@@ -7,6 +7,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import '../services/bank_reconciliation_repository.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class BankReconciliationScreen extends StatefulWidget {
   final bool embedded;
@@ -93,7 +94,7 @@ class _BankReconciliationScreenState
         // ── Sub-tab bar ──────────────────────────────────────
         Container(
           color: AppColors.surfaceBg,
-          child: TabBar(
+          child: AdaptiveTabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
             indicatorColor: AppColors.primary,

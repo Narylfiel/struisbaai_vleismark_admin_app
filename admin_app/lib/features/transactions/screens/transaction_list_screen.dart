@@ -1,4 +1,7 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/db/cached_transaction.dart';
 import 'package:admin_app/core/db/isar_service.dart';
@@ -123,6 +126,9 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isPhone =
+        ResponsiveBreakpoints.widthOf(context) <
+        ResponsiveBreakpoints.phoneMaxWidth;
     final totalRevenue = _transactions.fold<double>(0, (s, t) => s + ((t['total_amount'] as num?)?.toDouble() ?? 0));
     final totalCost = _transactions.fold<double>(0, (s, t) => s + ((t['cost_amount'] as num?)?.toDouble() ?? 0));
     final marginPct = totalRevenue > 0 ? ((totalRevenue - totalCost) / totalRevenue * 100) : 0.0;
@@ -140,13 +146,41 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
               borderRadius: BorderRadius.circular(8),
               border: Border.all(color: AppColors.border),
             ),
-            child: Row(
-              children: [
-                _summaryChip('Transactions', '${_transactions.length}', Icons.receipt),
-                _summaryChip('Revenue', 'R ${totalRevenue.toStringAsFixed(2)}', Icons.payments),
-                _summaryChip('Cost', 'R ${totalCost.toStringAsFixed(2)}', Icons.shopping_cart),
-                _summaryChip('Margin', '${marginPct.toStringAsFixed(1)}%', Icons.trending_up, color: AppColors.success),
-              ],
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final chips = <Widget>[
+                  _summaryChipTile(
+                      'Transactions', '${_transactions.length}', Icons.receipt),
+                  _summaryChipTile('Revenue',
+                      'R ${totalRevenue.toStringAsFixed(2)}', Icons.payments),
+                  _summaryChipTile('Cost',
+                      'R ${totalCost.toStringAsFixed(2)}', Icons.shopping_cart),
+                  _summaryChipTile(
+                      'Margin',
+                      '${marginPct.toStringAsFixed(1)}%',
+                      Icons.trending_up,
+                      color: AppColors.success),
+                ];
+                if (isPhone) {
+                  final w = math.max(
+                      (c.maxWidth - 12) / 2,
+                      120.0);
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: chips
+                        .map((child) =>
+                            SizedBox(width: w, child: child))
+                        .toList(),
+                  );
+                }
+                return Row(
+                  children: chips
+                      .map((tile) =>
+                          Expanded(child: tile))
+                      .toList(),
+                );
+              },
             ),
           ),
           // Filters
@@ -180,6 +214,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                 final paymentFilter = DropdownButton<String>(
                   value: _paymentFilter ?? '',
                   hint: const Text('Payment'),
+                  isExpanded: true,
                   items: paymentOptions.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
                   onChanged: (v) {
                     setState(() => _paymentFilter = v);
@@ -189,7 +224,7 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                 final staffFilter = DropdownButton<String>(
                   value: _staffFilter ?? '',
                   hint: const Text('Cashier'),
-                  isExpanded: false,
+                  isExpanded: true,
                   items: [
                     const DropdownMenuItem(value: '', child: Text('All')),
                     ..._staffList.map((s) => DropdownMenuItem(
@@ -207,20 +242,34 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
                     children: [
                       dateFilter,
                       const SizedBox(width: 6),
-                      paymentFilter,
+                      SizedBox(width: 130, child: paymentFilter),
                       const SizedBox(width: 6),
-                      staffFilter,
+                      SizedBox(width: 180, child: staffFilter),
                     ],
                   );
                 }
-                return Wrap(
-                  spacing: 6,
-                  runSpacing: 8,
-                  crossAxisAlignment: WrapCrossAlignment.center,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     dateFilter,
-                    paymentFilter,
-                    staffFilter,
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: paymentFilter,
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: AppColors.border),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: staffFilter,
+                    ),
                   ],
                 );
               },
@@ -254,28 +303,51 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
     );
   }
 
-  Widget _summaryChip(String label, String value, IconData icon, {Color? color}) {
-    return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, size: 20, color: color ?? AppColors.textSecondary),
-          const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: color ?? AppColors.textPrimary)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.textSecondary)),
-        ],
-      ),
+  Widget _summaryChipTile(String label, String value, IconData icon,
+      {Color? color}) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 20, color: color ?? AppColors.textSecondary),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color ?? AppColors.textPrimary),
+        ),
+        Text(
+          label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              fontSize: 11, color: AppColors.textSecondary),
+        ),
+      ],
     );
   }
 
   Widget _buildRow(Map<String, dynamic> t) {
     final createdAt = t['created_at'] != null ? DateTime.tryParse(t['created_at'] as String) : null;
     final timeStr = createdAt != null ? DateFormat('dd MMM\nHH:mm').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
+    final timeStrSingle =
+        createdAt != null ? DateFormat('dd MMM yyyy · HH:mm').format(createdAt.toUtc().add(const Duration(hours: 2))) : '—';
     final receiptNumber = t['receipt_number'] as String? ?? '—';
     final profiles = t['profiles'];
     String cashierName = '—';
     if (profiles is Map) {
       cashierName = (profiles['full_name'] as String?) ?? '—';
-    } else if (profiles is List && profiles.isNotEmpty && profiles.first is Map) cashierName = ((profiles.first as Map)['full_name'] as String?) ?? '—';
+    } else if (profiles is List &&
+        profiles.isNotEmpty &&
+        profiles.first is Map) {
+      cashierName =
+          ((profiles.first as Map)['full_name'] as String?) ?? '—';
+    }
     final paymentMethod = t['payment_method'] as String? ?? '—';
     final total = (t['total_amount'] as num?)?.toDouble() ?? 0;
     final isVoided = t['is_voided'] == true;
@@ -290,6 +362,39 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
       customerDisplay = (loyaltyCustomer['full_name'] as String?) ?? 'Walk-in';
     }
 
+    final narrow = ResponsiveBreakpoints.widthOf(context) <
+        ResponsiveBreakpoints.phoneMaxWidth;
+
+    Widget voidBadge({EdgeInsetsGeometry? margin}) {
+      if (!isVoided) return const SizedBox.shrink();
+      return Container(
+        margin: margin,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+            color: AppColors.error, borderRadius: BorderRadius.circular(4)),
+        child: const Text('VOID',
+            style: TextStyle(
+                fontSize: 9,
+                color: Colors.white,
+                fontWeight: FontWeight.bold)),
+      );
+    }
+
+    Widget refundBadge({EdgeInsetsGeometry? margin}) {
+      if (!isRefund || isVoided) return const SizedBox.shrink();
+      return Container(
+        margin: margin,
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+            color: AppColors.info, borderRadius: BorderRadius.circular(4)),
+        child: const Text('REFUND',
+            style: TextStyle(
+                fontSize: 9,
+                color: Colors.white,
+                fontWeight: FontWeight.bold)),
+      );
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       color: AppColors.cardBg,
@@ -298,18 +403,145 @@ class _TransactionListScreenState extends State<TransactionListScreen> {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              SizedBox(width: 64, child: Text(timeStr, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary))),  
-              Expanded(flex: 2, child: Text(receiptNumber, style: const TextStyle(fontSize: 12, fontFamily: 'monospace'))),
-              Expanded(flex: 2, child: Text(cashierName, style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis)),
-              Expanded(flex: 2, child: Text(customerDisplay, style: const TextStyle(fontSize: 13, color: AppColors.textSecondary), overflow: TextOverflow.ellipsis)),
-              SizedBox(width: 72, child: Text(paymentMethod, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary))),
-              SizedBox(width: 80, child: Text('R ${total.toStringAsFixed(2)}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600))),
-              if (isVoided) Container(margin: const EdgeInsets.only(left: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: AppColors.error, borderRadius: BorderRadius.circular(4)), child: const Text('VOID', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold))),
-              if (isRefund && !isVoided) Container(margin: const EdgeInsets.only(left: 4), padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2), decoration: BoxDecoration(color: AppColors.info, borderRadius: BorderRadius.circular(4)), child: const Text('REFUND', style: TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.bold))),
-            ],
-          ),
+          child: narrow
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            receiptNumber,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontFamily: 'monospace'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'R ${total.toStringAsFixed(2)}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          softWrap: false,
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      customerDisplay,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: const TextStyle(
+                          fontSize: 13, color: AppColors.textSecondary),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Cashier: $cashierName',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            timeStrSingle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            paymentMethod,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        voidBadge(),
+                        refundBadge(),
+                      ],
+                    ),
+                  ],
+                )
+              : Row(
+                  children: [
+                    SizedBox(
+                        width: 64,
+                        child: Text(timeStr,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary))),
+                    Expanded(
+                        flex: 2,
+                        child: Text(receiptNumber,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12, fontFamily: 'monospace'))),
+                    Expanded(
+                        flex: 2,
+                        child: Text(cashierName,
+                            style: const TextStyle(fontSize: 13),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1)),
+                    Expanded(
+                        flex: 2,
+                        child: Text(customerDisplay,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 2)),
+                    SizedBox(
+                        width: 72,
+                        child: Text(paymentMethod,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary))),
+                    SizedBox(
+                        width: 80,
+                        child: Text('R ${total.toStringAsFixed(2)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600))),
+                    if (isVoided)
+                      voidBadge(
+                          margin:
+                              const EdgeInsets.only(left: 4)),
+                    if (isRefund && !isVoided)
+                      refundBadge(
+                          margin:
+                              const EdgeInsets.only(left: 4)),
+                  ],
+                ),
         ),
       ),
     );

@@ -24,6 +24,7 @@ import 'package:admin_app/features/hr/services/timecard_repository.dart';
 import 'package:admin_app/features/hr/screens/staff_credit_screen.dart';
 import 'package:admin_app/features/hr/screens/payroll_screen.dart';
 import 'package:admin_app/shared/widgets/form_widgets.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Mobile layout breakpoint for HR embedded tabs (matches Admin shell).
 bool _hrIsMobileLayout(BuildContext context) =>
@@ -73,7 +74,7 @@ class _StaffListScreenState extends State<StaffListScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
@@ -3728,7 +3729,7 @@ class _StaffFormDialogState extends State<_StaffFormDialog>
                   onPressed: () => Navigator.pop(context)),
             ]),
           ),
-          TabBar(
+          AdaptiveTabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,
@@ -4260,10 +4261,9 @@ class _BreakAlertsTabState extends State<_BreakAlertsTab> {
                       child: Text('No break alerts found',
                           style: TextStyle(
                               color: AppColors.textSecondary)))
-                  : SingleChildScrollView(
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
+                  : AdaptiveDataTableScroller(
+                      narrowMinWidth: 880,
+                      child: DataTable(
                           headingRowHeight: 36,
                           dataRowMinHeight: 40,
                           dataRowMaxHeight: 56,
@@ -4363,7 +4363,6 @@ class _BreakAlertsTabState extends State<_BreakAlertsTab> {
                           }).toList(),
                         ),
                       ),
-                    ),
         ),
       ],
     );

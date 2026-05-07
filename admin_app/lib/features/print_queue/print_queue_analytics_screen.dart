@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Historical Analytics for Print Queue
 class PrintQueueAnalyticsScreen extends StatefulWidget {
@@ -336,8 +337,8 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
   }
 
   Widget _buildDailyTrendsTable() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return AdaptiveDataTableScroller(
+      narrowMinWidth: 480,
       child: DataTable(
         columns: const [
           DataColumn(label: Text('Date')),
@@ -347,11 +348,13 @@ class _PrintQueueAnalyticsScreenState extends State<PrintQueueAnalyticsScreen> {
         ],
         rows: _dailyTrends.map((day) => DataRow(
           cells: [
-            DataCell(Text(_formatDate(day['date']))),
-            DataCell(Text('${day['total_jobs']}')),
-            DataCell(Text('${day['failed_jobs']}')),
+            DataCell(Text(_formatDate(day['date']), maxLines: 1, overflow: TextOverflow.ellipsis)),
+            DataCell(Text('${day['total_jobs']}', maxLines: 1, overflow: TextOverflow.ellipsis)),
+            DataCell(Text('${day['failed_jobs']}', maxLines: 1, overflow: TextOverflow.ellipsis)),
             DataCell(Text(
               '${(day['success_rate'] as double).toStringAsFixed(1)}%',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 color: (day['success_rate'] as double) > 90 ? Colors.green :
                        (day['success_rate'] as double) > 70 ? Colors.orange : Colors.red,

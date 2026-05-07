@@ -8,6 +8,7 @@ import 'package:admin_app/features/customers/screens/notification_management_scr
 import 'package:admin_app/features/customers/screens/customer_detail_screen.dart';
 import 'package:admin_app/features/customers/screens/recipe_library_screen.dart';
 import 'package:admin_app/features/customers/screens/campaign_manager_screen.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class CustomerListScreen extends StatefulWidget {
   const CustomerListScreen({super.key});
@@ -40,7 +41,7 @@ class _CustomerListScreenState extends State<CustomerListScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,

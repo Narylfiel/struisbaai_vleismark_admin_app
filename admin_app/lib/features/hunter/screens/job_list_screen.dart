@@ -13,6 +13,7 @@ import 'package:admin_app/features/hunter/screens/job_intake_screen.dart';
 import 'package:admin_app/features/hunter/services/parked_sale_repository.dart';
 import 'package:admin_app/features/hunter/screens/job_process_screen.dart';
 import 'package:admin_app/features/hunter/screens/job_summary_screen.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class JobListScreen extends StatefulWidget {
   const JobListScreen({super.key});
@@ -45,7 +46,7 @@ class _JobListScreenState extends State<JobListScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,

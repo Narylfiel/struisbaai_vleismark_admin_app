@@ -9,6 +9,7 @@ import '../models/modifier_item.dart';
 import '../services/modifier_repository.dart';
 import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 
 /// Blueprint §4.3: Modifier items for one group. List items, Add/Edit (name, price adjustment, track inventory, linked item).
 class ModifierItemsScreen extends StatefulWidget {
@@ -180,10 +181,9 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
                         ],
                       ),
                     )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        child: DataTable(
+                  : AdaptiveDataTableScroller(
+                      narrowMinWidth: 720,
+                      child: DataTable(
                           columns: const [
                             DataColumn(label: Text('Name')),
                             DataColumn(label: Text('Price adj')),
@@ -226,7 +226,6 @@ class _ModifierItemsScreenState extends State<ModifierItemsScreen> {
                             );
                           }).toList(),
                         ),
-                      ),
                     ),
       floatingActionButton: _items.isNotEmpty
           ? FloatingActionButton(

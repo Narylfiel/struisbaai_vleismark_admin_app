@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import '../../../core/utils/error_handler.dart';
 import '../models/promotion.dart';
 import '../models/promotion_product.dart';
@@ -153,9 +154,8 @@ class _PromotionListScreenState extends State<PromotionListScreen> with SingleTi
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
-              isScrollable: true,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,

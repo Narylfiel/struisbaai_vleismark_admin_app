@@ -17,6 +17,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:path_provider/path_provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Reads a movement field with fallback to metadata (for rows created via recordMovement).
 String _movementVal(Map<String, dynamic> m, String key, [String defaultVal = '']) {
@@ -1193,31 +1194,43 @@ class _RecordWasteDialogState extends State<_RecordWasteDialog> {
             // 2. Type selector
             const Text('Type *', style: TextStyle(fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
             const SizedBox(height: 8),
-            SegmentedButton<String>(
-              segments: const [
-                ButtonSegment(value: 'Waste', label: Text('Waste'), icon: Icon(Icons.delete_outline)),
-                ButtonSegment(value: 'Sponsorship', label: Text('Sponsorship'), icon: Icon(Icons.favorite_border)),
-              ],
-              selected: {_selectedType},
-              onSelectionChanged: (Set<String> newSelection) {
-                setState(() {
-                  _selectedType = newSelection.first;
-                  _selectedReason = null; // Reset reason when type changes
-                });
-              },
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return _selectedType == 'Waste' ? AppColors.danger : Colors.blue;
-                  }
-                  return AppColors.scaffoldBg;
-                }),
-                foregroundColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return Colors.white;
-                  }
-                  return AppColors.textPrimary;
-                }),
+            NarrowHorizontalScroll(
+              child: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(
+                      value: 'Waste',
+                      label: Text('Waste'),
+                      icon: Icon(Icons.delete_outline)),
+                  ButtonSegment(
+                      value: 'Sponsorship',
+                      label: Text('Sponsorship'),
+                      icon: Icon(Icons.favorite_border)),
+                ],
+                selected: {_selectedType},
+                onSelectionChanged: (Set<String> newSelection) {
+                  setState(() {
+                    _selectedType = newSelection.first;
+                    _selectedReason = null; // Reset reason when type changes
+                  });
+                },
+                style: ButtonStyle(
+                  backgroundColor:
+                      WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return _selectedType == 'Waste'
+                          ? AppColors.danger
+                          : Colors.blue;
+                    }
+                    return AppColors.scaffoldBg;
+                  }),
+                  foregroundColor:
+                      WidgetStateProperty.resolveWith((states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return AppColors.textPrimary;
+                  }),
+                ),
               ),
             ),
             const SizedBox(height: 16),

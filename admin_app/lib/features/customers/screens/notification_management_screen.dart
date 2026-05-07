@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class NotificationManagementScreen extends StatefulWidget {
   const NotificationManagementScreen({super.key});
@@ -29,7 +30,7 @@ class _NotificationManagementScreenState
     return Column(children: [
       Container(
         color: AppColors.surfaceBg,
-        child: TabBar(
+        child: AdaptiveTabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
           indicatorColor: AppColors.primary,

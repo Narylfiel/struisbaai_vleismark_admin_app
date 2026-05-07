@@ -8,6 +8,7 @@ import '../../../shared/widgets/action_buttons.dart';
 import '../models/recipe.dart';
 import '../services/recipe_repository.dart';
 import 'recipe_form_screen.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 
 /// Blueprint §5.5: Recipes list — Create modifier groups for product customization.
 class RecipeListScreen extends StatefulWidget {
@@ -231,10 +232,9 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              child: DataTable(
+          child: AdaptiveDataTableScroller(
+            narrowMinWidth: 800,
+            child: DataTable(
                 columns: const [
                   DataColumn(label: Text('Name')),
                   DataColumn(label: Text('Output product')),
@@ -246,7 +246,7 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                 rows: _recipes.map((r) {
                   return DataRow(
                     cells: [
-                      DataCell(Text(r.name, style: const TextStyle(fontWeight: FontWeight.w500))),
+                      DataCell(Text(r.name, style: const TextStyle(fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis)),
                       DataCell(Text(r.outputProductId != null ? 'Linked' : '—', style: const TextStyle(fontSize: 12))),
                       DataCell(Text('${r.expectedYieldPct.toStringAsFixed(1)}%')),
                       DataCell(Text(r.batchSizeKg.toStringAsFixed(1))),
@@ -291,7 +291,6 @@ class _RecipeListScreenState extends State<RecipeListScreen> {
                   );
                 }).toList(),
               ),
-            ),
           ),
         ),
       ],

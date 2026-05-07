@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/features/transactions/services/transaction_repository.dart';
 import 'package:intl/intl.dart';
 
@@ -195,20 +196,22 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
         const SizedBox(height: 8),
         Container(
           decoration: BoxDecoration(border: Border.all(color: AppColors.border), borderRadius: BorderRadius.circular(8)),
-          child: Table(
-            columnWidths: const {0: FlexColumnWidth(3), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1), 3: FlexColumnWidth(1), 4: FlexColumnWidth(1)},
-            border: const TableBorder.symmetric(inside: BorderSide(color: AppColors.border)),
-            children: [
-              const TableRow(
-                decoration: BoxDecoration(color: AppColors.surfaceBg),
-                children: [
-                  Padding(padding: EdgeInsets.all(8), child: Text('Product', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                  Padding(padding: EdgeInsets.all(8), child: Text('Qty', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                  Padding(padding: EdgeInsets.all(8), child: Text('Unit', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                  Padding(padding: EdgeInsets.all(8), child: Text('Disc', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                  Padding(padding: EdgeInsets.all(8), child: Text('Total', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
-                ],
-              ),
+          child: ResponsiveTableScroll(
+            narrowMinWidth: 640,
+            child: Table(
+              columnWidths: const {0: FlexColumnWidth(3), 1: FlexColumnWidth(1), 2: FlexColumnWidth(1), 3: FlexColumnWidth(1), 4: FlexColumnWidth(1)},
+              border: const TableBorder.symmetric(inside: BorderSide(color: AppColors.border)),
+              children: [
+                const TableRow(
+                  decoration: BoxDecoration(color: AppColors.surfaceBg),
+                  children: [
+                    Padding(padding: EdgeInsets.all(8), child: Text('Product', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8), child: Text('Qty', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8), child: Text('Unit', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8), child: Text('Disc', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                    Padding(padding: EdgeInsets.all(8), child: Text('Total', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
+                  ],
+                ),
               ...items.map((e) {
                 final m = e is Map<String, dynamic> ? e : Map<String, dynamic>.from(e as Map);
                 final inv = m['inventory_items'];
@@ -230,19 +233,24 @@ class _TransactionDetailScreenState extends State<TransactionDetailScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(productName, style: const TextStyle(fontSize: 12)),
-                          if (modStr.isNotEmpty) Text(modStr, style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
+                          Text(productName, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
+                          if (modStr.isNotEmpty)
+                            Text(modStr,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 10, color: AppColors.textSecondary)),
                         ],
                       ),
                     ),
-                    Padding(padding: const EdgeInsets.all(8), child: Text(qtyStr, style: const TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8), child: Text('R ${unitPrice.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8), child: Text(discountAmount > 0 ? 'R ${discountAmount.toStringAsFixed(2)}' : '—', style: const TextStyle(fontSize: 12))),
-                    Padding(padding: const EdgeInsets.all(8), child: Text('R ${lineTotal.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8), child: Text(qtyStr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8), child: Text('R ${unitPrice.toStringAsFixed(2)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8), child: Text(discountAmount > 0 ? 'R ${discountAmount.toStringAsFixed(2)}' : '—', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                    Padding(padding: const EdgeInsets.all(8), child: Text('R ${lineTotal.toStringAsFixed(2)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
                   ],
                 );
               }),
             ],
+            ),
           ),
         ),
       ],

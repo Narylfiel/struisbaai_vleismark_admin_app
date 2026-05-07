@@ -5,6 +5,7 @@ import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/auth_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 const String _kAfAnnouncementHelper =
     'Optional — shown to users when app language is Afrikaans';
@@ -42,9 +43,10 @@ class _AnnouncementScreenState
     return Column(children: [
       Container(
         color: AppColors.surfaceBg,
-        child: TabBar(
+        child: AdaptiveTabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
+          unselectedLabelColor: AppColors.textSecondary,
           indicatorColor: AppColors.primary,
           tabs: const [
             Tab(icon: Icon(Icons.edit, size: 18),
@@ -254,10 +256,11 @@ class _ComposeTabState extends State<_ComposeTab>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                TabBar(
+                AdaptiveTabBar(
                   controller: _contentLangTab,
                   labelColor: AppColors.primary,
                   unselectedLabelColor: AppColors.textSecondary,
+                  indicatorColor: AppColors.primary,
                   tabs: const [
                     Tab(text: 'English'),
                     Tab(text: 'Afrikaans'),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import '../../../core/services/supabase_service.dart';
 import '../blocs/category/category_bloc.dart';
 import 'category_list_screen.dart';
@@ -47,9 +48,8 @@ class _InventoryNavigationScreenState extends State<InventoryNavigationScreen>
           children: [
             Container(
               color: AppColors.cardBg,
-              child: TabBar(
+              child: AdaptiveTabBar(
                 controller: _tabController,
-                isScrollable: true,
                 labelColor: AppColors.primary,
                 unselectedLabelColor: AppColors.textSecondary,
                 indicatorColor: AppColors.primary,

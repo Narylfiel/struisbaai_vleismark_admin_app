@@ -9,6 +9,7 @@ import '../../../core/services/auth_service.dart';
 import '../../../core/services/connectivity_service.dart';
 import '../../../core/services/offline_queue_service.dart';
 import '../../../core/services/supabase_service.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import '../models/production_batch.dart';
 import '../models/recipe.dart';
 import '../models/recipe_ingredient.dart';
@@ -472,16 +473,20 @@ class _ProductionBatchScreenState extends State<ProductionBatchScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              SegmentedButton<String?>(
-                segments: const [
-                  ButtonSegment(value: null, label: Text('All')),
-                  ButtonSegment(value: 'pending', label: Text('Pending')),
-                  ButtonSegment(value: 'in_progress', label: Text('In progress')),
-                  ButtonSegment(value: 'complete', label: Text('Complete')),
-                  ButtonSegment(value: 'cancelled', label: Text('Cancelled')),
-                ],
-                selected: {_statusFilter},
-                onSelectionChanged: (s) => setState(() => _statusFilter = s.first),
+              NarrowHorizontalScroll(
+                child: SegmentedButton<String?>(
+                  segments: const [
+                    ButtonSegment(value: null, label: Text('All')),
+                    ButtonSegment(value: 'pending', label: Text('Pending')),
+                    ButtonSegment(
+                        value: 'in_progress', label: Text('In progress')),
+                    ButtonSegment(value: 'complete', label: Text('Complete')),
+                    ButtonSegment(value: 'cancelled', label: Text('Cancelled')),
+                  ],
+                  selected: {_statusFilter},
+                  onSelectionChanged: (s) =>
+                      setState(() => _statusFilter = s.first),
+                ),
               ),
               const SizedBox(width: 8),
               const Expanded(child: SizedBox()),

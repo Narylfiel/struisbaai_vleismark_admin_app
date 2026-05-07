@@ -21,6 +21,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/models/shrinkage_alert.dart';
@@ -65,7 +66,7 @@ class _ShrinkageScreenState extends State<ShrinkageScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
@@ -1152,7 +1153,9 @@ class _EventTabState extends State<_EventTab> {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Table(
+              child: ResponsiveTableScroll(
+                narrowMinWidth: 560,
+                child: Table(
                 columnWidths: const {
                   0: FlexColumnWidth(2),
                   1: FlexColumnWidth(2),
@@ -1207,6 +1210,7 @@ class _EventTabState extends State<_EventTab> {
                     );
                   }),
                 ],
+                ),
               ),
             ),
           ),
@@ -1470,6 +1474,8 @@ class _TableCell extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       child: Text(
         text,
+        maxLines: header ? 2 : 3,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontWeight: header ? FontWeight.bold : FontWeight.normal,
           fontSize: header ? 12 : 13,
@@ -1834,7 +1840,9 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                       if (!_loadingProducts && _productRows.isEmpty)
                         const Padding(padding: EdgeInsets.all(16), child: Text('No products linked to this supplier. Add product-supplier links in Inventory.')),
                       if (!_loadingProducts && _productRows.isNotEmpty) ...[
-                        Table(
+                        ResponsiveTableScroll(
+                          narrowMinWidth: 720,
+                          child: Table(
                           columnWidths: const {
                             0: FlexColumnWidth(2),
                             1: FlexColumnWidth(1),
@@ -1847,12 +1855,12 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                             TableRow(
                               decoration: BoxDecoration(color: AppColors.border.withOpacity(0.3)),
                               children: const [
-                                Padding(padding: EdgeInsets.all(6), child: Text('Name', style: TextStyle(fontWeight: FontWeight.w600))),
-                                Padding(padding: EdgeInsets.all(6), child: Text('Supplier Code', style: TextStyle(fontWeight: FontWeight.w600))),
-                                Padding(padding: EdgeInsets.all(6), child: Text('Stock', style: TextStyle(fontWeight: FontWeight.w600))),
-                                Padding(padding: EdgeInsets.all(6), child: Text('Reorder', style: TextStyle(fontWeight: FontWeight.w600))),
-                                Padding(padding: EdgeInsets.all(6), child: Text('Unit price', style: TextStyle(fontWeight: FontWeight.w600))),
-                                Padding(padding: EdgeInsets.all(6), child: Text('Order Qty', style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Name', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Supplier Code', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Stock', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Reorder', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Unit price', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
+                                Padding(padding: EdgeInsets.all(6), child: Text('Order Qty', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600))),
                               ],
                             ),
                             ..._productRows.map((row) {
@@ -1860,11 +1868,11 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                               final lineTotal = qty > 0 ? qty * row.unitPrice : 0.0;
                               return TableRow(
                                 children: [
-                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.name, overflow: TextOverflow.ellipsis)),
-                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.supplierCode ?? '—')),
-                                  Padding(padding: const EdgeInsets.all(4), child: Text('${row.currentStock.toStringAsFixed(1)} ${row.unit}')),
-                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.reorderLevel.toStringAsFixed(1))),
-                                  Padding(padding: const EdgeInsets.all(4), child: Text('R ${row.unitPrice.toStringAsFixed(2)}')),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.name, maxLines: 2, overflow: TextOverflow.ellipsis)),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.supplierCode ?? '—', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text('${row.currentStock.toStringAsFixed(1)} ${row.unit}', maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text(row.reorderLevel.toStringAsFixed(1), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                                  Padding(padding: const EdgeInsets.all(4), child: Text('R ${row.unitPrice.toStringAsFixed(2)}', maxLines: 1, overflow: TextOverflow.ellipsis)),
                                   Padding(
                                     padding: const EdgeInsets.all(4),
                                     child: TextField(
@@ -1878,6 +1886,7 @@ class _CreatePODialogState extends State<_CreatePODialog> {
                               );
                             }),
                           ],
+                        ),
                         ),
                         const SizedBox(height: 12),
                         Text('Grand total: R ${_grandTotal().toStringAsFixed(2)}', style: const TextStyle(fontWeight: FontWeight.bold)),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:intl/intl.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class CampaignManagerScreen extends StatefulWidget {
   const CampaignManagerScreen({super.key, this.embedded = false});
@@ -32,7 +33,7 @@ class _CampaignManagerScreenState extends State<CampaignManagerScreen>
       children: [
         Container(
           color: AppColors.cardBg,
-          child: TabBar(
+          child: AdaptiveTabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,
@@ -1224,7 +1225,7 @@ class _IngredientsDialogState extends State<_IngredientsDialog>
               ),
             ),
             // Tabs
-            TabBar(
+            AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,

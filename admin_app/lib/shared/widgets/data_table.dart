@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/app_colors.dart';
 import '../../core/responsive/responsive_breakpoints.dart';
+import '../../core/responsive/responsive_primitives.dart';
 
 /// Reusable data table widget with sorting, pagination, and actions
 class DataTableWidget extends StatefulWidget {
@@ -70,48 +71,35 @@ class _DataTableWidgetState extends State<DataTableWidget> {
       endIndex > _filteredData.length ? _filteredData.length : endIndex,
     );
 
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isMobile = ResponsiveBreakpoints.isMobile(context);
-        final minTableWidth = isMobile ? 640.0 : constraints.maxWidth;
-        return Column(
-          children: [
-            // Table
-            SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(minWidth: minTableWidth),
-                child: SingleChildScrollView(
-                  child: DataTable(
-                    sortColumnIndex: _sortColumnIndex,
-                    sortAscending: _sortAscending,
-                    columnSpacing: isMobile ? 12 : 16,
-                    horizontalMargin: isMobile ? 12 : 16,
-                    headingRowHeight: 48,
-                    dataRowMinHeight: 48,
-                    dataRowMaxHeight: 56,
-                    headingTextStyle: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    dataTextStyle: const TextStyle(
-                      color: AppColors.textPrimary,
-                      fontSize: 14,
-                    ),
-                    columns: _buildColumns(),
-                    rows: _buildRows(pageData),
-                  ),
-                ),
-              ),
+    final isMobile = ResponsiveBreakpoints.isMobile(context);
+    return Column(
+      children: [
+        AdaptiveDataTableScroller(
+          narrowMinWidth: 680,
+          child: DataTable(
+            sortColumnIndex: _sortColumnIndex,
+            sortAscending: _sortAscending,
+            columnSpacing: isMobile ? 12 : 16,
+            horizontalMargin: isMobile ? 12 : 16,
+            headingRowHeight: 48,
+            dataRowMinHeight: 48,
+            dataRowMaxHeight: 56,
+            headingTextStyle: const TextStyle(
+              color: AppColors.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 14,
             ),
-
-            // Pagination
-            if (widget.rowsPerPage != null && totalPages > 1)
-              _buildPagination(totalPages),
-          ],
-        );
-      },
+            dataTextStyle: const TextStyle(
+              color: AppColors.textPrimary,
+              fontSize: 14,
+            ),
+            columns: _buildColumns(),
+            rows: _buildRows(pageData),
+          ),
+        ),
+        if (widget.rowsPerPage != null && totalPages > 1)
+          _buildPagination(totalPages),
+      ],
     );
   }
 
@@ -125,7 +113,11 @@ class _DataTableWidgetState extends State<DataTableWidget> {
 
       columns.add(
         DataColumn(
-          label: Text(header),
+          label: Text(
+            header,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           onSort: isSortable
               ? (columnIndex, ascending) => _sort(columnIndex, ascending)
               : null,
@@ -135,7 +127,15 @@ class _DataTableWidgetState extends State<DataTableWidget> {
 
     // Actions column
     if (widget.showActions && (widget.actions?.isNotEmpty ?? false)) {
-      columns.add(const DataColumn(label: Text('Actions')));
+      columns.add(
+        DataColumn(
+          label: Text(
+            'Actions',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+      );
     }
 
     return columns;
@@ -146,7 +146,11 @@ class _DataTableWidgetState extends State<DataTableWidget> {
       final cells = widget.columns.map((column) {
         final value = row[column];
         return DataCell(
-          Text(_formatCellValue(value)),
+          Text(
+            _formatCellValue(value),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
           onTap: widget.onRowTap != null ? () => widget.onRowTap!(row) : null,
         );
       }).toList();

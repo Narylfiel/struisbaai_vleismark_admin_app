@@ -12,6 +12,7 @@ import '../../../shared/widgets/action_buttons.dart';
 import '../models/supplier.dart';
 import '../services/supplier_repository.dart';
 import '../../../core/db/cached_supplier.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 import 'supplier_form_screen.dart';
 
 /// Blueprint §4.6: Supplier Management — list suppliers, Add/Edit/Delete.
@@ -440,10 +441,9 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
           ),
         ),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              child: DataTable(
+          child: AdaptiveDataTableScroller(
+            narrowMinWidth: 880,
+            child: DataTable(
                 columns: const [
                   DataColumn(label: Text('Name')),
                   DataColumn(label: Text('Contact')),
@@ -456,11 +456,11 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                 rows: _suppliers.map((s) {
                   return DataRow(
                     cells: [
-                      DataCell(Text(s.name, style: const TextStyle(fontWeight: FontWeight.w500))),
-                      DataCell(Text(s.contactPerson ?? '—', style: const TextStyle(fontSize: 12))),
-                      DataCell(Text(s.phone ?? '—', style: const TextStyle(fontSize: 12))),
-                      DataCell(Text(s.email ?? '—', style: const TextStyle(fontSize: 12))),
-                      DataCell(Text(s.paymentTerms ?? '—', style: const TextStyle(fontSize: 12))),
+                      DataCell(Text(s.name, style: const TextStyle(fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(s.contactPerson ?? '—', style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(s.phone ?? '—', style: const TextStyle(fontSize: 12), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(s.email ?? '—', style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
+                      DataCell(Text(s.paymentTerms ?? '—', style: const TextStyle(fontSize: 12), maxLines: 2, overflow: TextOverflow.ellipsis)),
                       DataCell(
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -488,7 +488,6 @@ class _SupplierListScreenState extends State<SupplierListScreen> {
                   );
                 }).toList(),
               ),
-            ),
           ),
         ),
       ],
@@ -534,7 +533,9 @@ class _ImportPreviewDialog extends StatelessWidget {
               const SizedBox(height: 16),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: DataTable(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 720),
+                  child: DataTable(
                   columns: const [
                     DataColumn(label: Text('Name')),
                     DataColumn(label: Text('Contact')),
@@ -563,6 +564,7 @@ class _ImportPreviewDialog extends StatelessWidget {
                       ],
                     );
                   }).toList(),
+                  ),
                 ),
               ),
               if (rows.length > 10)

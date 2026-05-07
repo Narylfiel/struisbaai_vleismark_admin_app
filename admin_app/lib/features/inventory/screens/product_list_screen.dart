@@ -21,6 +21,7 @@ import 'package:admin_app/features/commercial/repositories/commercial_repository
 import 'package:admin_app/features/commercial/services/commercial_badge_notifier.dart';
 import 'package:admin_app/features/inventory/constants/category_mappings.dart';
 import 'package:admin_app/features/inventory/widgets/stock_movement_dialogs.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class ProductListScreen extends StatefulWidget {
   const ProductListScreen({super.key, this.openInventoryItemId});
@@ -2859,12 +2860,11 @@ class _ProductFormDialogState extends State<_ProductFormDialog>
             ),
 
             // Tabs
-            TabBar(
+            AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
-              isScrollable: true,
               tabs: const [
                 Tab(text: 'A — Identity'),
                 Tab(text: 'B — Pricing'),
@@ -5740,7 +5740,9 @@ class _ProductImportPreviewDialog extends StatelessWidget {
               const SizedBox(height: 16),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                child: DataTable(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minWidth: 720),
+                  child: DataTable(
                   columns: const [
                     DataColumn(label: Text('PLU')),
                     DataColumn(label: Text('Name')),
@@ -5761,6 +5763,7 @@ class _ProductImportPreviewDialog extends StatelessWidget {
                       ],
                     );
                   }).toList(),
+                  ),
                 ),
               ),
               if (rows.length > 10)

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/features/transactions/services/transaction_repository.dart';
 import 'package:intl/intl.dart';
 
@@ -224,25 +225,27 @@ class _TillSessionDetailScreenState extends State<TillSessionDetailScreen> {
           if (list.isEmpty)
             const Text('No petty cash movements', style: TextStyle(color: AppColors.textSecondary))
           else
-            Table(
-              columnWidths: const {
-                0: FlexColumnWidth(1.2),
-                1: FlexColumnWidth(0.8),
-                2: FlexColumnWidth(1),
-                3: FlexColumnWidth(2),
-                4: FlexColumnWidth(1.5),
-              },
-              children: [
-                const TableRow(
-                  decoration: BoxDecoration(color: AppColors.surfaceBg),
-                  children: [
-                    Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Time', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                    Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Dir', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                    Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Amount', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                    Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Reason', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                    Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Recorded by', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
-                  ],
-                ),
+            ResponsiveTableScroll(
+              narrowMinWidth: 680,
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(1.2),
+                  1: FlexColumnWidth(0.8),
+                  2: FlexColumnWidth(1),
+                  3: FlexColumnWidth(2),
+                  4: FlexColumnWidth(1.5),
+                },
+                children: [
+                  const TableRow(
+                    decoration: BoxDecoration(color: AppColors.surfaceBg),
+                    children: [
+                      Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Time', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                      Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Dir', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                      Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Amount', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                      Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Reason', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                      Padding(padding: EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('Recorded by', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontWeight: FontWeight.w600, fontSize: 12))),
+                    ],
+                  ),
                 ...list.map<TableRow>((e) {
                   final m = e as Map<String, dynamic>;
                   final recordedAt = m['recorded_at'] != null ? DateTime.tryParse(m['recorded_at'] as String) : null;
@@ -258,15 +261,16 @@ class _TillSessionDetailScreenState extends State<TillSessionDetailScreen> {
                   final isIn = direction.toLowerCase() == 'in';
                   return TableRow(
                     children: [
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(timeStr, style: const TextStyle(fontSize: 12))),
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(direction, style: TextStyle(fontSize: 12, color: isIn ? AppColors.success : AppColors.error))),
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('R ${amount.toStringAsFixed(2)}', style: const TextStyle(fontSize: 12))),
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(reason, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
-                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(recordedByName, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(timeStr, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(direction, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: isIn ? AppColors.success : AppColors.error))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text('R ${amount.toStringAsFixed(2)}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(reason, maxLines: 2, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
+                      Padding(padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4), child: Text(recordedByName, maxLines: 2, style: const TextStyle(fontSize: 12), overflow: TextOverflow.ellipsis)),
                     ],
                   );
                 }),
               ],
+            ),
             ),
         ],
       ),

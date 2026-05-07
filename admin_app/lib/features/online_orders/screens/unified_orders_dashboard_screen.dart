@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import '../models/order_type.dart';
 import '../models/online_order_summary.dart';
 import '../online_order_navigation.dart';
@@ -149,7 +150,7 @@ class _UnifiedOrdersDashboardScreenState
           // Tab bar
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,

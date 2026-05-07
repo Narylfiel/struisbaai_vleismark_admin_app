@@ -8,6 +8,7 @@ import 'package:admin_app/core/db/isar_service.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 /// Blueprint §4.4: Stock Levels — table view of all products across locations.
 /// C1: Single source of truth — display uses current_stock (updated by POS trigger).
@@ -291,14 +292,16 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                       children: [
                         const Text('Stock Levels', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         const SizedBox(width: 12),
-                        SegmentedButton<String>(
-                          segments: const [
-                            ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
-                            ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
-                            ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
-                          ],
-                          selected: {_filter},
-                          onSelectionChanged: (s) => setState(() => _filter = s.first),
+                        NarrowHorizontalScroll(
+                          child: SegmentedButton<String>(
+                            segments: const [
+                              ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
+                              ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
+                              ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
+                            ],
+                            selected: {_filter},
+                            onSelectionChanged: (s) => setState(() => _filter = s.first),
+                          ),
                         ),
                         const SizedBox(width: 8),
                         Row(
@@ -366,14 +369,16 @@ class _StockLevelsScreenState extends State<StockLevelsScreen> {
                       const SizedBox(height: 8),
                       Row(
                         children: [
-                          SegmentedButton<String>(
-                            segments: const [
-                              ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
-                              ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
-                              ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
-                            ],
-                            selected: {_filter},
-                            onSelectionChanged: (s) => setState(() => _filter = s.first),
+                          NarrowHorizontalScroll(
+                            child: SegmentedButton<String>(
+                              segments: const [
+                                ButtonSegment(value: 'all', label: Text('All'), icon: Icon(Icons.list, size: 16)),
+                                ButtonSegment(value: 'low', label: Text('Low'), icon: Icon(Icons.warning, size: 16)),
+                                ButtonSegment(value: 'ok', label: Text('OK'), icon: Icon(Icons.check_circle, size: 16)),
+                              ],
+                              selected: {_filter},
+                              onSelectionChanged: (s) => setState(() => _filter = s.first),
+                            ),
                           ),
                           const SizedBox(width: 8),
                           Row(

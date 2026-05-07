@@ -8,6 +8,7 @@ import '../models/modifier_group.dart';
 import '../services/modifier_repository.dart';
 import 'modifier_group_form_screen.dart';
 import 'modifier_items_screen.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 
 /// Blueprint §4.3: Modifier group management. List groups, Add/Edit, Manage items.
 class ModifierGroupListScreen extends StatefulWidget {
@@ -241,10 +242,9 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
         ),
         const Divider(height: 1, color: AppColors.border),
         Expanded(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: SingleChildScrollView(
-              child: DataTable(
+          child: AdaptiveDataTableScroller(
+            narrowMinWidth: 960,
+            child: DataTable(
           columns: const [
             DataColumn(label: Text('Name')),
             DataColumn(label: Text('Description')),
@@ -258,7 +258,7 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
           rows: _groups.map((g) {
             return DataRow(
               cells: [
-                DataCell(Text(g.name, style: const TextStyle(fontWeight: FontWeight.w500))),
+                DataCell(Text(g.name, style: const TextStyle(fontWeight: FontWeight.w500), maxLines: 2, overflow: TextOverflow.ellipsis)),
                 DataCell(Text(
                   g.description ?? '',
                   style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
@@ -309,7 +309,6 @@ class _ModifierGroupListScreenState extends State<ModifierGroupListScreen> {
               ],
             );
           }).toList(),
-              ),
             ),
           ),
         ),

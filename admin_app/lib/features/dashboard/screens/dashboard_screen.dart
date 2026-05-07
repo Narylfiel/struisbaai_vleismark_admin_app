@@ -12,6 +12,7 @@ import 'package:admin_app/features/commercial/repositories/commercial_repository
 import 'package:admin_app/features/commercial/screens/commercial_actions_screen.dart';
 import 'package:admin_app/features/inventory/screens/product_list_screen.dart';
 import 'package:admin_app/features/reports/screens/report_hub_screen.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import '../services/dashboard_repository.dart';
 import '../services/dashboard_service.dart';
 
@@ -1219,23 +1220,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
             LayoutBuilder(
               builder: (context, c) {
                 final mobile = c.maxWidth < 600;
-                final modeWidget = _canSeeTopRevenue
-                    ? SegmentedButton<String>(
-                        segments: const [
-                          ButtonSegment(value: 'revenue', label: Text('Revenue')),
-                          ButtonSegment(value: 'quantity', label: Text('Qty')),
-                        ],
-                        selected: {_topProductsMode},
-                        onSelectionChanged: (val) {
-                          setState(() => _topProductsMode = val.first);
-                          _loadTopProducts();
-                        },
-                        style: const ButtonStyle(
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      )
-                    : Text('By Quantity',
-                        style: TextStyle(color: Colors.grey[500], fontSize: 12));
+                final modeWidget = NarrowHorizontalScroll(
+                  child: _canSeeTopRevenue
+                      ? SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment(
+                                value: 'revenue', label: Text('Revenue')),
+                            ButtonSegment(
+                                value: 'quantity', label: Text('Qty')),
+                          ],
+                          selected: {_topProductsMode},
+                          onSelectionChanged: (val) {
+                            setState(() => _topProductsMode = val.first);
+                            _loadTopProducts();
+                          },
+                          style: const ButtonStyle(
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        )
+                      : Text('By Quantity',
+                          style:
+                              TextStyle(color: Colors.grey[500], fontSize: 12)),
+                );
                 final titleLeading = Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

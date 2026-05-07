@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:barcode_widget/barcode_widget.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class CustomerDetailScreen extends StatefulWidget {
   final Map<String, dynamic> customer;
@@ -105,7 +106,7 @@ class _CustomerDetailScreenState extends State<CustomerDetailScreen>
             tooltip: 'Refresh',
           ),
         ],
-        bottom: TabBar(
+        bottom: AdaptiveTabBar(
           controller: _tabController,
           labelColor: AppColors.primary,
           unselectedLabelColor: AppColors.textSecondary,

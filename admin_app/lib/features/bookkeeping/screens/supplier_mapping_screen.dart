@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../core/services/supplier_mapping_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/responsive/responsive_primitives.dart';
 
 /// Screen to review and resolve unmapped supplier invoice line items.
 /// Also shows all existing mappings for editing.
@@ -96,7 +97,7 @@ class _SupplierMappingScreenState extends State<SupplierMappingScreen>
         title: Text(widget.supplierName != null
             ? 'Item Mappings — ${widget.supplierName}'
             : 'Supplier Item Mappings'),
-        bottom: TabBar(
+        bottom: AdaptiveTabBar(
           controller: _tabController,
           tabs: [
             Tab(

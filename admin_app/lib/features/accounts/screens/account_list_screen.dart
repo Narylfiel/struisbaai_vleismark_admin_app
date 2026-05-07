@@ -6,6 +6,7 @@ import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
 import 'package:admin_app/features/accounts/screens/account_detail_screen.dart';
 import 'package:admin_app/features/bookkeeping/services/ledger_repository.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 
 class AccountListScreen extends StatefulWidget {
   const AccountListScreen({super.key});
@@ -37,7 +38,7 @@ class _AccountListScreenState extends State<AccountListScreen>
       body: Column(children: [
         Container(
           color: AppColors.cardBg,
-          child: TabBar(
+          child: AdaptiveTabBar(
             controller: _tabController,
             labelColor: AppColors.primary,
             unselectedLabelColor: AppColors.textSecondary,

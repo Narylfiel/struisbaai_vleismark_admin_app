@@ -8,6 +8,7 @@ import 'package:admin_app/core/services/connectivity_service.dart';
 import 'package:admin_app/core/services/offline_queue_service.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'recipe_list_screen.dart';
 import 'production_batch_screen.dart';
 import 'dryer_batch_screen.dart';
@@ -43,12 +44,11 @@ class _CarcassIntakeScreenState extends State<CarcassIntakeScreen>
         children: [
           Container(
             color: AppColors.cardBg,
-            child: TabBar(
+            child: AdaptiveTabBar(
               controller: _tabController,
               labelColor: AppColors.primary,
               unselectedLabelColor: AppColors.textSecondary,
               indicatorColor: AppColors.primary,
-              isScrollable: true,
               tabs: const [
                 Tab(icon: Icon(Icons.list_alt, size: 18), text: 'Yield Templates'),
                 Tab(icon: Icon(Icons.add_box, size: 18), text: 'Carcass Intake'),

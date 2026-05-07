@@ -7,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
 import 'package:admin_app/core/responsive/responsive_breakpoints.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/export_service.dart';
 import 'package:admin_app/features/hr/services/staff_profile_repository.dart';
@@ -1079,10 +1080,10 @@ class _ReportPreviewDialog extends StatelessWidget {
                         ],
                       ),
                     )
-                  : SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SingleChildScrollView(
-                        child: Table(
+                  : AdaptiveDataTableScroller(
+                      narrowMinWidth: math.max(
+                          data.columns.length * 92.0, 640.0),
+                      child: Table(
                           defaultColumnWidth:
                               const IntrinsicColumnWidth(),
                           border: const TableBorder(
@@ -1102,6 +1103,8 @@ class _ReportPreviewDialog extends StatelessWidget {
                                         padding: const EdgeInsets.symmetric(
                                             horizontal: 12, vertical: 10),
                                         child: Text(h,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
                                             style: const TextStyle(
                                                 fontWeight: FontWeight.bold,
                                                 fontSize: 12,
@@ -1135,6 +1138,8 @@ class _ReportPreviewDialog extends StatelessWidget {
                                           horizontal: 12, vertical: 8),
                                       child: Text(
                                         display,
+                                        maxLines: 3,
+                                        overflow: TextOverflow.ellipsis,
                                         textAlign: isMoney
                                             ? TextAlign.right
                                             : TextAlign.left,
@@ -1163,6 +1168,8 @@ class _ReportPreviewDialog extends StatelessWidget {
                                           : (col == data.columns.first
                                               ? 'TOTAL'
                                               : ''),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
                                       textAlign: data.monetaryColumns
                                               .contains(col)
                                           ? TextAlign.right
@@ -1176,7 +1183,6 @@ class _ReportPreviewDialog extends StatelessWidget {
                               ),
                           ],
                         ),
-                      ),
                     ),
             ),
 

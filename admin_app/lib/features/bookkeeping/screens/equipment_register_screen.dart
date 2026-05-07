@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:admin_app/core/constants/app_colors.dart';
+import 'package:admin_app/core/responsive/responsive_primitives.dart';
 import 'package:admin_app/core/utils/error_handler.dart';
 import 'package:admin_app/core/services/supabase_service.dart';
 import 'package:admin_app/core/services/audit_service.dart';
@@ -168,10 +169,9 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
         Expanded(
           child: _items.isEmpty
               ? const Center(child: Text('No equipment registered'))
-              : SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SingleChildScrollView(
-                    child: DataTable(
+              : AdaptiveDataTableScroller(
+                  narrowMinWidth: 960,
+                  child: DataTable(
                       columns: const [
                         DataColumn(label: Text('Name')),
                         DataColumn(label: Text('Serial #')),
@@ -220,7 +220,6 @@ class _EquipmentRegisterScreenState extends State<EquipmentRegisterScreen> {
                         );
                       }).toList(),
                     ),
-                  ),
                 ),
         ),
         if (_expandedId != null) ...[
